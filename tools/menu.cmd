@@ -12,6 +12,8 @@ echo 3) A1111 CHECK (ping + models)
 echo 4) A1111 START (webui-user.bat --api)
 echo 5) LIVE rapido (A1111, sin preguntas)
 echo 6) LIMPIAR outputs locales
+echo 7) LIVE con prompt (A1111)
+echo 8) LIVE con prompt + elegir modelo
 echo 0) Salir
 echo.
 set /p CH=Elige opcion: 
@@ -22,6 +24,8 @@ if "%CH%"=="3" goto CHECK
 if "%CH%"=="4" goto START
 if "%CH%"=="5" goto LIVERAPIDO
 if "%CH%"=="6" goto CLEAN
+if "%CH%"=="7" goto LIVEPROMPT
+if "%CH%"=="8" goto LIVEPROMPTMODEL
 if "%CH%"=="0" goto END
 
 echo Opcion invalida.
@@ -62,6 +66,21 @@ goto MENU
 echo.
 echo == CLEAN outputs ==
 call "%~dp0clean_outputs.cmd"
+goto MENU
+
+:LIVEPROMPT
+echo.
+echo == LIVE con prompt ==
+call "%~dp0a1111_ping.cmd" || ( echo A1111 no responde. Usa opcion 4 y vuelve. & goto MENU )
+call "%~dp0run_live_prompt.cmd"
+goto MENU
+
+:LIVEPROMPTMODEL
+echo.
+echo == LIVE con prompt + elegir modelo ==
+call "%~dp0a1111_ping.cmd" || ( echo A1111 no responde. Usa opcion 4 y vuelve. & goto MENU )
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0a1111_choose_model.ps1"
+call "%~dp0run_live_prompt.cmd"
 goto MENU
 
 :LIVE

@@ -176,11 +176,7 @@ def build_pipeline_from_v03_config(config_path: str) -> StudioPipeline:
         setattr(voice, "_provider_name", v.get("provider", ""))
         setattr(image, "_provider_name", i.get("provider", ""))
         if text is not None:
-                        setattr(text, "_provider_name", tname)
-            try:
-                setattr(text, "_provider_cfg", t.get("config") or {})
-            except Exception:
-                pass
+            setattr(text, "_provider_name", tname)
     except Exception:
         pass
     pipe = StudioPipeline(voice=voice, image=image, text=text, work_dir=work_dir)

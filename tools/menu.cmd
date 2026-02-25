@@ -1,5 +1,5 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 
 :MENU
 echo.
@@ -54,12 +54,16 @@ call "%~dp0a1111_ping.cmd" || (
   echo A1111 no responde. Usa opcion 4 para arrancar y vuelve.
   goto MENU
 )
-set /p MODEL=Checkpoint exacto (enter para no cambiar): 
-if not "%MODEL%"=="" (
-  call "%~dp0a1111_set_model.cmd" -Checkpoint "%MODEL%"
-)
+
+echo.
+echo (Opcional) Elegir modelo por NUMERO:
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0a1111_choose_model.ps1"
+echo.
+
 set /p SCRIPT=Texto para --script (enter=hola live): 
 if "%SCRIPT%"=="" set "SCRIPT=hola live"
+
+REM Pasamos como 1 argumento (quoted) para conservar espacios
 call "%~dp0run_live_v03.cmd" "%SCRIPT%"
 goto MENU
 

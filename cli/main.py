@@ -1,3 +1,5 @@
+from pathlib import Path
+import json
 # -*- coding: utf-8 -*-
 """CLI v0.3
 
@@ -59,6 +61,38 @@ def main(argv: list[str] | None = None) -> int:
         img, aud = pipe.run(args.script)
 
         print("OK v0.3 config")
+
+    # F1.2: escribir manifest mínimo (bridge v0.3)
+    try:
+        # Detecta work_dir de forma segura
+        wd = None
+        try:
+            wd = getattr(pipeline, "work_dir", None)
+        except Exception:
+            wd = None
+        work_dir = str(wd) if wd else "_v03_from_config/artifacts"
+        work_dir = str(Path(work_dir).resolve())
+
+        # Buscar artifacts recientes (fallback si no tenemos variables img/aud)
+        script_files = sorted(Path(work_dir).glob("script_*.txt"), key=lambda x: x.stat().st_mtime, reverse=True)
+        img_files    = sorted(Path(work_dir).glob("image_*.png"),  key=lambda x: x.stat().st_mtime, reverse=True)
+        aud_files    = sorted(Path(work_dir).glob("audio_*.wav"),  key=lambda x: x.stat().st_mtime, reverse=True)
+
+        manifest = {
+            "version": "v0.3",
+            "mode": "RUN",
+            "work_dir": work_dir,
+            "config_path": str(Path(args.v03_config).resolve()),
+            "artifacts": {
+                "script": str(script_files[0].resolve()) if script_files else "",
+                "image":  str(img_files[0].resolve()) if img_files else "",
+                "audio":  str(aud_files[0].resolve()) if aud_files else "",
+            },
+        }
+        Path(work_dir, "manifest_v03.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
         print(f"image: {img}")
         print(f"audio: {aud}")
         print(f"config: {os.path.abspath(args.v03_config)}")

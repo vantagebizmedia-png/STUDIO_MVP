@@ -97,6 +97,26 @@ def main() -> int:
         else:
             print("OK: checksums ya estaban presentes (no cambios)")
 
+
+    # Extra: validar scenes[] si existe en pack.json
+    scenes = pack.get("scenes") or []
+    if isinstance(scenes, list) and scenes:
+        for s in scenes:
+            try:
+                idx = int(s.get("index", 0) or 0)
+            except Exception:
+                idx = 0
+            for k in ("script","image","audio"):
+                rel = (s.get(k) or "").strip()
+                if not rel:
+                    problems.append(f"scene_{idx:02d} FALTA path: {k}")
+                    continue
+                fp = pack_dir / rel
+                if not fp.exists():
+                    problems.append(f"scene_{idx:02d} FALTA file: {rel}")
+                elif fp.stat().st_size <= 0:
+                    problems.append(f"scene_{idx:02d} VACIO: {rel}")
+
     if problems:
         print("\nRESULT: FAIL")
         return 2

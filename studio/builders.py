@@ -142,6 +142,66 @@ def build_pipeline_from_v03_config(config_path: str) -> StudioPipeline:
     Soporta:
       - voice.provider + voice.config
       - image.provider + image.config
+      - text.provider  + text.config (opcional)
+      - multiscene/max_scenes/scene_split (opcional)  <-- F2.0
+    """
+    from studio.registry import build_provider
+
+    config_path = os.path.abspath(config_path)
+    with open(config_path, "r", encoding="utf-8-sig") as f:
+        obj = json.load(f)
+
+    work_dir = os.path.abspath(obj.get("work_dir") or "_v03_from_config/artifacts")
+    workspace = obj.get("workspace") or ""
+    if workspace:
+        os.environ["STUDIO_WORKSPACE"] = os.path.abspath(workspace)
+
+    v = obj.get("voice") or {}
+    i = obj.get("image") or {}
+    t = obj.get("text") or {}
+
+    voice_name = str(v.get("provider", "") or "").strip()
+    image_name = str(i.get("provider", "") or "").strip()
+    text_name  = str(t.get("provider", "") or "").strip()
+
+    voice = build_provider(voice_name, v.get("config") or {})
+    image = build_provider(image_name, i.get("config") or {})
+
+    text = None
+    if text_name:
+        text = build_provider(text_name, t.get("config") or {})
+
+    for p in (voice, image, text):
+        if p is not None and hasattr(p, "validate"):
+            p.validate()
+
+    # metadata para manifest/cache
+    try:
+        setattr(voice, "_provider_name", voice_name)
+        setattr(image, "_provider_name", image_name)
+        if text is not None:
+            setattr(text, "_provider_name", text_name)
+            setattr(text, "_provider_cfg", t.get("config") or {})
+    except Exception:
+        pass
+
+    pipe = StudioPipeline(voice=voice, image=image, text=text, work_dir=work_dir)
+
+    # knobs multiscene (F2.0)
+    try:
+        setattr(pipe, "_v03_config_path", config_path)
+        setattr(pipe, "multiscene", bool(obj.get("multiscene", False)))
+        setattr(pipe, "max_scenes", int(obj.get("max_scenes", 1) or 1))
+        setattr(pipe, "scene_split", str(obj.get("scene_split", "auto") or "auto"))
+    except Exception:
+        pass
+
+    return pipe
+
+
+    Soporta:
+      - voice.provider + voice.config
+      - image.provider + image.config
       - text.provider  + text.config (opcional)  <-- F1.1
     """
     from studio.registry import build_provider

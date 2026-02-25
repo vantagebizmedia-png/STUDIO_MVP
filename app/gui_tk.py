@@ -67,22 +67,23 @@ def main():
 
     root = tk.Tk()
     root.title("STUDIO_MVP v0.3 - GUI (Tk)")
-    root.geometry("1000x680")
+    root.geometry("1020x700")
 
     frm = ttk.Frame(root, padding=10)
     frm.pack(fill=tk.BOTH, expand=True)
 
     script = tk.StringVar(value=st.get("script", "hola live"))
     base_url = tk.StringVar(value=st.get("base_url", A1111_DEFAULT))
-
     model_var = tk.StringVar(value="(sin cargar)")
-    model_combo = None
+    set_on_run = tk.BooleanVar(value=bool(st.get("set_model_on_run", True)))
 
     top = ttk.Frame(frm)
     top.pack(fill=tk.X)
 
     ttk.Label(top, text="Script:").pack(side=tk.LEFT)
-    ttk.Entry(top, textvariable=script, width=70).pack(side=tk.LEFT, padx=8)
+    ttk.Entry(top, textvariable=script, width=72).pack(side=tk.LEFT, padx=8)
+
+    ttk.Checkbutton(top, text="Set model on Run LIVE", variable=set_on_run).pack(side=tk.LEFT, padx=10)
 
     arow = ttk.Frame(frm)
     arow.pack(fill=tk.X, pady=(8,0))
@@ -91,7 +92,7 @@ def main():
     ttk.Entry(arow, textvariable=base_url, width=32).pack(side=tk.LEFT, padx=8)
 
     ttk.Label(arow, text="Modelo:").pack(side=tk.LEFT, padx=(12,0))
-    model_combo = ttk.Combobox(arow, textvariable=model_var, values=["(sin cargar)"], width=58, state="readonly")
+    model_combo = ttk.Combobox(arow, textvariable=model_var, values=["(sin cargar)"], width=62, state="readonly")
     model_combo.pack(side=tk.LEFT, padx=8)
 
     btns = ttk.Frame(frm)
@@ -108,12 +109,8 @@ def main():
             if not titles:
                 raise RuntimeError("No titles in models.")
             model_combo["values"] = titles
-            # si el estado tenía uno, úsalo si existe
             preferred = st.get("model_title")
-            if preferred in titles:
-                model_var.set(preferred)
-            else:
-                model_var.set(titles[0])
+            model_var.set(preferred if preferred in titles else titles[0])
             if not silent:
                 logln(log, f"[ok] modelos cargados: {len(titles)}")
         except Exception as e:
@@ -126,15 +123,17 @@ def main():
         title = model_var.get().strip()
         if not title or title == "(sin cargar)":
             messagebox.showinfo("Set model", "No hay modelo seleccionado.")
-            return
+            return True
         try:
             http_post_json(u + "/sdapi/v1/options", {"sd_model_checkpoint": title}, timeout_s=30)
             opts = http_get_json(u + "/sdapi/v1/options", timeout_s=10)
             cur = opts.get("sd_model_checkpoint", "(unknown)")
             logln(log, f"[ok] modelo actual: {cur}")
+            return True
         except Exception as e:
             messagebox.showerror("Set model", f"No pude setear modelo: {e}")
             logln(log, f"[error] set_model: {e}")
+            return False
 
     def run_smoke():
         run_cmd(["cmd", "/c", "tools\\smoke_v03.cmd"], log)
@@ -143,7 +142,17 @@ def main():
         run_cmd(["cmd", "/c", "tools\\run_live_v03.cmd", "hola live"], log)
 
     def run_live():
+        u = base_url.get().strip().rstrip("/")
         s = script.get().strip() or "hola live"
+
+        # set model first (optional)
+        if set_on_run.get():
+            logln(log, "[info] setting model before LIVE...")
+            ok = set_model()
+            if not ok:
+                logln(log, "[warn] LIVE aborted (set_model failed).")
+                return
+
         env = os.environ.copy()
         env["STUDIO_ALLOW_LIVE"] = "1"
         run_cmd(["python", "-m", "cli.main", "--v03-config", "config\\studio_v03_live_a1111.json", "--script", s], log, env=env)
@@ -171,6 +180,7 @@ def main():
             "base_url": base_url.get().strip(),
             "script": script.get().strip(),
             "model_title": model_var.get().strip(),
+            "set_model_on_run": bool(set_on_run.get()),
         })
         root.destroy()
 
@@ -186,7 +196,6 @@ def main():
     ttk.Button(btns, text="Clean outputs", command=clean_outputs).pack(side=tk.LEFT, padx=4)
     ttk.Button(btns, text="Clear log", command=clear_log).pack(side=tk.RIGHT, padx=4)
 
-    # Auto-refresh (silencioso) al abrir
     root.after(300, lambda: refresh_models(silent=True))
 
     root.mainloop()

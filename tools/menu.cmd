@@ -10,6 +10,8 @@ echo 1) SMOKE v0.3 (offline)
 echo 2) LIVE v0.3 (A1111 API)
 echo 3) A1111 CHECK (ping + models)
 echo 4) A1111 START (webui-user.bat --api)
+echo 5) LIVE rapido (A1111, sin preguntas)
+echo 6) LIMPIAR outputs locales
 echo 0) Salir
 echo.
 set /p CH=Elige opcion: 
@@ -18,6 +20,8 @@ if "%CH%"=="1" goto SMOKE
 if "%CH%"=="2" goto LIVE
 if "%CH%"=="3" goto CHECK
 if "%CH%"=="4" goto START
+if "%CH%"=="5" goto LIVERAPIDO
+if "%CH%"=="6" goto CLEAN
 if "%CH%"=="0" goto END
 
 echo Opcion invalida.
@@ -47,6 +51,19 @@ if exist "C:\stable-diffusion-webui\webui-user.bat" (
 )
 goto MENU
 
+:LIVERAPIDO
+echo.
+echo == LIVE rapido ==
+call "%~dp0a1111_ping.cmd" || ( echo A1111 no responde. Usa opcion 4 y vuelve. & goto MENU )
+call "%~dp0run_live_v03.cmd" "hola live"
+goto MENU
+
+:CLEAN
+echo.
+echo == CLEAN outputs ==
+call "%~dp0clean_outputs.cmd"
+goto MENU
+
 :LIVE
 echo.
 echo == LIVE v0.3 ==
@@ -62,8 +79,6 @@ echo.
 
 set /p SCRIPT=Texto para --script (enter=hola live): 
 if "%SCRIPT%"=="" set "SCRIPT=hola live"
-
-REM Pasamos como 1 argumento (quoted) para conservar espacios
 call "%~dp0run_live_v03.cmd" "%SCRIPT%"
 goto MENU
 

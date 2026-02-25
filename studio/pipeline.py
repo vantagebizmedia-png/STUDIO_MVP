@@ -13,6 +13,8 @@ Soporta callbacks de progreso opcionales para integración con GUIs.
 
 from __future__ import annotations
 
+
+import json
 import hashlib
 import os
 from dataclasses import dataclass, field
@@ -22,6 +24,11 @@ from studio.providers.voice.base_voice import BaseVoiceProvider
 from studio.providers.image.base_image import BaseImageProvider
 from studio.providers.text.base_text import BaseTextProvider
 
+
+def _provider_id(p) -> str:
+    if p is None:
+        return ""
+    return str(getattr(p, "_provider_name", p.__class__.__name__))
 
 def _sha8(text: str) -> str:
     """Primeros 8 caracteres del SHA-256 del texto."""
@@ -102,6 +109,30 @@ class StudioPipeline:
         self._notify("audio", curr, total)
         aud = self.voice.synthesize(final_script, audio_path)
         curr += 1
+
+        # F1.2: manifest mínimo para bridge v0.3
+        try:
+            cfgp = str(getattr(self, "_v03_config_path", ""))
+            manifest = {
+                "version": "v0.3",
+                "mode": "RUN",
+                "work_dir": os.path.abspath(self.work_dir),
+                "config_path": cfgp,
+                "providers": {
+                    "text": _provider_id(self.text),
+                    "image": _provider_id(self.image),
+                    "voice": _provider_id(self.voice),
+                },
+                "artifacts": {
+                    "script": os.path.abspath(script_path),
+                    "image": os.path.abspath(img),
+                    "audio": os.path.abspath(aud),
+                },
+            }
+            with open(os.path.join(self.work_dir, "manifest_v03.json"), "w", encoding="utf-8") as f:
+                f.write(json.dumps(manifest, ensure_ascii=False, indent=2))
+        except Exception:
+            pass
 
         self._notify("listo", curr, total)
         return img, aud

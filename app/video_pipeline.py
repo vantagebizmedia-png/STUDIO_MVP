@@ -115,6 +115,22 @@ def _abs_if_exists(path: str, base_dir: Optional[str] = None) -> str:
     return p if os.path.isfile(p) else ""
 
 
+def _get_video_duration(video_path: str) -> float:
+    """Obtiene la duración de un video usando ffprobe (sin cargar el video en memoria)."""
+    try:
+        import subprocess
+        cmd = [
+            "ffprobe", "-v", "quiet",
+            "-show_entries", "format=duration",
+            "-of", "csv=p=0",
+            video_path,
+        ]
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+        return float(out) if out else 0.0
+    except Exception:
+        return 0.0
+
+
 def _apply_dynamic_ducking_ffmpeg(
     video_path: str,
     music_path: str,
@@ -132,17 +148,11 @@ def _apply_dynamic_ducking_ffmpeg(
     try:
         from imageio_ffmpeg import get_ffmpeg_exe
         import subprocess
-        from moviepy.editor import VideoFileClip
     except Exception:
         return False
 
-    # Duración del video
-    try:
-        clip = VideoFileClip(video_path)
-        dur = float(clip.duration or 0.0)
-        clip.close()
-    except Exception:
-        dur = 0.0
+    # Duración del video via ffprobe (ligero, sin cargar frames en RAM)
+    dur = _get_video_duration(video_path)
 
     if dur <= 0.1:
         return False
@@ -253,23 +263,23 @@ def main() -> None:
     args = ap.parse_args()
 
     root = _project_root()
-    music_dir = str(getattr(args, "music_dir", "music") or "music")
+    music_dir = str(args.music_dir or "music")
     if not os.path.isabs(music_dir):
         music_dir = os.path.abspath(os.path.join(root, music_dir))
 
     # --- Selección de música ---
-    topic_for_music = str(getattr(args, "prompt", "") or "")
+    topic_for_music = str(args.prompt or "")
     picked = pick_music_path(
         topic=topic_for_music,
-        seed=int(getattr(args, "seed", 0) or 0),
-        mode=str(getattr(args, "music_mode", "fixed")),
+        seed=int(args.seed or 0),
+        mode=str(args.music_mode),
         music_path=str(getattr(args, "music", "")),
         music_dir=music_dir,
-        tag=str(getattr(args, "music_tag", "")),
+        tag=str(args.music_tag),
     )
 
     # Off -> nada
-    if str(getattr(args, "music_mode", "fixed")).lower() == "off":
+    if str(args.music_mode).lower() == "off":
         picked = ""
 
     # VALIDACIÓN IMPORTANTE:
@@ -279,7 +289,7 @@ def main() -> None:
     music_path = ""
     music_dynamic = ""
 
-    if str(getattr(args, "ducking_mode", "fixed")).lower() == "dynamic":
+    if str(args.ducking_mode).lower() == "dynamic":
         music_dynamic = picked_abs
     else:
         music_path = picked_abs
@@ -291,13 +301,13 @@ def main() -> None:
     else:
         print(" Musica: OFF")
 
-    if str(getattr(args, "ducking_mode", "fixed")).lower() == "dynamic" and not music_dynamic:
+    if str(args.ducking_mode).lower() == "dynamic" and not music_dynamic:
         print("  ducking_mode=dynamic pero no hay música válida. Se renderiza solo voz.")
-    if str(getattr(args, "ducking_mode", "fixed")).lower() == "fixed" and str(getattr(args, "music_mode", "fixed")).lower() != "off" and not music_path:
+    if str(args.ducking_mode).lower() == "fixed" and str(args.music_mode).lower() != "off" and not music_path:
         print("  music_mode no es off pero no hay música válida. Se renderiza solo voz.")
 
     # 1) Content pack: nuevo (generate_v02) o existente (--pack_dir)
-    pack_override = str(getattr(args, "pack_dir", "") or "").strip()
+    pack_override = str(args.pack_dir or "").strip()
     if pack_override:
         pack_dir = pack_override
         if not os.path.isabs(pack_dir):
@@ -416,25 +426,25 @@ def main() -> None:
         music_path=(music_path or None),
         music_volume=float(args.music_volume),
         ducking=float(args.ducking),
-        motion_profile=str(getattr(args, "motion", "none")),
-        motion_strength=float(getattr(args, "motion_strength", 0.10)),
-        jitter_px=float(getattr(args, "jitter_px", 0.0)),
-        jitter_hz=float(getattr(args, "jitter_hz", 0.9)),
-        grain_amount=float(getattr(args, "grain_amount", 0.0)),
-        vignette=float(getattr(args, "vignette", 0.0)),
-        crf=int(getattr(args, "crf", 0)),
-        x264_preset=str(getattr(args, "x264_preset", "")),
-        pix_fmt=str(getattr(args, "pix_fmt", "")),
-        faststart=bool(getattr(args, "faststart", False)),)
+        motion_profile=str(args.motion),
+        motion_strength=float(args.motion_strength),
+        jitter_px=float(args.jitter_px),
+        jitter_hz=float(args.jitter_hz),
+        grain_amount=float(args.grain_amount),
+        vignette=float(args.vignette),
+        crf=int(args.crf),
+        x264_preset=str(args.x264_preset),
+        pix_fmt=str(args.pix_fmt),
+        faststart=bool(args.faststart),)
 
     # --- Ducking dinámico real (FFmpeg sidechain) ---
-    if str(getattr(args, "ducking_mode", "fixed")).lower() == "dynamic" and music_dynamic:
+    if str(args.ducking_mode).lower() == "dynamic" and music_dynamic:
         print(f" Aplicando ducking dinámico a: {os.path.basename(music_dynamic)}")
         ok = _apply_dynamic_ducking_ffmpeg(
             video_info["path"],
             music_dynamic,
-            float(getattr(args, "music_volume", 0.20)),
-            float(getattr(args, "ducking", 0.55)),
+            float(args.music_volume),
+            float(args.ducking),
         )
         if not ok:
             print(" ducking dinámico falló (se deja solo voz)")
@@ -452,8 +462,8 @@ def main() -> None:
             "fit": args.fit,
             "subs": bool(args.subs),
             "music": (music_dynamic or music_path or ""),
-            "music_mode": str(getattr(args, "music_mode", "fixed")),
-            "ducking_mode": str(getattr(args, "ducking_mode", "fixed")),
+            "music_mode": str(args.music_mode),
+            "ducking_mode": str(args.ducking_mode),
             "music_volume": float(args.music_volume),
             "ducking": float(args.ducking),
         },

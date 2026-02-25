@@ -51,14 +51,59 @@ def _a1111_image(cfg: dict[str, Any] | None) -> BaseImageProvider:
     )
 
 
+def _hf_image(cfg: dict[str, Any] | None) -> BaseImageProvider:
+    from studio.providers.image.hf_image import HFImageProvider
+    cfg = cfg or {}
+    return HFImageProvider(
+        model=str(cfg.get("model", "black-forest-labs/FLUX.1-schnell")),
+        provider=str(cfg.get("provider", "hf-inference")),
+        token_env=str(cfg.get("token_env", "HF_TOKEN")),
+    )
+
+
+def _demo_text(cfg: dict[str, Any] | None) -> Any:
+    from studio.providers.text.demo_text import DemoTextProvider
+    return DemoTextProvider()
+
+
+def _openai_text(cfg: dict[str, Any] | None) -> Any:
+    from studio.providers.text.openai_text import OpenAITextProvider
+    cfg = cfg or {}
+    return OpenAITextProvider(
+        model=str(cfg.get("model", "gpt-4o-mini")),
+        api_key_env=str(cfg.get("api_key_env", "OPENAI_API_KEY")),
+        max_tokens=int(cfg.get("max_tokens", 1024)),
+        temperature=float(cfg.get("temperature", 0.7)),
+        system=str(cfg.get("system", "")),
+    )
+
+
+def _claude_text(cfg: dict[str, Any] | None) -> Any:
+    from studio.providers.text.claude_text import ClaudeTextProvider
+    cfg = cfg or {}
+    return ClaudeTextProvider(
+        model=str(cfg.get("model", "claude-haiku-4-5-20251001")),
+        api_key_env=str(cfg.get("api_key_env", "ANTHROPIC_API_KEY")),
+        max_tokens=int(cfg.get("max_tokens", 1024)),
+        temperature=float(cfg.get("temperature", 0.7)),
+        system=str(cfg.get("system", "")),
+    )
+
+
 REGISTRY: Dict[str, ProviderEntry] = {
     # VOICE
     "demo_voice": ProviderEntry(kind="voice", factory=_demo_voice),
     "edge_voice": ProviderEntry(kind="voice", factory=_edge_voice),
 
     # IMAGE
-    "demo_image": ProviderEntry(kind="image", factory=_demo_image),
+    "demo_image":  ProviderEntry(kind="image", factory=_demo_image),
     "a1111_image": ProviderEntry(kind="image", factory=_a1111_image),
+    "hf_image":    ProviderEntry(kind="image", factory=_hf_image),
+
+    # TEXT
+    "demo_text":   ProviderEntry(kind="text", factory=_demo_text),
+    "openai_text": ProviderEntry(kind="text", factory=_openai_text),
+    "claude_text": ProviderEntry(kind="text", factory=_claude_text),
 }
 
 

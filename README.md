@@ -87,3 +87,36 @@ $env:STUDIO_WORKSPACE = $ws
 .\studio.ps1 final -RunId latest -Mode CINE -Preset B -MusicMode off
 ```
 
+## Modos de ejecucion: SMOKE (offline) vs LIVE (A1111)
+
+### SMOKE v0.3 (offline, determinista, no requiere A1111)
+> Usalo para verificar que el repo esta VERDE y que el pipeline no se rompio.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\smoke_v03.ps1
+```
+
+### LIVE v0.3 (A1111 real por API, mejor calidad)
+> Requiere Automatic1111 corriendo con --api y confirmacion de LIVE.
+
+1) Arranca A1111 (en otra ventana):
+- C:\stable-diffusion-webui\webui-user.bat --api
+
+2) Verifica conexion y (opcional) selecciona modelo:
+```powershell
+.\tools\a1111_ping.ps1
+.\tools\a1111_models.ps1
+.\tools\a1111_set_model.ps1 -Checkpoint "NOMBRE_DEL_MODELO"
+```
+
+3) Ejecuta el pipeline LIVE:
+```powershell
+$env:STUDIO_ALLOW_LIVE = "1"
+python -m cli.main --v03-config .\config\studio_v03_live_a1111.json --script "hola live"
+```
+
+Para volver a modo seguro:
+```powershell
+Remove-Item Env:STUDIO_ALLOW_LIVE -ErrorAction SilentlyContinue
+```
+

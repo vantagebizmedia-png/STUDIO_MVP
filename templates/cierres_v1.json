@@ -1,0 +1,14 @@
+﻿{
+  "version": "v1",
+  "cierres": [
+    {"id": "cerrado", "efecto": "resolucion total"},
+    {"id": "abierto", "efecto": "pregunta sin respuesta"},
+    {"id": "tragico", "efecto": "impacto emocional fuerte"},
+    {"id": "feliz", "efecto": "alivio y esperanza"},
+    {"id": "giro", "efecto": "sorpresa"},
+    {"id": "circular", "efecto": "patron repetitivo"},
+    {"id": "moral", "efecto": "enseñanza"},
+    {"id": "ambiguo", "efecto": "interpretacion multiple"},
+    {"id": "sacrificio", "efecto": "renuncia significativa"}
+  ]
+}

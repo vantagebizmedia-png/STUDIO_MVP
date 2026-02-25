@@ -1,0 +1,93 @@
+# =====================
+# STUDIO_MVP — .gitignore
+# =====================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# --- Entornos virtuales ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Workspace runtime (runs, cache, output) ---
+workspace/
+output/
+_demo_out*/
+_v03_*/
+_backup/
+_trash/
+_release/
+releases/
+
+# --- Logs de ejecución ---
+last_*.log
+last_*.txt
+last_*.json
+last_compile.log
+
+# --- Backups automáticos ---
+*.bak
+*.bak_*
+*.tmp
+
+# --- Patches locales (ya están en _archive/) ---
+_patch_*.py
+_fix_*.py
+
+# --- Archive y VCS interno (histórico pesado, no útil para colaboradores) ---
+_archive/
+_vcs_extract/
+.patch_backups/
+
+# --- Configuración con credenciales reales ---
+# NUNCA subir providers.json con API keys reales.
+# Usar providers.json.example como referencia.
+# Definir API keys via variable de entorno: OPENAI_API_KEY
+config/providers.json
+config/providers.json.bak*
+config/providers.json.bak_smoke_*
+
+# --- Archivos de video y audio generados ---
+*.mp4
+*.mov
+*.avi
+*.mkv
+music/*.mp3
+music/*.wav
+music/*.m4a
+music/*.aac
+
+# --- ZIPs de releases ---
+*.zip
+STUDIO_MVP_*.zip
+STUDIO_MVP_src_snapshot.zip
+
+# --- IDEs y OS ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Credenciales y secretos ---
+.env
+.env.*
+*.pem
+*.key
+# --- STUDIO_MVP ignores (outputs/caches) ---
+!workspace/.gitkeep
+**/__pycache__/
+*.pyc
+.pytest_cache/

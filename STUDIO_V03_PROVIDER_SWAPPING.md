@@ -1,0 +1,1 @@
+# STUDIO v0.3 — Provider Swapping (config nativo)

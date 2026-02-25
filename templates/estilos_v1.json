@@ -1,0 +1,27 @@
+﻿{
+  "version": "v1",
+  "descripcion": "Estilos narrativos base del motor VCS",
+  "estilos": [
+    {
+      "id": "directo",
+      "nombre": "Narración directa",
+      "descripcion": "El narrador expresa pensamientos y emociones explícitamente",
+      "uso": ["introspección", "confesión", "revelación personal"],
+      "impacto_emocional": "alto"
+    },
+    {
+      "id": "indirecto",
+      "nombre": "Narración indirecta",
+      "descripcion": "Las emociones se muestran a través de acciones y ambiente",
+      "uso": ["tensión", "suspenso", "observación externa"],
+      "impacto_emocional": "medio"
+    },
+    {
+      "id": "libre",
+      "nombre": "Narración libre",
+      "descripcion": "Mezcla voz interna y externa sin transición rígida",
+      "uso": ["poético", "existencial", "reflexivo"],
+      "impacto_emocional": "variable"
+    }
+  ]
+}

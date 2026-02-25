@@ -1,0 +1,123 @@
+# ✅ CHECKLIST MAESTRO — STUDIO_MVP (Studio puro, multi-IA por capas)
+Fecha: 2026-02-17 (NY)
+
+========================================================
+0) REGLAS DE ORO (para no romper el proyecto)
+========================================================
+- [x] R0.1 No usar kernel / master / VCS.
+- [x] R0.2 Cambios SOLO por reemplazo de archivo completo (no parches sueltos).
+- [x] R0.3 Máximo 1–2 pasos por mensaje.
+- [x] R0.4 Contrato de salida estable (manifest + story_bible + storyboard + prompts).
+
+========================================================
+1) V1 — PACK (DRY-RUN) COMPLETO
+========================================================
+## 1.1 Estructura mínima
+- [x] V1.1 Crear carpeta `STUDIO_MVP/` + `app/` + `workspace/` + `templates/`
+- [x] V1.2 `CONTRATO_V1.md` creado y pegado
+
+## 1.2 Motor y CLI
+- [x] V1.3 `app/main.py` pegado (motor V1)
+- [x] V1.4 Compilar `python -m py_compile app/main.py`
+- [x] V1.5 Generar pack por CLI (`generate`)
+- [x] V1.6 Verificar estructura del pack (archivos y escenas variables)
+
+## 1.3 GUI (1 pantalla)
+- [x] V1.7 `app/gui.py` pegado (GUI 1 pantalla)
+- [x] V1.8 Ejecutar GUI `python -m app.gui`
+- [x] V1.9 Generar pack desde GUI y abrir carpeta
+
+## 1.4 Calidad mínima
+- [x] V1.10 Validar guion hook→develop→close (script_by_clips)
+- [x] V1.11 Validar prompts escena_01/02/05 alineados (image_prompts)
+- [x] V1.12 Validar description/captions/hashtags/music_prompt
+
+## 1.5 Export
+- [x] V1.13 Añadir comando `export` a main.py
+- [x] V1.14 Exportar ZIP por CLI (content_pack.zip)
+- [x] V1.15 Botón “Exportar ZIP” en GUI + “Abrir carpeta ZIP”
+
+========================================================
+2) V1+ — RESCATE ÚTIL DE VCS (SIN KERNEL)
+========================================================
+- [x] V1+.1 Copiar presets desde `VCS.zip` → `STUDIO_MVP/templates/`
+       (estilos/emociones/cierres/subgeneros + narrative txt opcional)
+- [x] V1+.2 GUI muestra dropdowns de presets
+- [x] V1+.3 Presets se inyectan como constraints suaves en el pack
+
+========================================================
+3) V1+++ — PERSISTENCIA (PRESET GUARDADO)
+========================================================
+- [x] V1+++.1 Guardar estado GUI en `workspace/gui_state.json`
+- [x] V1+++.2 Cargar estado al abrir GUI
+- [x] V1+++.3 Botón “Guardar preset” + “Reset preset”
+- [x] V1+++.4 Guardado automático al generar/exportar
+
+========================================================
+4) V2 — TEXTO REAL POR API (PRIMERA IA)
+Objetivo: el pack ya no es “plantilla fija”, sino creativo real.
+========================================================
+## 4.1 Contrato V2 (sin romper V1)
+- [ ] V2.1 Definir `providers/text_provider.py` (interfaz)
+- [ ] V2.2 Definir `config/providers.json` (selección proveedor, modelo, params)
+- [ ] V2.3 Definir cache: `workspace/cache/text/` (clave = hash inputs+params)
+
+## 4.2 Implementación texto (solo 1 proveedor primero)
+- [ ] V2.4 Implementar ProviderText_1 (ej: OpenAI/Claude/Gemini)
+- [ ] V2.5 Modo “DRY” vs “LIVE” (no llamar API / llamar API)
+- [ ] V2.6 Modo “REPLAY” (usa cache, no recalcula)
+- [ ] V2.7 Guardar en manifest: proveedor, modelo, params, seed/temperature, timestamps
+
+## 4.3 Regeneración selectiva (sin destruir todo)
+- [ ] V2.8 Comando `regenerate --part script|captions|hashtags|description|music_prompt`
+- [ ] V2.9 Reutiliza storyboard/escenas y solo recalcula la parte pedida
+- [ ] V2.10 Validadores simples (longitud, estructura hook/develop/close)
+
+## 4.4 GUI para V2 texto (minimal)
+- [ ] V2.11 Toggle: DRY/LIVE + selector proveedor texto
+- [ ] V2.12 Botón “Regenerar (solo guion)” (y otras partes después)
+
+========================================================
+5) V3 — IMAGEN POR API (UNA IA)
+========================================================
+- [ ] V3.1 ProviderImage interface + config + cache `workspace/cache/images/`
+- [ ] V3.2 Generar imágenes por escena desde `image_prompts/scene_XX.txt`
+- [ ] V3.3 Guardar assets en `content_pack/assets/images/scene_XX.png`
+- [ ] V3.4 Actualizar manifest con rutas y parámetros
+- [ ] V3.5 (Opcional) “personajes consistentes” (seed + reference image si aplica)
+
+========================================================
+6) V4 — MÚSICA POR API (UNA IA)
+========================================================
+- [ ] V4.1 ProviderMusic interface + config + cache
+- [ ] V4.2 Generar track (o prompt + descarga si el proveedor lo permite)
+- [ ] V4.3 Guardar en `assets/audio/music.wav|mp3`
+- [ ] V4.4 Actualizar manifest
+
+========================================================
+7) V5 — VIDEO (REEL/LARGO) POR API
+========================================================
+- [ ] V5.1 ProviderVideo interface + config + cache
+- [ ] V5.2 Ensamblar: imágenes + motion (si aplica) + voiceover + música + captions
+- [ ] V5.3 Render final: `assets/video/final.mp4`
+- [ ] V5.4 Actualizar manifest
+
+========================================================
+8) CALIDAD Y CONTROL (SIN KERNEL)
+========================================================
+- [ ] Q1 Reporte `run_summary.txt` (duración total, clips, escenas, assets)
+- [ ] Q2 “Determinismo práctico”: cache + params fijos + replay
+- [ ] Q3 Logs simples por run (sin cadenas, sin certificados)
+- [ ] Q4 Botón GUI “Abrir reporte” + “Abrir assets”
+
+========================================================
+9) MULTI-IA (CUANDO TODO YA FUNCIONE)
+========================================================
+- [ ] M1 Permitir 2+ proveedores por modalidad (texto A/B)
+- [ ] M2 Política de fallback: si falla proveedor A, usar B
+- [ ] M3 Comparador simple (diff de guion / scoring)
+
+========================================================
+## V2 — Menú (core) probado
+- [x] Regenerate choice 7 (prompts de imagen) funciona y respeta “no regenerar todo”
+

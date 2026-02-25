@@ -1,0 +1,10 @@
+{
+  "schema": "VCS_DATA_PACK_THIRDPARTY_V1",
+  "generated_at": "2026-02-23 21:33:51",
+  "notes": [
+    "projects/themes vacíos intencionalmente",
+    "no auto-mutar; solo parches explícitos",
+    "estructura rígida para third-party"
+  ],
+  "source_dir": ""
+}

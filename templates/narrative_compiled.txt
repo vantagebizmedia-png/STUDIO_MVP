@@ -1,0 +1,39 @@
+﻿NARRATIVA_COMPILADA (DETERMINISTA)
+day_utc: 2026-02-16
+seed_sha256: 03d6a0d80d21066218817cefcf4b7c2c98fe42dbed6f1ed3da0d68a1f1ac8be4
+
+=== BASE ===
+NARRATIVA BASE (VCS)
+Universo: techno-místico, realista y oscuro.
+Tema recurrente: evidencia, trazabilidad, identidad, auditable.
+Protagonista: un operador que intenta demostrar que su sistema produce valor real.
+Reglas del mundo:
+- Nada se “cree” si no hay evidencia.
+- Todo output debe poder verificarse con hash y logs.
+Tono: directo, cinematográfico, con tensión, sin humor.
+Formato de contenido: micro-episodios para redes (25-45s) + una imagen clave.
+
+=== SELECCIÓN (desde JSON) ===
+ESTILO:
+- id: libre
+- nombre: Narración libre
+- descripcion: Mezcla voz interna y externa sin transición rígida
+
+EMOCIÓN:
+- id: asco
+- nombre: 
+- descripcion: 
+
+SUBGÉNERO:
+- id: diario
+- nombre: 
+- descripcion: 
+
+CIERRE:
+- id: feliz
+- nombre: 
+- descripcion: 
+
+REGLA:
+- Usa EXACTAMENTE esta selección como constraints del contenido.
+- Mantén tono cinematográfico, techno-místico, auditable, sin humor.

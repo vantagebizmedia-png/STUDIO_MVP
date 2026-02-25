@@ -171,7 +171,20 @@ def build_pipeline_from_v03_config(config_path: str) -> StudioPipeline:
         if p is not None and hasattr(p, "validate"):
             p.validate()
 
-    return StudioPipeline(voice=voice, image=image, text=text, work_dir=work_dir)
+    # F1.2: metadata para manifest
+    try:
+        setattr(voice, "_provider_name", v.get("provider", ""))
+        setattr(image, "_provider_name", i.get("provider", ""))
+        if text is not None:
+            setattr(text, "_provider_name", tname)
+    except Exception:
+        pass
+    pipe = StudioPipeline(voice=voice, image=image, text=text, work_dir=work_dir)
+    try:
+        setattr(pipe, "_v03_config_path", config_path)
+    except Exception:
+        pass
+    return pipe
 
 
     from studio.registry import build_provider

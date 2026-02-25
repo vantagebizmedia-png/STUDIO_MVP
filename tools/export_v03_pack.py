@@ -2,17 +2,10 @@
 """
 Export v0.3 Content Pack desde manifest_v03.json.
 
-Entrada:
-  - manifest_v03.json (creado por StudioPipeline en work_dir)
-
-Salida (pack dir):
-  <out_root>/pack_v03_<tag>/
-    manifest_v03.json
-    pack.json
-    artifacts/
-      script.txt
-      image.png
-      audio.wav
+Default out_root:
+  1) Si manifest tiene config_path y ese JSON tiene "workspace": <workspace>/exports
+  2) else si env STUDIO_WORKSPACE existe: <STUDIO_WORKSPACE>/exports
+  3) else: ./workspace/exports
 """
 from __future__ import annotations
 
@@ -21,32 +14,57 @@ import json
 import os
 import shutil
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 def read_json(p: Path) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
+
+def read_json_sig(p: Path) -> dict:
+    # Por si el JSON viene con BOM
+    return json.loads(p.read_text(encoding="utf-8-sig"))
 
 def safe_copy(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(str(src), str(dst))
 
 def derive_tag(manifest: dict) -> str:
-    # Preferimos extraer tag del script filename: script_<tag>.txt
     sp = (manifest.get("artifacts") or {}).get("script") or ""
     name = Path(sp).name
     if name.startswith("script_") and name.endswith(".txt"):
         return name[len("script_"):-len(".txt")]
-    # fallback: usar hash corto del image filename
     ip = (manifest.get("artifacts") or {}).get("image") or ""
     iname = Path(ip).name
     if iname.startswith("image_") and iname.endswith(".png"):
         return iname[len("image_"):-len(".png")]
-    return datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+def pick_default_out_root(manifest: dict) -> Path:
+    cfgp = (manifest.get("config_path") or "").strip()
+    if cfgp:
+        p = Path(cfgp).expanduser()
+        if p.exists():
+            try:
+                cfg = read_json_sig(p.resolve())
+                ws = (cfg.get("workspace") or "").strip()
+                if ws:
+                    ws_p = Path(ws)
+                    if not ws_p.is_absolute():
+                        # relativo al repo actual (cwd)
+                        ws_p = (Path.cwd() / ws_p).resolve()
+                    return (ws_p / "exports").resolve()
+            except Exception:
+                pass
+
+    env_ws = os.environ.get("STUDIO_WORKSPACE", "").strip()
+    if env_ws:
+        return (Path(env_ws).expanduser().resolve() / "exports").resolve()
+
+    return (Path("workspace").resolve() / "exports").resolve()
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--manifest", required=True, help="Path a manifest_v03.json")
-    ap.add_argument("--out-root", default="", help="Root de export (default: STUDIO_WORKSPACE/exports o ./workspace/exports)")
+    ap.add_argument("--out-root", default="", help="Root de export (default: workspace del config)")
     ap.add_argument("--overwrite", action="store_true", help="Si existe el pack dir, lo reemplaza (determinista).")
     args = ap.parse_args()
 
@@ -58,7 +76,6 @@ def main() -> int:
 
     work_dir = (manifest.get("work_dir") or "")
     if not work_dir:
-        # si falta, usamos carpeta del manifest
         work_dir = str(mpath.parent)
     work_dir = str(Path(work_dir).resolve())
 
@@ -67,7 +84,6 @@ def main() -> int:
     image_p  = Path(artifacts.get("image")  or "")
     audio_p  = Path(artifacts.get("audio")  or "")
 
-    # Resolve relativos (por si acaso)
     if script_p and not script_p.is_absolute():
         script_p = Path(work_dir) / script_p
     if image_p and not image_p.is_absolute():
@@ -76,21 +92,14 @@ def main() -> int:
         audio_p = Path(work_dir) / audio_p
 
     missing = []
-    for p in [("script", script_p), ("image", image_p), ("audio", audio_p)]:
-        if not p[1] or not Path(p[1]).exists():
-            missing.append(p[0])
+    for k, p in [("script", script_p), ("image", image_p), ("audio", audio_p)]:
+        if not p or not p.exists():
+            missing.append(k)
     if missing:
         raise SystemExit(f"ERROR: faltan artifacts referenciados en manifest: {missing}")
 
-    # out root
     out_root = args.out_root.strip()
-    if not out_root:
-        ws = os.environ.get("STUDIO_WORKSPACE", "").strip()
-        if ws:
-            out_root = str((Path(ws) / "exports").resolve())
-        else:
-            out_root = str((Path("workspace") / "exports").resolve())
-    out_root_p = Path(out_root).resolve()
+    out_root_p = Path(out_root).resolve() if out_root else pick_default_out_root(manifest)
     out_root_p.mkdir(parents=True, exist_ok=True)
 
     tag = derive_tag(manifest)
@@ -99,7 +108,6 @@ def main() -> int:
         if args.overwrite:
             shutil.rmtree(pack_dir)
         else:
-            # no determinista, pero seguro (evita pisar)
             n = 2
             while (out_root_p / f"pack_v03_{tag}_{n}").exists():
                 n += 1
@@ -107,7 +115,6 @@ def main() -> int:
 
     (pack_dir / "artifacts").mkdir(parents=True, exist_ok=True)
 
-    # Copias normalizadas
     safe_copy(mpath, pack_dir / "manifest_v03.json")
     safe_copy(script_p, pack_dir / "artifacts" / "script.txt")
     safe_copy(image_p,  pack_dir / "artifacts" / "image.png")
@@ -116,7 +123,7 @@ def main() -> int:
     pack_meta = {
         "pack_version": "v0.3",
         "tag": tag,
-        "created_at_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00","Z"),
         "source": {
             "manifest_path": str(mpath),
             "work_dir": work_dir,

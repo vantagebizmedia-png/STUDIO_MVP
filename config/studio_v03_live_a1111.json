@@ -1,0 +1,28 @@
+{
+  "work_dir": "_v03_from_config/artifacts",
+  "workspace": "_v03_from_config/workspace",
+  "voice": {
+    "provider": "edge_voice",
+    "config": {
+      "voice": "en-US-JennyNeural",
+      "rate": "+0%",
+      "volume": "+0%",
+      "sample_rate": 24000
+    }
+  },
+  "image": {
+    "provider": "a1111_image",
+    "config": {
+      "base_url": "http://127.0.0.1:7860",
+      "width": 512,
+      "height": 512,
+      "steps": 15,
+      "cfg_scale": 7.0,
+      "sampler_name": "DPM++ 2M Karras",
+      "seed": -1,
+      "timeout_s": 600
+    },
+    "retries": 2,
+    "backoff_s": 1.0
+  }
+}

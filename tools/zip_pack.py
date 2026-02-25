@@ -11,10 +11,10 @@ import argparse
 import os
 import zipfile
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 def default_out(pack_dir: Path) -> Path:
-    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return pack_dir.parent / f"{pack_dir.name}_{ts}.zip"
 
 def add_dir(z: zipfile.ZipFile, root: Path, rel_base: Path) -> None:

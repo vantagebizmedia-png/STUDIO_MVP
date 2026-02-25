@@ -14,6 +14,8 @@ Soporta callbacks de progreso opcionales para integración con GUIs.
 from __future__ import annotations
 
 
+
+import time
 import json
 import hashlib
 import os
@@ -29,6 +31,15 @@ def _provider_id(p) -> str:
     if p is None:
         return ""
     return str(getattr(p, "_provider_name", p.__class__.__name__))
+
+def _text_cache_key(provider_name: str, provider_cfg: dict, prompt: str) -> str:
+    blob = {
+        'provider': provider_name or '',
+        'config': provider_cfg or {},
+        'prompt': prompt or '',
+    }
+    raw = json.dumps(blob, sort_keys=True, ensure_ascii=False).encode('utf-8')
+    return hashlib.sha256(raw).hexdigest()
 
 def _sha8(text: str) -> str:
     """Primeros 8 caracteres del SHA-256 del texto."""
@@ -82,9 +93,52 @@ class StudioPipeline:
         if self.text is not None:
             self._notify("texto", curr, total)
             # Nota: el provider puede tener system por defecto configurado internamente
-            final_script = self.text.generate(prompt)
-            curr += 1
+                        # F1.3: cache determinista de texto
+            try:
+                provider_name = str(getattr(self.text, '_provider_name', self.text.__class__.__name__))
+            except Exception:
+                provider_name = self.text.__class__.__name__
 
+            # Config opcional para cache (se inyecta desde builders si existe)
+            tcfg = {}
+            try:
+                tcfg = dict(getattr(self.text, '_provider_cfg', {}) or {})
+            except Exception:
+                tcfg = {}
+
+            cache_on = bool(tcfg.get('cache', True))
+            cache_dir = tcfg.get('cache_dir') or os.path.join(os.environ.get('STUDIO_WORKSPACE','workspace'), 'cache', 'text')
+            cache_dir = os.path.abspath(cache_dir)
+            os.makedirs(cache_dir, exist_ok=True)
+
+            key = _text_cache_key(provider_name, tcfg, prompt)
+            cache_path = os.path.join(cache_dir, f"{key}.json")
+
+            if cache_on and os.path.exists(cache_path):
+                try:
+                    with open(cache_path, 'r', encoding='utf-8') as f:
+                        c = json.load(f)
+                    final_script = str(c.get('output','')).strip()
+                except Exception:
+                    final_script = ''
+            else:
+                final_script = self.text.generate(prompt)
+                if cache_on:
+                    try:
+                        payload = {
+                            'version': 'v0.3',
+                            'provider': provider_name,
+                            'config': tcfg,
+                            'prompt': prompt,
+                            'output': final_script,
+                            'created_at_unix': int(time.time()),
+                        }
+                        with open(cache_path, 'w', encoding='utf-8') as f:
+                            f.write(json.dumps(payload, ensure_ascii=False, indent=2))
+                    except Exception:
+                        pass
+
+            curr += 1
         final_script = str(final_script or "").strip()
         if not final_script:
             raise ValueError("text provider devolvió texto vacío")

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 import os
 import urllib.request
 import urllib.error
@@ -23,6 +24,8 @@ class A1111ImageProvider(BaseImageProvider):
         self,
         base_url: str = "http://127.0.0.1:7860",
         timeout_s: int = 600,
+        retries: int = 2,
+        backoff_s: float = 1.0,
         # defaults pensados para 6GB VRAM
         width: int = 512,
         height: int = 512,
@@ -33,6 +36,8 @@ class A1111ImageProvider(BaseImageProvider):
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_s = int(timeout_s)
+        self.retries = int(retries)
+        self.backoff_s = float(backoff_s)
         self.width = int(width)
         self.height = int(height)
         self.steps = int(steps)
@@ -46,6 +51,39 @@ class A1111ImageProvider(BaseImageProvider):
         # NO hacemos ping aquí para mantener validate sin red.
 
     def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+
+        n = max(0, int(getattr(self, 'retries', 0)))
+
+        last_err = None
+
+        for attempt in range(n + 1):
+
+            try:
+
+                return self._post_json_once(path, payload)
+
+            except ProviderError as e:
+
+                # No reintentar en HTTPError (suele ser input inválido)
+
+                if 'HTTPError' in str(e):
+
+                    raise
+
+                last_err = e
+
+            except Exception as e:
+
+                last_err = e
+
+            if attempt < n:
+
+                time.sleep(float(getattr(self, 'backoff_s', 1.0)) * (2 ** attempt))
+
+        raise ProviderError(f"A1111 request failed after {n+1} attempts: {last_err}")
+
+
+    def _post_json_once(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = self.base_url + path
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(url, data=data, method="POST")

@@ -137,9 +137,42 @@ def build_pipeline(
 # v0.3 config-based builder
 # =========================
 def build_pipeline_from_v03_config(config_path: str) -> StudioPipeline:
-    """Construye pipeline desde config JSON v0.3 (providers via registry)."""
-    import os
-    import json
+    """Construye pipeline desde config JSON v0.3 (providers via registry).
+
+    Soporta:
+      - voice.provider + voice.config
+      - image.provider + image.config
+      - text.provider  + text.config (opcional)  <-- F1.1
+    """
+    from studio.registry import build_provider
+
+    config_path = os.path.abspath(config_path)
+    with open(config_path, "r", encoding="utf-8-sig") as f:
+        obj = json.load(f)
+
+    work_dir = os.path.abspath(obj.get("work_dir") or "_v03_from_config/artifacts")
+    workspace = obj.get("workspace") or ""
+    if workspace:
+        os.environ["STUDIO_WORKSPACE"] = os.path.abspath(workspace)
+
+    v = obj.get("voice") or {}
+    i = obj.get("image") or {}
+    t = obj.get("text") or {}
+
+    voice = build_provider(v.get("provider", ""), v.get("config") or {})
+    image = build_provider(i.get("provider", ""), i.get("config") or {})
+
+    text = None
+    tname = str(t.get("provider", "") or "").strip()
+    if tname:
+        text = build_provider(tname, t.get("config") or {})
+
+    for p in (voice, image, text):
+        if p is not None and hasattr(p, "validate"):
+            p.validate()
+
+    return StudioPipeline(voice=voice, image=image, text=text, work_dir=work_dir)
+
 
     from studio.registry import build_provider
 

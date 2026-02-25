@@ -2,10 +2,13 @@
 """
 Export v0.3 Content Pack desde manifest_v03.json.
 
-Default out_root:
-  1) Si manifest tiene config_path y ese JSON tiene "workspace": <workspace>/exports
-  2) else si env STUDIO_WORKSPACE existe: <STUDIO_WORKSPACE>/exports
-  3) else: ./workspace/exports
+Si manifest trae scenes[]:
+- copia artifacts/script.txt (script global)
+- copia artifacts/image.png / audio.wav (escena 1 por compat)
+- además copia todas las escenas a:
+  artifacts/scenes/scene_01/{script.txt,image.png,audio.wav}
+  artifacts/scenes/scene_02/...
+y escribe pack.json con sección scenes[] (paths relativos)
 """
 from __future__ import annotations
 
@@ -20,7 +23,6 @@ def read_json(p: Path) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
 
 def read_json_sig(p: Path) -> dict:
-    # Por si el JSON viene con BOM
     return json.loads(p.read_text(encoding="utf-8-sig"))
 
 def safe_copy(src: Path, dst: Path) -> None:
@@ -49,23 +51,20 @@ def pick_default_out_root(manifest: dict) -> Path:
                 if ws:
                     ws_p = Path(ws)
                     if not ws_p.is_absolute():
-                        # relativo al repo actual (cwd)
                         ws_p = (Path.cwd() / ws_p).resolve()
                     return (ws_p / "exports").resolve()
             except Exception:
                 pass
-
     env_ws = os.environ.get("STUDIO_WORKSPACE", "").strip()
     if env_ws:
         return (Path(env_ws).expanduser().resolve() / "exports").resolve()
-
     return (Path("workspace").resolve() / "exports").resolve()
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--manifest", required=True, help="Path a manifest_v03.json")
     ap.add_argument("--out-root", default="", help="Root de export (default: workspace del config)")
-    ap.add_argument("--overwrite", action="store_true", help="Si existe el pack dir, lo reemplaza (determinista).")
+    ap.add_argument("--overwrite", action="store_true", help="Si existe el pack dir, lo reemplaza.")
     args = ap.parse_args()
 
     mpath = Path(args.manifest).expanduser().resolve()
@@ -115,10 +114,42 @@ def main() -> int:
 
     (pack_dir / "artifacts").mkdir(parents=True, exist_ok=True)
 
+    # Copias base (compat)
     safe_copy(mpath, pack_dir / "manifest_v03.json")
     safe_copy(script_p, pack_dir / "artifacts" / "script.txt")
     safe_copy(image_p,  pack_dir / "artifacts" / "image.png")
     safe_copy(audio_p,  pack_dir / "artifacts" / "audio.wav")
+
+    scenes_rel = []
+    scenes = manifest.get("scenes") or []
+    if isinstance(scenes, list) and scenes:
+        for s in scenes:
+            idx = int(s.get("index", 0) or 0)
+            arts = (s.get("artifacts") or {})
+            sp = Path(arts.get("script") or "")
+            ip = Path(arts.get("image") or "")
+            ap2 = Path(arts.get("audio") or "")
+
+            # resolver relativos contra work_dir por si acaso
+            if sp and not sp.is_absolute(): sp = Path(work_dir) / sp
+            if ip and not ip.is_absolute(): ip = Path(work_dir) / ip
+            if ap2 and not ap2.is_absolute(): ap2 = Path(work_dir) / ap2
+
+            if not (sp.exists() and ip.exists() and ap2.exists()):
+                continue
+
+            sdir = pack_dir / "artifacts" / "scenes" / f"scene_{idx:02d}"
+            safe_copy(sp,  sdir / "script.txt")
+            safe_copy(ip,  sdir / "image.png")
+            safe_copy(ap2, sdir / "audio.wav")
+
+            scenes_rel.append({
+                "index": idx,
+                "text": s.get("text",""),
+                "script": f"artifacts/scenes/scene_{idx:02d}/script.txt",
+                "image":  f"artifacts/scenes/scene_{idx:02d}/image.png",
+                "audio":  f"artifacts/scenes/scene_{idx:02d}/audio.wav",
+            })
 
     pack_meta = {
         "pack_version": "v0.3",
@@ -136,8 +167,11 @@ def main() -> int:
             "image":  "artifacts/image.png",
             "audio":  "artifacts/audio.wav",
             "manifest": "manifest_v03.json",
-        }
+        },
     }
+    if scenes_rel:
+        pack_meta["scenes"] = scenes_rel
+
     (pack_dir / "pack.json").write_text(json.dumps(pack_meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print("OK: pack exportado")

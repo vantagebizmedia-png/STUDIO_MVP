@@ -180,6 +180,15 @@ def build_pipeline_from_v03_config(config_path: str) -> StudioPipeline:
     except Exception:
         pass
     pipe = StudioPipeline(voice=voice, image=image, text=text, work_dir=work_dir)
+
+    # HOTFIX: knobs multiscene desde config v0.3
+    try:
+        setattr(pipe, "_v03_config_path", config_path)
+        setattr(pipe, "multiscene", bool(obj.get("multiscene", False)))
+        setattr(pipe, "max_scenes", int(obj.get("max_scenes", 1) or 1))
+        setattr(pipe, "scene_split", str(obj.get("scene_split", "auto") or "auto"))
+    except Exception:
+        pass
     try:
         setattr(pipe, "_v03_config_path", config_path)
     except Exception:

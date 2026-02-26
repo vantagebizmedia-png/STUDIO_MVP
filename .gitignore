@@ -28,3 +28,24 @@ music/
 
 # render debug backups
 tools/render_pack_v03.py.bak_*
+# run folders
+_v03_*/
+_v03_*_smoke/
+_v03_demo_edge_audit_smoke/
+_v03_edge_voice_smoke/
+_v03_hf_edge_smoke/
+_v03_text_live_smoke/
+
+# local backups
+*.bak_*
+config/providers.json.bak_*
+studio/providers/image/hf_image.py.bak_*
+
+# temp tools
+tools/hf_probe_models.py
+tools/hf_test_infer.py
+tools/patch_hf_image_model*.py
+
+# local artifacts
+hf_ok.png
+hf_test.png

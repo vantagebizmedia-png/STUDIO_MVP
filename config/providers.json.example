@@ -37,8 +37,14 @@
         "top_p": "{{top_p}}",
         "max_output_tokens": "{{max_tokens}}"
       },
-      "extract_paths": ["output.0.content.0.text"],
-      "fingerprint_fields": ["type", "url", "model"]
+      "extract_paths": [
+        "output.0.content.0.text"
+      ],
+      "fingerprint_fields": [
+        "type",
+        "url",
+        "model"
+      ]
     },
     "openai_images": {
       "type": "http_json",
@@ -55,8 +61,14 @@
         "prompt": "{{prompt}}",
         "size": "{{size}}"
       },
-      "extract_paths": ["data.0.b64_json"],
-      "fingerprint_fields": ["type", "url", "model"]
+      "extract_paths": [
+        "data.0.b64_json"
+      ],
+      "fingerprint_fields": [
+        "type",
+        "url",
+        "model"
+      ]
     },
     "openai_tts": {
       "type": "http_binary",
@@ -74,25 +86,36 @@
         "input": "{{prompt}}",
         "format": "{{format}}"
       },
-      "fingerprint_fields": ["type", "url", "model"]
+      "fingerprint_fields": [
+        "type",
+        "url",
+        "model"
+      ]
     }
   },
   "image": {
-    "mode": "LIVE",
+    "mode": "DRY",
     "active_provider": "openai_images",
-    "default_params": {"size": "1024x1536"},
+    "default_params": {
+      "size": "1024x1536"
+    },
     "cache": {
       "dir": "workspace/cache/images",
       "policy": "prefer",
       "replay_strict": true,
       "salt": "image_provider_v1"
     },
-    "params": {"size": "1024x1536"}
+    "params": {
+      "size": "1024x1536"
+    }
   },
   "voice": {
-    "mode": "LIVE",
+    "mode": "DRY",
     "active_provider": "openai_tts",
-    "default_params": {"voice": "alloy", "format": "wav"},
+    "default_params": {
+      "voice": "alloy",
+      "format": "wav"
+    },
     "cache": {
       "dir": "workspace/cache/voice",
       "policy": "prefer",

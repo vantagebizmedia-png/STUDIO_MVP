@@ -36,7 +36,7 @@ def main():
 
     man.setdefault('audit', {})
     man['audit']['providers_json_snapshot'] = snap
-    man['audit']['timestamp_utc'] = datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00','Z')
+    man['audit']['timestamp_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z')
     # No inventamos cache_key/hit. Solo marcamos: si text_mode==REPLAY, asumimos cache-hit por definición.
     man['audit']['text_mode'] = text_mode
     man['audit']['text_replay_assumed_cache_hit'] = (text_mode.upper() == 'REPLAY')
@@ -47,5 +47,6 @@ def main():
 
 if __name__ == '__main__':
     raise SystemExit(main())
+
 
 

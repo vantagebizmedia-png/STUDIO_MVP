@@ -13,3 +13,18 @@ tools/render_pack_v03.ps1
 # pytest cache
 .pytest_cache/
 __pycache__/
+# local run outputs / work dirs
+_demo_out/
+_demo_out_legacy/
+_v03_from_config/
+_v03_legacy_run/
+_v03_smoke_cfg/
+workspace/
+_vcs_extract/
+_archive/
+
+# local music assets (si no quieres trackearlos)
+music/
+
+# render debug backups
+tools/render_pack_v03.py.bak_*

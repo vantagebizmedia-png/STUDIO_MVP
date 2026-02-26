@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "text": {
+    "mode": "DRY",
+    "active_provider": "openai_responses",
+    "default_params": {
+      "temperature": 0.2,
+      "max_tokens": 1800,
+      "top_p": 1.0
+    },
+    "cache": {
+      "dir": "workspace/cache/text",
+      "policy": "prefer",
+      "replay_strict": true,
+      "salt": "text_provider_v2_4"
+    },
+    "cache_dry": true
+  },
+  "providers": {
+    "openai_responses": {
+      "type": "http_json",
+      "model": "gpt-4o-mini",
+      "url": "https://api.openai.com/v1/responses",
+      "method": "POST",
+      "timeout_s": 60,
+      "headers": {
+        "Authorization": "Bearer ${ENV:OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "model": "{{model}}",
+        "input": "{{prompt}}",
+        "temperature": "{{temperature}}",
+        "top_p": "{{top_p}}",
+        "max_output_tokens": "{{max_tokens}}"
+      },
+      "extract_paths": [
+        "output.0.content.0.text"
+      ],
+      "fingerprint_fields": [
+        "type",
+        "url",
+        "model"
+      ]
+    },
+    "openai_images": {
+      "type": "http_json",
+      "model": "gpt-image-1",
+      "url": "https://api.openai.com/v1/images/generations",
+      "method": "POST",
+      "timeout_s": 120,
+      "headers": {
+        "Authorization": "Bearer ${ENV:OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "model": "{{model}}",
+        "prompt": "{{prompt}}",
+        "size": "{{size}}"
+      },
+      "extract_paths": [
+        "data.0.b64_json"
+      ],
+      "fingerprint_fields": [
+        "type",
+        "url",
+        "model"
+      ]
+    },
+    "openai_tts": {
+      "type": "http_binary",
+      "model": "gpt-4o-mini-tts",
+      "url": "https://api.openai.com/v1/audio/speech",
+      "method": "POST",
+      "timeout_s": 120,
+      "headers": {
+        "Authorization": "Bearer ${ENV:OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "model": "{{model}}",
+        "voice": "{{voice}}",
+        "input": "{{prompt}}",
+        "format": "{{format}}"
+      },
+      "fingerprint_fields": [
+        "type",
+        "url",
+        "model"
+      ]
+    }
+  },
+  "image": {
+    "mode": "DRY",
+    "active_provider": "openai_images",
+    "default_params": {
+      "size": "1024x1536"
+    },
+    "cache": {
+      "dir": "workspace/cache/images",
+      "policy": "prefer",
+      "replay_strict": true,
+      "salt": "image_provider_v1"
+    },
+    "params": {
+      "size": "1024x1536"
+    }
+  },
+  "voice": {
+    "mode": "DRY",
+    "active_provider": "openai_tts",
+    "default_params": {
+      "voice": "alloy",
+      "format": "wav"
+    },
+    "cache": {
+      "dir": "workspace/cache/voice",
+      "policy": "prefer",
+      "replay_strict": true,
+      "salt": "voice_provider_v1"
+    }
+  }
+}

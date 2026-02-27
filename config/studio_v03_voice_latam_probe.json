@@ -1,0 +1,18 @@
+{
+  "work_dir": "_v03_voice_latam_probe_20260226_135829/artifacts",
+  "workspace": "_v03_voice_latam_probe_20260226_135829/workspace",
+  "voice": {
+    "provider": "edge_voice",
+    "config": {
+      "voice": "es-MX-DaliaNeural"
+    }
+  },
+  "image": {
+    "provider": "demo_image",
+    "config": {}
+  },
+  "text": {
+    "provider": "openai_text",
+    "config": {}
+  }
+}

@@ -381,7 +381,131 @@ def build_clips(topics: List[str], target_format: str, voice_pacing: str) -> Lis
     return clips
 
 
+def _compact_image_strategy_text(*parts: Any) -> str:
+    raw = " ".join(str(p or "") for p in parts)
+    raw = raw.replace("\r", " ").replace("\n", " ").lower()
+    raw = re.sub(r"\s+", " ", raw).strip()
+    return raw
+
+
+IMAGE_STRATEGY_RULES = [
+    {
+        "reason": "fantasy_or_stylized_detected",
+        "image_source_mode": "generate",
+        "image_provider_override": "",
+        "stock_query": "",
+        "keywords": [
+            "dragon", "dragón", "monster", "monstruo", "alien", "robot",
+            "cyberpunk", "sci-fi", "scifi", "futurista", "futuristic",
+            "galax", "space", "spaceship", "nave espacial", "magic", "magia",
+            "mágic", "surreal", "abstract", "abstracto", "fantasy", "fantasia",
+            "fantasía", "myth", "mitologico", "mitológico", "apocalipsis",
+            "postapocalipt", "steampunk", "neon", "neón", "dream", "sueño",
+            "sueños", "portal", "demon", "demonio", "creature", "criatura",
+        ],
+    },
+    {
+        "reason": "wellness_lifestyle_detected",
+        "image_source_mode": "stock",
+        "image_provider_override": "pixabay_images",
+        "stock_query": "person healthy routine meditation exercise calm lifestyle vertical portrait",
+        "keywords": [
+            "ejercicio", "exercise", "meditacion", "meditación", "meditation",
+            "lectura", "reading", "respirar", "breathing", "calma", "calm",
+            "caminar", "walking", "salud", "health",
+        ],
+    },
+    {
+        "reason": "kitchen_lifestyle_detected",
+        "image_source_mode": "stock",
+        "image_provider_override": "pixabay_images",
+        "stock_query": "person cooking in kitchen at home vertical portrait",
+        "keywords": [
+            "cocina", "kitchen", "cooking", "cook", "meal", "comida",
+            "preparando", "preparing food",
+        ],
+    },
+    {
+        "reason": "phone_social_detected",
+        "image_source_mode": "stock",
+        "image_provider_override": "pixabay_images",
+        "stock_query": "person using smartphone at home vertical portrait",
+        "keywords": [
+            "telefono", "teléfono", "phone", "smartphone", "redes sociales",
+            "social media", "scroll", "notificaciones", "notifications",
+        ],
+    },
+    {
+        "reason": "organization_workspace_detected",
+        "image_source_mode": "stock",
+        "image_provider_override": "pixabay_images",
+        "stock_query": "organized desk workspace cleanup home office vertical portrait",
+        "keywords": [
+            "organizar", "organizado", "organized", "organize",
+            "limpieza", "cleanup", "declutter", "desorden", "workspace",
+            "setup", "desk setup",
+        ],
+    },
+    {
+        "reason": "finance_business_detected",
+        "image_source_mode": "stock",
+        "image_provider_override": "pixabay_images",
+        "stock_query": "business person planning money finances laptop desk vertical portrait",
+        "keywords": [
+            "dinero", "money", "finanzas", "finance", "budget", "presupuesto",
+            "ahorro", "saving", "negocio", "business", "emprend",
+        ],
+    },
+    {
+        "reason": "productivity_office_detected",
+        "image_source_mode": "stock",
+        "image_provider_override": "pixabay_images",
+        "stock_query": "productive person working at desk laptop home office vertical portrait",
+        "keywords": [
+            "disciplina", "discipline", "productividad", "productivity",
+            "trabajo", "trabajar", "working", "work", "oficina", "office",
+            "escritorio", "desk", "laptop", "home office", "rutina", "routine",
+            "hábito", "habito", "habit", "pomodoro", "enfoque", "focus",
+            "concentración", "concentracion", "study", "estudio",
+        ],
+    },
+]
+
+IMAGE_STRATEGY_DEFAULT = {
+    "reason": "default_real_world_stock",
+    "image_source_mode": "stock",
+    "image_provider_override": "pixabay_images",
+    "stock_query": "person explaining topic in modern studio vertical portrait",
+}
+
+
+def _pick_auto_image_strategy(clip: Dict[str, Any]) -> Dict[str, str]:
+    text = _compact_image_strategy_text(
+        clip.get("purpose"),
+        clip.get("on_screen_text"),
+        clip.get("voiceover"),
+    )
+
+    for rule in IMAGE_STRATEGY_RULES:
+        keywords = list(rule.get("keywords") or [])
+        if any(k in text for k in keywords):
+            return {
+                "image_source_mode": str(rule.get("image_source_mode") or "stock"),
+                "image_provider_override": str(rule.get("image_provider_override") or ""),
+                "stock_query": str(rule.get("stock_query") or ""),
+                "image_strategy_reason": str(rule.get("reason") or "matched_rule"),
+            }
+
+    return {
+        "image_source_mode": str(IMAGE_STRATEGY_DEFAULT.get("image_source_mode") or "stock"),
+        "image_provider_override": str(IMAGE_STRATEGY_DEFAULT.get("image_provider_override") or ""),
+        "stock_query": str(IMAGE_STRATEGY_DEFAULT.get("stock_query") or ""),
+        "image_strategy_reason": str(IMAGE_STRATEGY_DEFAULT.get("reason") or "default_real_world_stock"),
+    }
+
+
 def build_storyboard(clips: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+
     scenes: List[Dict[str, Any]] = []
     for i, c in enumerate(clips, start=1):
         visual_type = "motion_ready" if c.get("purpose") in ("hook", "close") else "static_image"
@@ -390,6 +514,8 @@ def build_storyboard(clips: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             motion_notes = "slow zoom / parallax suave; separar en capas (fondo/medio/foreground)"
 
         scene_id = f"scene_{i:02d}"
+        strategy = _pick_auto_image_strategy(c)
+
         scenes.append({
             "scene_id": scene_id,
             "from_clip_id": c.get("clip_id"),
@@ -398,6 +524,10 @@ def build_storyboard(clips: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "composition_notes": "texto breve arriba/centro; dejar margen inferior para subtitulos; foco en 1 idea",
             "asset_notes": "iconos simples; 1 grafico maximo si aplica; alto contraste",
             "image_prompt_ref": f"image_prompts/{scene_id}.txt",
+            "image_source_mode": strategy["image_source_mode"],
+            "image_provider_override": strategy["image_provider_override"],
+            "stock_query": strategy["stock_query"],
+            "image_strategy_reason": strategy["image_strategy_reason"],
         })
     return scenes
 
@@ -440,6 +570,147 @@ def build_image_prompt(scene: Dict[str, Any], clip: Dict[str, Any], story_bible:
 
     return "\n".join(lines) + "\n"
 
+
+def _compact_music_strategy_text(*parts: Any) -> str:
+    raw = " ".join(str(p or "") for p in parts)
+    raw = raw.replace("\r", " ").replace("\n", " ").lower()
+    raw = re.sub(r"\s+", " ", raw).strip()
+    return raw
+
+
+MUSIC_STRATEGY_RULES = [
+    {
+        "reason": "fantasy_cinematic_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "epic cinematic trailer background music fantasy sci fi",
+        "keywords": [
+            "dragon", "dragón", "monster", "monstruo", "alien", "robot",
+            "cyberpunk", "sci-fi", "scifi", "futurista", "futuristic",
+            "galax", "space", "spaceship", "nave espacial", "magic", "magia",
+            "mágic", "surreal", "abstract", "abstracto", "fantasy", "fantasia",
+            "fantasía", "myth", "mitologico", "mitológico", "apocalipsis",
+            "postapocalipt", "steampunk", "neon", "neón", "dream", "sueño",
+            "sueños", "portal", "demon", "demonio", "creature", "criatura",
+            "épico", "epic", "trailer"
+        ],
+        "music_energy": "high",
+    },
+    {
+        "reason": "wellness_calm_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "calm ambient meditation relaxing background music",
+        "keywords": [
+            "ejercicio", "exercise", "meditacion", "meditación", "meditation",
+            "lectura", "reading", "respirar", "breathing", "calma", "calm",
+            "caminar", "walking", "salud", "health", "relax", "relaxing"
+        ],
+        "music_energy": "low",
+    },
+    {
+        "reason": "kitchen_lifestyle_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "light upbeat cooking lifestyle background music",
+        "keywords": [
+            "cocina", "kitchen", "cooking", "cook", "meal", "comida",
+            "preparando", "preparing food"
+        ],
+        "music_energy": "medium",
+    },
+    {
+        "reason": "phone_social_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "modern social media upbeat background music",
+        "keywords": [
+            "telefono", "teléfono", "phone", "smartphone", "redes sociales",
+            "social media", "scroll", "notificaciones", "notifications"
+        ],
+        "music_energy": "medium",
+    },
+    {
+        "reason": "organization_workspace_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "clean corporate minimal background music workspace",
+        "keywords": [
+            "organizar", "organizado", "organized", "organize",
+            "limpieza", "cleanup", "declutter", "desorden", "workspace",
+            "setup", "desk setup"
+        ],
+        "music_energy": "medium",
+    },
+    {
+        "reason": "finance_business_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "business corporate motivational background music",
+        "keywords": [
+            "dinero", "money", "finanzas", "finance", "budget", "presupuesto",
+            "ahorro", "saving", "negocio", "business", "emprend"
+        ],
+        "music_energy": "medium",
+    },
+    {
+        "reason": "productivity_office_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "motivational corporate productivity background music upbeat",
+        "keywords": [
+            "disciplina", "discipline", "productividad", "productivity",
+            "trabajo", "trabajar", "working", "work", "oficina", "office",
+            "escritorio", "desk", "laptop", "home office", "rutina", "routine",
+            "hábito", "habito", "habit", "pomodoro", "enfoque", "focus",
+            "concentración", "concentracion", "study", "estudio"
+        ],
+        "music_energy": "medium_high",
+    },
+]
+
+MUSIC_STRATEGY_DEFAULT = {
+    "reason": "default_background_stock",
+    "music_source_mode": "stock",
+    "music_provider_override": "pixabay_music",
+    "music_query": "background music inspirational soft corporate",
+    "music_energy": "medium",
+}
+
+
+def _pick_auto_music_strategy(
+    core_topic: str,
+    subtopics: List[str],
+    target_format: str,
+    voice_pacing: str,
+    constraints: List[str],
+) -> Dict[str, str]:
+    text = _compact_music_strategy_text(
+        core_topic,
+        " ".join(subtopics or []),
+        target_format,
+        voice_pacing,
+        " ".join(constraints or []),
+    )
+
+    for rule in MUSIC_STRATEGY_RULES:
+        keywords = list(rule.get("keywords") or [])
+        if any(k in text for k in keywords):
+            return {
+                "music_source_mode": str(rule.get("music_source_mode") or "stock"),
+                "music_provider_override": str(rule.get("music_provider_override") or ""),
+                "music_query": str(rule.get("music_query") or ""),
+                "music_strategy_reason": str(rule.get("reason") or "matched_rule"),
+                "music_energy": str(rule.get("music_energy") or "medium"),
+            }
+
+    return {
+        "music_source_mode": str(MUSIC_STRATEGY_DEFAULT.get("music_source_mode") or "stock"),
+        "music_provider_override": str(MUSIC_STRATEGY_DEFAULT.get("music_provider_override") or ""),
+        "music_query": str(MUSIC_STRATEGY_DEFAULT.get("music_query") or ""),
+        "music_strategy_reason": str(MUSIC_STRATEGY_DEFAULT.get("reason") or "default_background_stock"),
+        "music_energy": str(MUSIC_STRATEGY_DEFAULT.get("music_energy") or "medium"),
+    }
 
 def build_captions(core_topic: str) -> List[str]:
     return [
@@ -833,6 +1104,7 @@ def generate_pack(
     captions_txt = "\n".join(build_captions(core)) + "\n"
     hashtags_txt = build_hashtags(topics) + "\n"
     desc_txt = build_description(core, subs) + "\n"
+    music_strategy = _pick_auto_music_strategy(core, subs, target_format, voice_pacing, constraints)
     music_txt = build_music_prompt(target_format, voice_pacing) + "\n"
 
     if ProviderText is not None:
@@ -852,6 +1124,15 @@ def generate_pack(
         except Exception as e:
             text_gen_meta["text_parts_error"] = str(e)
 
+    music_txt = music_txt.rstrip() + "\n\n" + "\n".join([
+        "[AUTO_MUSIC_STRATEGY]",
+        f"source_mode={music_strategy['music_source_mode']}",
+        f"provider_override={music_strategy['music_provider_override']}",
+        f"music_query={music_strategy['music_query']}",
+        f"reason={music_strategy['music_strategy_reason']}",
+        f"energy={music_strategy['music_energy']}",
+    ]) + "\n"
+
     # Manifest V2 schema
     write_json(os.path.join(pack_dir, "manifest.json"), {
         "schema": "STUDIO_PACK_V2",
@@ -869,6 +1150,7 @@ def generate_pack(
         "topic_summary": topic_summary,
         "counts": {"clips": len(clips), "scenes": len(scenes), "image_prompts": len(scenes)},
         "text_generation": text_gen_meta,
+        "music_strategy": music_strategy,
         "final_outputs": {},
         "validation": {},
     })
@@ -881,6 +1163,7 @@ def generate_pack(
     write_text(os.path.join(pack_dir, "hashtags.txt"), hashtags_txt)
     write_text(os.path.join(pack_dir, "description.txt"), desc_txt)
     write_text(os.path.join(pack_dir, "music_prompt.txt"), music_txt)
+    write_json(os.path.join(pack_dir, "music_strategy.json"), music_strategy)
 
     clip_by_id = {c["clip_id"]: c for c in clips}
     for s in scenes:
@@ -1489,5 +1772,7 @@ def main() -> None:
         return
 if __name__ == "__main__":
     main()
+
+
 
 

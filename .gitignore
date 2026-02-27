@@ -49,3 +49,22 @@ tools/patch_hf_image_model*.py
 # local artifacts
 hf_ok.png
 hf_test.png
+# === LOCAL OUTPUTS / RUNS (NO TRACK) ===
+_live_smoke_*/
+_tmp_*/
+_freeze_*/
+_claude_candidate_*/
+_pixabay_*/
+_scene_provider_routing_smoke*/
+_scan_*.txt
+tmp_*.txt
+tmp_diff_*.txt
+config/_tmp_*.json
+
+# Media outputs
+*.mp4
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.zip

@@ -88,6 +88,23 @@
         "url",
         "model"
       ]
+    },
+    "pixabay_images": {
+      "type": "pixabay_stock",
+      "model": "",
+      "timeout_s": 120,
+      "api_key_env": "PIXABAY_API_KEY",
+      "image_type": "photo",
+      "orientation": "vertical",
+      "safesearch": true,
+      "per_page": 10,
+      "fingerprint_fields": [
+        "type",
+        "api_key_env",
+        "image_type",
+        "orientation",
+        "per_page"
+      ]
     }
   },
   "image": {

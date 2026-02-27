@@ -85,6 +85,10 @@ def _collect_scenes(pack_dir: str) -> List[Dict[str, Any]]:
                 "clip_id": from_clip,
                 "voiceover": voiceover,
                 "image_prompt": prompt_txt,
+                "stock_query": str(s.get("stock_query") or "").strip(),
+                "image_stock_query": str(s.get("image_stock_query") or "").strip(),
+                "image_source_mode": str(s.get("image_source_mode") or "").strip(),
+                "image_provider_override": str(s.get("image_provider_override") or "").strip(),
             }
         )
 
@@ -335,9 +339,30 @@ def main() -> None:
     scenes = _collect_scenes(pack_dir)[: max(1, int(args.max_scenes))]
 
     # 3) Generar imágenes (REUSE si ya existen para ahorrar API)
-    img = ProviderImage()
+    default_img = ProviderImage()
     img_paths: List[str] = []
     img_meta: List[Dict[str, Any]] = []
+
+    def _build_image_provider_override(provider_name: str) -> ProviderImage:
+        cfg_obj = _read_json(default_img.config_path)
+        cfg_obj.setdefault("image", {})
+        cfg_obj["image"]["active_provider"] = provider_name
+
+        import tempfile
+        tmp_fd, tmp_cfg_path = tempfile.mkstemp(suffix=f"_providers_image_{provider_name}.json", prefix="studio_")
+        os.close(tmp_fd)
+        _write_json(tmp_cfg_path, cfg_obj)
+        prov = ProviderImage(config_path=tmp_cfg_path)
+        # limpiar para que no se filtre en export/zip
+        try:
+            os.unlink(tmp_cfg_path)
+        except OSError:
+            pass
+        return prov
+
+    image_provider_cache: Dict[str, ProviderImage] = {
+        default_img.active_provider: default_img
+    }
 
     for j, s in enumerate(scenes, start=1):
         out_path = os.path.join(dirs["images_dir"], f"{s['scene_id']}.png")
@@ -347,7 +372,30 @@ def main() -> None:
             continue
 
         full_prompt = "Imagen vertical 9:16, alta calidad, lista para reel.\n\n" + s["image_prompt"]
-        r = img.generate(purpose=f"scene_image_{j:02d}", prompt=full_prompt, seed=args.seed)
+        stock_query = str(s.get("stock_query") or s.get("image_stock_query") or "").strip()
+        image_source_mode = str(s.get("image_source_mode") or "").strip().lower()
+        provider_override = str(s.get("image_provider_override") or "").strip()
+
+        chosen_provider_name = provider_override
+        if not chosen_provider_name and image_source_mode == "stock":
+            chosen_provider_name = "pixabay_images"
+
+        current_img = default_img
+        if chosen_provider_name:
+            if chosen_provider_name not in image_provider_cache:
+                image_provider_cache[chosen_provider_name] = _build_image_provider_override(chosen_provider_name)
+            current_img = image_provider_cache[chosen_provider_name]
+
+        gen_kwargs = {}
+        if stock_query:
+            gen_kwargs["stock_query"] = stock_query
+
+        r = current_img.generate(
+            purpose=f"scene_image_{j:02d}",
+            prompt=full_prompt,
+            seed=args.seed,
+            **gen_kwargs,
+        )
 
         if os.path.abspath(r["path"]) != os.path.abspath(out_path):
             try:

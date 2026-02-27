@@ -29,6 +29,53 @@ def safe_copy(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(str(src), str(dst))
 
+def _compact_music_strategy_text(*parts: object) -> str:
+    vals = []
+    for p in parts:
+        s = str(p or "").strip().lower()
+        if s:
+            vals.append(s)
+    return " ".join(vals)
+
+def _pick_auto_music_strategy(script_text: str, manifest: dict) -> dict:
+    text = _compact_music_strategy_text(script_text)
+
+    providers = manifest.get("providers") or {}
+    provider_name = str((providers.get("music") or "local_music")).strip()
+
+    rules = [
+        (["motivación", "motivacion", "disciplina", "productividad", "hábito", "habito", "hábitos", "habitos", "enfoque", "energía", "energia"],
+         "motivational upbeat corporate background",
+         "high",
+         "matched_keywords_productivity"),
+        (["meditación", "meditacion", "calma", "relax", "relajación", "relajacion", "suave"],
+         "calm ambient background",
+         "low",
+         "matched_keywords_calm"),
+        (["noticias", "explicación", "explicacion", "tutorial", "guía", "guia", "documental"],
+         "clean modern documentary background",
+         "medium",
+         "matched_keywords_explainer"),
+    ]
+
+    for keywords, query, energy, reason in rules:
+        if any(k in text for k in keywords):
+            return {
+                "music_source_mode": "local",
+                "music_provider_override": provider_name,
+                "music_query": query,
+                "music_strategy_reason": reason,
+                "music_energy": energy,
+            }
+
+    return {
+        "music_source_mode": "local",
+        "music_provider_override": provider_name,
+        "music_query": "motivational background instrumental",
+        "music_strategy_reason": "default_export_v03_from_script",
+        "music_energy": "medium",
+    }
+
 def derive_tag(manifest: dict) -> str:
     sp = (manifest.get("artifacts") or {}).get("script") or ""
     name = Path(sp).name
@@ -119,6 +166,29 @@ def main() -> int:
     safe_copy(script_p, pack_dir / "artifacts" / "script.txt")
     safe_copy(image_p,  pack_dir / "artifacts" / "image.png")
     safe_copy(audio_p,  pack_dir / "artifacts" / "audio.wav")
+
+    script_txt = script_p.read_text(encoding="utf-8")
+    # FIX: preservar music_strategy.json si ya existe (evita sobreescribir estrategias ricas)
+    _existing_ms = None
+    for _ms_candidate in [
+        Path(work_dir) / "music_strategy.json",
+        mpath.parent / "music_strategy.json",
+    ]:
+        if _ms_candidate.exists():
+            try:
+                _existing_ms = json.loads(_ms_candidate.read_text(encoding="utf-8"))
+                break
+            except Exception:
+                pass
+
+    if _existing_ms is not None:
+        music_strategy = _existing_ms
+    else:
+        music_strategy = _pick_auto_music_strategy(script_txt, manifest)
+    (pack_dir / "music_strategy.json").write_text(
+        json.dumps(music_strategy, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
 
     scenes_rel = []
     scenes = manifest.get("scenes") or []

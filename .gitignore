@@ -68,3 +68,7 @@ config/_tmp_*.json
 *.jpg
 *.jpeg
 *.zip
+# Local probes/tests (no track)
+_pixabay_*.json
+_scene_provider_routing_*.json
+_tmp_*.py

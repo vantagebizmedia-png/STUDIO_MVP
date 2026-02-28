@@ -27,10 +27,16 @@ def _vf(w: int, h: int, fit: str) -> str:
         )
     return f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},format=yuv420p"
 
-def _overlay_drawtext_for_scene(scene: dict, w: int, h: int) -> str:
+def _overlay_drawtext_for_scene(scene: dict, w: int, h: int, tmp_dir: Path | None = None) -> str:
     """Devuelve 'drawtext=...' o '' si no hay texto (usa tools/build_drawtext_filter.py)."""
     try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tf:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".json",
+            delete=False,
+            encoding="utf-8",
+            dir=str(tmp_dir) if tmp_dir else None,
+        ) as tf:
             json.dump(scene, tf, ensure_ascii=False)
             tmp_json = tf.name
 
@@ -166,7 +172,9 @@ def main() -> int:
     meta = _read_pack(pack_dir)
     scenes = meta.get("scenes") if isinstance(meta.get("scenes"), list) else []
 
-    tmp_dir = Path(tempfile.mkdtemp(prefix="studio_pack_render_"))
+    tmp_root = pack_dir / "_tmp_render"
+    tmp_root.mkdir(parents=True, exist_ok=True)
+    tmp_dir = Path(tempfile.mkdtemp(prefix="studio_pack_render_", dir=str(tmp_root)))
     try:
         if scenes:
             segs: List[Path] = []
@@ -175,7 +183,7 @@ def main() -> int:
                 img = _resolve(pack_dir, str(s.get("image", "")))
                 aud = _resolve(pack_dir, str(s.get("audio", "")))
                 vf = _vf(args.w, args.h, args.fit)
-                dt = _overlay_drawtext_for_scene(s, args.w, args.h)
+                dt = _overlay_drawtext_for_scene(s, args.w, args.h, tmp_dir)
                 if dt:
                     vf = vf + "," + dt
                 if not (img.exists() and aud.exists()):
@@ -207,7 +215,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
 
 
 

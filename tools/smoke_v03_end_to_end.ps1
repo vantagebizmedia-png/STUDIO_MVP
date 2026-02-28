@@ -23,12 +23,34 @@ if (!(Test-Path -LiteralPath ".\\run.py")) { throw "Ejecuta desde la raíz del r
 Get-Command python -ErrorAction Stop | Out-Null
 
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$env:STUDIO_WORKSPACE = Join-Path $env:USERPROFILE ("STUDIO_WORKSPACE_SMOKE_V03_" + $stamp)
-$wsRoot = $env:STUDIO_WORKSPACE
-$wsArtifacts = Join-Path $wsRoot "artifacts"
-$wsWorkspace = Join-Path $wsRoot "workspace"
-New-Item -ItemType Directory -Force $wsArtifacts, $wsWorkspace | Out-Null
-New-Item -ItemType Directory -Force (Join-Path $wsWorkspace "exports") | Out-Null
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$preferredWsRoot = Join-Path $env:USERPROFILE ("STUDIO_WORKSPACE_SMOKE_V03_" + $stamp)
+$fallbackWsRoot = Join-Path $repoRoot (Join-Path "_tmp" ("STUDIO_WORKSPACE_SMOKE_V03_" + $stamp))
+$wsRoot = $preferredWsRoot
+
+function Initialize-SmokeWorkspace([string]$root) {
+  $artifacts = Join-Path $root "artifacts"
+  $workspace = Join-Path $root "workspace"
+  New-Item -ItemType Directory -Force $artifacts, $workspace | Out-Null
+  New-Item -ItemType Directory -Force (Join-Path $workspace "exports") | Out-Null
+  return @{
+    Root = $root
+    Artifacts = $artifacts
+    Workspace = $workspace
+  }
+}
+
+try {
+  $wsInfo = Initialize-SmokeWorkspace $preferredWsRoot
+} catch {
+  Write-Warning "No pude crear workspace en USERPROFILE. Uso fallback local del repo: $fallbackWsRoot"
+  $wsInfo = Initialize-SmokeWorkspace $fallbackWsRoot
+}
+
+$wsRoot = $wsInfo.Root
+$env:STUDIO_WORKSPACE = $wsRoot
+$wsArtifacts = $wsInfo.Artifacts
+$wsWorkspace = $wsInfo.Workspace
 
 Write-Host "STUDIO_WORKSPACE=$wsRoot" -ForegroundColor Cyan
 
@@ -63,7 +85,9 @@ $cfg.workspace = $wsWorkspace
 # $cfg.max_scenes = $MaxScenes
 # $cfg.scene_split = "dash"
 
-$tmpCfg = Join-Path $env:TEMP ("studio_v03_smoke_cfg_" + $stamp + ".json")
+$tmpCfgDir = Join-Path $wsRoot "_tmp"
+New-Item -ItemType Directory -Force -Path $tmpCfgDir | Out-Null
+$tmpCfg = Join-Path $tmpCfgDir ("studio_v03_smoke_cfg_" + $stamp + ".json")
 ($cfg | ConvertTo-Json -Depth 50) | Set-Content -Encoding UTF8 -LiteralPath $tmpCfg
 Write-Host "TMP_CONFIG=$tmpCfg" -ForegroundColor DarkGray
 
@@ -113,7 +137,6 @@ if (!(Test-Path -LiteralPath $videoFinal)) { throw "No se generó video_final.mp
 Write-Host "== SUBTITLES (v0.3) =="
 $finalPath = Join-Path $packDir "video_final.mp4"
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $srtPath  = Join-Path $packDir "subtitles.srt"
 $subsVid  = Join-Path $packDir "video_final_subs.mp4"
 

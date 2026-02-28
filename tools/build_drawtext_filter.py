@@ -8,7 +8,6 @@ def clean_text(t: str) -> str:
     return t
 
 def wrap_2lines(text: str, width: int = 26) -> str:
-    # más agresivo que subs (porque onscreen suele ser más corto)
     words = text.split()
     if not words:
         return ""
@@ -30,13 +29,12 @@ def wrap_2lines(text: str, width: int = 26) -> str:
 
     used = sum(len(l.split()) for l in lines)
     if used < len(words):
-        last = lines[-1]
-        lines[-1] = (last + "…").rstrip()
+        lines[-1] = (lines[-1] + "…").rstrip()
 
     return "\n".join(lines)
 
 def choose_fontsize(text: str) -> int:
-    n = len(text)
+    n = len(text.replace("\n"," "))
     if n <= 18:  return 74
     if n <= 32:  return 60
     if n <= 48:  return 52
@@ -44,18 +42,25 @@ def choose_fontsize(text: str) -> int:
     return 40
 
 def esc_drawtext(s: str) -> str:
-    # escape para ffmpeg drawtext
-    # - \ -> \\ ; : -> \: ; ' -> \' ; newline -> \n
     s = s.replace("\\", "\\\\")
-    s = s.replace(":", "\\:")
+    s = s.replace(":", "\\\\:")
     s = s.replace("'", "\\'")
     s = s.replace("\n", "\\n")
     return s
 
+def esc_fontfile(p: str) -> str:
+    # MUY IMPORTANTE: escapar el ":" de C: -> C\:
+    # y evitar backslashes para FFmpeg
+    p = (p or "").strip().replace("\\", "/")
+    p = p.replace(":", "\\\\:")
+    p = p.replace("'", "\\'")
+    return p
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene-json", required=True, help="scene dict en json (o ruta a json)")
-    ap.add_argument("--font", default="Arial", help="FontName para libass/drawtext")
+    ap.add_argument("--font", default="Arial", help="FontName para drawtext (fallback)")
+    ap.add_argument("--fontfile", default="", help="Ruta .ttf/.otf (Windows: C:/Windows/Fonts/arial.ttf)")
     ap.add_argument("--w", type=int, default=1080)
     ap.add_argument("--h", type=int, default=1920)
     ap.add_argument("--margin-x", type=int, default=80)
@@ -72,18 +77,18 @@ def main():
     raw = clean_text(raw)
     txt = wrap_2lines(raw, width=26)
     if not txt:
-        print("")  # sin overlay
+        print("")
         return
 
     fs = choose_fontsize(txt)
-    safe_w = args.w - (args.margin_x * 2)
-    x = args.margin_x
     y = args.h - args.margin_bottom
-
-    # drawtext con box y borde
-    # Nota: usa box=1 y borderw para legibilidad, alineado centrado
     t = esc_drawtext(txt)
-        font_part = f"fontfile='{args.fontfile}':" if args.fontfile else f"font='{args.font}':"
+
+    ff = esc_fontfile(args.fontfile)
+    if ff:
+        font_part = f"fontfile={ff}:"
+    else:
+        font_part = f"font='{args.font}':"
 
     vf = (
         f"drawtext="
@@ -101,6 +106,6 @@ def main():
     )
     print(vf)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 

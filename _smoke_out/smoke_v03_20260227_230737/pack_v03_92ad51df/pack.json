@@ -1,0 +1,71 @@
+{
+  "pack_version": "v0.3",
+  "tag": "92ad51df",
+  "created_at_utc": "2026-02-28T04:07:38Z",
+  "source": {
+    "manifest_path": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_230737\\artifacts\\manifest_v03.json",
+    "work_dir": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_230737\\artifacts",
+    "config_path": "C:\\Users\\vanta\\AppData\\Local\\Temp\\studio_v03_smoke_cfg_20260227_230737.json",
+    "providers": {
+      "text": "",
+      "image": "demo_image",
+      "voice": "demo_voice"
+    }
+  },
+  "paths": {
+    "pack_dir": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_230737\\workspace\\exports\\pack_v03_92ad51df",
+    "script": "artifacts/script.txt",
+    "image": "artifacts/image.png",
+    "audio": "artifacts/audio.wav",
+    "manifest": "manifest_v03.json"
+  },
+  "scenes": [
+    {
+      "index": 1,
+      "text": "Escena 1 demo.",
+      "tag": "92ad51df_s01",
+      "narration": "Escena 1 demo.",
+      "onscreen": "",
+      "stock_query": "escena demo",
+      "image_prompt": "escena demo",
+      "audio_text": "Escena 1 demo.",
+      "script": "artifacts/scenes/scene_01/script.txt",
+      "image": "artifacts/scenes/scene_01/image.png",
+      "audio": "artifacts/scenes/scene_01/audio.wav"
+    },
+    {
+      "index": 2,
+      "text": "Escena 2 demo.",
+      "tag": "92ad51df_s02",
+      "narration": "Escena 2 demo.",
+      "onscreen": "",
+      "stock_query": "escena demo",
+      "image_prompt": "escena demo",
+      "audio_text": "Escena 2 demo.",
+      "script": "artifacts/scenes/scene_02/script.txt",
+      "image": "artifacts/scenes/scene_02/image.png",
+      "audio": "artifacts/scenes/scene_02/audio.wav"
+    },
+    {
+      "index": 3,
+      "text": "Escena 3 demo.",
+      "tag": "92ad51df_s03",
+      "narration": "Escena 3 demo.",
+      "onscreen": "",
+      "stock_query": "escena demo",
+      "image_prompt": "escena demo",
+      "audio_text": "Escena 3 demo.",
+      "script": "artifacts/scenes/scene_03/script.txt",
+      "image": "artifacts/scenes/scene_03/image.png",
+      "audio": "artifacts/scenes/scene_03/audio.wav"
+    }
+  ],
+  "checksums": {
+    "sha256": {
+      "script": "92ad51df3efe5ec077278fba55957bd76a65ebb7717216f77e94b06b5f848d08",
+      "image": "b14655a33b79e778aad5a03958e811c5e0f09582fe5bcd1f461cffc482b09f25",
+      "audio": "3fa20276d8a4131431490ed129d0b05fafa4e9c82d4339b5cf635512103d6615",
+      "manifest": "a6cef9f56a6293ce54dbd63a18271fb499f74af9e88ff876f960ecc9c8be7390"
+    }
+  }
+}

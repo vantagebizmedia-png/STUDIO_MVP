@@ -1,0 +1,2 @@
+NARRACION: Escena 2 demo.
+STOCK_QUERY: escena demo

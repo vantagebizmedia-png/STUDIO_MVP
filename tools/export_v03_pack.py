@@ -215,7 +215,15 @@ def main() -> int:
 
             scenes_rel.append({
                 "index": idx,
-                "text": s.get("text",""),
+                # Compat + utilidad: el pipeline v0.3 produce campos ricos por escena
+                # (narration/onscreen/stock_query). Si no existe, cae a "text".
+                "text": (s.get("narration") or s.get("audio_text") or s.get("text", "")),
+                "tag": s.get("tag", ""),
+                "narration": s.get("narration", ""),
+                "onscreen": s.get("onscreen", ""),
+                "stock_query": s.get("stock_query", ""),
+                "image_prompt": s.get("image_prompt", ""),
+                "audio_text": s.get("audio_text", ""),
                 "script": f"artifacts/scenes/scene_{idx:02d}/script.txt",
                 "image":  f"artifacts/scenes/scene_{idx:02d}/image.png",
                 "audio":  f"artifacts/scenes/scene_{idx:02d}/audio.wav",

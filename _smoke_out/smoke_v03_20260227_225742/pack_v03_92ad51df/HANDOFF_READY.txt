@@ -1,0 +1,11 @@
+﻿HANDOFF_READY
+DATE_UTC: 2026-02-28T03:57:52Z
+PROMPT: NARRACION: Escena 1 demo.\n---\nNARRACION: Escena 2 demo.\n---\nNARRACION: Escena 3 demo.
+PACK_DIR: C:\Users\vanta\STUDIO_WORKSPACE_SMOKE_V03_20260227_225742\workspace\exports\pack_v03_92ad51df
+VIDEO_MP4: C:\Users\vanta\STUDIO_WORKSPACE_SMOKE_V03_20260227_225742\workspace\exports\pack_v03_92ad51df\video.mp4
+VIDEO_FINAL_MP4: C:\Users\vanta\STUDIO_WORKSPACE_SMOKE_V03_20260227_225742\workspace\exports\pack_v03_92ad51df\video_final.mp4
+ZIP: C:\Users\vanta\STUDIO_WORKSPACE_SMOKE_V03_20260227_225742\workspace\exports\pack_v03_92ad51df_20260228_035751.zip
+SHA256_VIDEO_FINAL: d1eafc56e5519dc6e96e1546bbaf74002692be9aa9ab42ea6f75227c308fd78d
+SHA256_ZIP: 386d823156b59ca33ffa740fb508734ff2c78965433bdda407131c179d877c4e
+
+NOTA: video.mp4 NO tiene mÃºsica; video_final.mp4 SÃ tiene mÃºsica.

@@ -1,0 +1,19 @@
+﻿{
+    "schema":  "STUDIO_MUSIC_SELECTION_V1",
+    "strategy":  {
+                     "music_query":  "motivational background instrumental",
+                     "music_energy":  "medium",
+                     "music_source_mode":  "local",
+                     "music_provider_override":  "local_music",
+                     "music_strategy_reason":  "default_export_v03_from_script",
+                     "source_file":  "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_224748\\workspace\\exports\\pack_v03_92ad51df\\music_strategy.json"
+                 },
+    "selected":  {
+                     "original_path":  "C:\\Users\\vanta\\Documents\\STUDIO_MVP\\music\\bg.mp3",
+                     "copied_into_pack":  "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_224748\\workspace\\exports\\pack_v03_92ad51df\\artifacts\\music_auto.mp3",
+                     "score":  1,
+                     "matched":  [
+                                     "generic:bg"
+                                 ]
+                 }
+}

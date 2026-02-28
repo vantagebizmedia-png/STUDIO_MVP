@@ -1,0 +1,60 @@
+{
+  "version": "v0.3",
+  "mode": "RUN",
+  "work_dir": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts",
+  "config_path": "C:\\Users\\vanta\\AppData\\Local\\Temp\\studio_v03_smoke_cfg_20260227_231004.json",
+  "providers": {
+    "text": "",
+    "image": "demo_image",
+    "voice": "demo_voice"
+  },
+  "artifacts": {
+    "script": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts\\script_92ad51df.txt",
+    "image": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts\\image_92ad51df_s01.png",
+    "audio": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts\\audio_92ad51df_s01.wav"
+  },
+  "scenes": [
+    {
+      "index": 1,
+      "tag": "92ad51df_s01",
+      "narration": "Escena 1 demo.",
+      "onscreen": "",
+      "stock_query": "escena demo",
+      "image_prompt": "escena demo",
+      "audio_text": "Escena 1 demo.",
+      "artifacts": {
+        "script": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts\\script_92ad51df_s01.txt",
+        "image": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts\\image_92ad51df_s01.png",
+        "audio": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts\\audio_92ad51df_s01.wav"
+      }
+    },
+    {
+      "index": 2,
+      "tag": "92ad51df_s02",
+      "narration": "Escena 2 demo.",
+      "onscreen": "",
+      "stock_query": "escena demo",
+      "image_prompt": "escena demo",
+      "audio_text": "Escena 2 demo.",
+      "artifacts": {
+        "script": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts\\script_92ad51df_s02.txt",
+        "image": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts\\image_92ad51df_s02.png",
+        "audio": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts\\audio_92ad51df_s02.wav"
+      }
+    },
+    {
+      "index": 3,
+      "tag": "92ad51df_s03",
+      "narration": "Escena 3 demo.",
+      "onscreen": "",
+      "stock_query": "escena demo",
+      "image_prompt": "escena demo",
+      "audio_text": "Escena 3 demo.",
+      "artifacts": {
+        "script": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts\\script_92ad51df_s03.txt",
+        "image": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts\\image_92ad51df_s03.png",
+        "audio": "C:\\Users\\vanta\\STUDIO_WORKSPACE_SMOKE_V03_20260227_231004\\artifacts\\audio_92ad51df_s03.wav"
+      }
+    }
+  ]
+}

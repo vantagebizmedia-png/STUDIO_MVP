@@ -1,0 +1,22 @@
+﻿{
+    "work_dir":  "_v03_video_probe_20260226_012259/artifacts",
+    "workspace":  "_v03_video_probe_20260226_012259/workspace",
+    "voice":  {
+                  "provider":  "edge_voice",
+                  "config":  {
+
+                             }
+              },
+    "image":  {
+                  "provider":  "demo_image",
+                  "config":  {
+
+                             }
+              },
+    "text":  {
+                 "provider":  "openai_text",
+                 "config":  {
+
+                            }
+             }
+}

@@ -27,6 +27,8 @@ from studio.providers.voice.base_voice import BaseVoiceProvider
 from studio.providers.image.base_image import BaseImageProvider
 from studio.providers.text.base_text import BaseTextProvider
 
+from studio.scene_builder import build_scenes
+
 
 def _provider_id(p: Any) -> str:
     if p is None:
@@ -236,36 +238,49 @@ class StudioPipeline:
 
         # Multi-scene (si aplica)
         if bool(getattr(self, "multiscene", False)) and int(getattr(self, "max_scenes", 1) or 1) > 1:
-            scenes_text = _split_scenes(final_script, int(self.max_scenes), str(self.scene_split))
-            if not scenes_text:
-                scenes_text = [final_script]
+            scene_specs = build_scenes(final_script, max_scenes=int(self.max_scenes), split_mode=str(self.scene_split), base_tag=tag)
+            if not scene_specs:
+                scene_specs = build_scenes(final_script, max_scenes=1, split_mode="auto", base_tag=tag)
 
             scenes_meta: list[dict] = []
             first_img = ""
             first_aud = ""
 
             # progreso: imagen/audio por escena
-            total_ms = (1 if self.text is not None else 0) + (2 * len(scenes_text))
+            total_ms = (1 if self.text is not None else 0) + (2 * len(scene_specs))
             curr_ms = (1 if self.text is not None else 0)
 
-            for idx, scene in enumerate(scenes_text, start=1):
-                st = str(scene or "").strip()
-                if not st:
+            for spec in scene_specs:
+                idx = int(getattr(spec, "index", 0) or 0) or 1
+                stag = str(getattr(spec, "tag", "") or "").strip() or f"{tag}_s{idx:02d}"
+                narration = str(getattr(spec, "narration", "") or "").strip()
+                onscreen = str(getattr(spec, "onscreen", "") or "").strip()
+                stock_query = str(getattr(spec, "stock_query", "") or "").strip()
+                if not narration and not stock_query:
                     continue
-                stag = f"{tag}_s{idx:02d}"
+
+                # Guardamos un script por escena (estructurado) para trazabilidad
                 sp = os.path.join(self.work_dir, f"script_{stag}.txt")
                 with open(sp, "w", encoding="utf-8") as f:
-                    f.write(st)
+                    if narration:
+                        f.write(f"NARRACION: {narration}\n")
+                    if onscreen:
+                        f.write(f"ONSCREEN: {onscreen}\n")
+                    if stock_query:
+                        f.write(f"STOCK_QUERY: {stock_query}\n")
 
                 ip = os.path.join(self.work_dir, f"image_{stag}.png")
                 ap = os.path.join(self.work_dir, f"audio_{stag}.wav")
 
+                image_prompt = stock_query or narration
+                audio_text = narration or stock_query
+
                 self._notify(f"imagen_s{idx:02d}", curr_ms, total_ms)
-                img = self.image.generate(st, ip)
+                img = self.image.generate(image_prompt, ip)
                 curr_ms += 1
 
                 self._notify(f"audio_s{idx:02d}", curr_ms, total_ms)
-                aud = self.voice.synthesize(st, ap)
+                aud = self.voice.synthesize(audio_text, ap)
                 curr_ms += 1
 
                 if idx == 1:
@@ -274,14 +289,17 @@ class StudioPipeline:
                 scenes_meta.append({
                     "index": idx,
                     "tag": stag,
-                    "text": st,
+                    "narration": narration,
+                    "onscreen": onscreen,
+                    "stock_query": stock_query,
+                    "image_prompt": image_prompt,
+                    "audio_text": audio_text,
                     "artifacts": {
                         "script": os.path.abspath(sp),
                         "image": os.path.abspath(img),
                         "audio": os.path.abspath(aud),
                     }
                 })
-
             if not first_img:
                 # fallback si por algún motivo no generó escena 1
                 first_img = os.path.join(self.work_dir, f"image_{tag}.png")

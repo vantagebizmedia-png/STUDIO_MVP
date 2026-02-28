@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+# STUDIO_HF_IMAGE_MODEL_CONFIG_v2
+DEFAULT_MODEL = "black-forest-labs/FLUX.1-schnell"
+
 import os
 
 from studio.exceptions import ProviderError

@@ -1,93 +1,81 @@
-# =====================
-# STUDIO_MVP — .gitignore
-# =====================
+# logs / outputs
+*.log
+render_*.log
+release_*.log
 
-# --- Python ---
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.egg-info/
-dist/
-build/
-.eggs/
-*.egg
+# local tooling scratch
+tools/patch_render_debug*.py
 
-# --- Entornos virtuales ---
-.venv/
-venv/
-env/
-ENV/
+# local wrappers (solo local)
+tools/render_pack_v03.cmd
+tools/render_pack_v03.ps1
 
-# --- Workspace runtime (runs, cache, output) ---
-workspace/
-output/
-_demo_out*/
-_v03_*/
-_backup/
-_trash/
-_release/
-releases/
-
-# --- Logs de ejecución ---
-last_*.log
-last_*.txt
-last_*.json
-last_compile.log
-
-# --- Backups automáticos ---
-*.bak
-*.bak_*
-*.tmp
-
-# --- Patches locales (ya están en _archive/) ---
-_patch_*.py
-_fix_*.py
-
-# --- Archive y VCS interno (histórico pesado, no útil para colaboradores) ---
-_archive/
-_vcs_extract/
-.patch_backups/
-
-# --- Configuración con credenciales reales ---
-# NUNCA subir providers.json con API keys reales.
-# Usar providers.json.example como referencia.
-# Definir API keys via variable de entorno: OPENAI_API_KEY
-config/providers.json
-config/providers.json.bak*
-config/providers.json.bak_smoke_*
-
-# --- Archivos de video y audio generados ---
-*.mp4
-*.mov
-*.avi
-*.mkv
-music/*.mp3
-music/*.wav
-music/*.m4a
-music/*.aac
-
-# --- ZIPs de releases ---
-*.zip
-STUDIO_MVP_*.zip
-STUDIO_MVP_src_snapshot.zip
-
-# --- IDEs y OS ---
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-
-# --- Credenciales y secretos ---
-.env
-.env.*
-*.pem
-*.key
-# --- STUDIO_MVP ignores (outputs/caches) ---
-!workspace/.gitkeep
-**/__pycache__/
-*.pyc
+# pytest cache
 .pytest_cache/
+__pycache__/
+# local run outputs / work dirs
+_demo_out/
+_demo_out_legacy/
+_v03_from_config/
+_v03_legacy_run/
+_v03_smoke_cfg/
+workspace/
+_vcs_extract/
+_archive/
+
+# local music assets (si no quieres trackearlos)
+music/
+
+# render debug backups
+tools/render_pack_v03.py.bak_*
+# run folders
+_v03_*/
+_v03_*_smoke/
+_v03_demo_edge_audit_smoke/
+_v03_edge_voice_smoke/
+_v03_hf_edge_smoke/
+_v03_text_live_smoke/
+
+# local backups
+*.bak_*
+config/providers.json.bak_*
+studio/providers/image/hf_image.py.bak_*
+
+# temp tools
+tools/hf_probe_models.py
+tools/hf_test_infer.py
+tools/patch_hf_image_model*.py
+
+# local artifacts
+hf_ok.png
+hf_test.png
+# === LOCAL OUTPUTS / RUNS (NO TRACK) ===
+_live_smoke_*/
+_tmp_*/
+_freeze_*/
+_claude_candidate_*/
+_pixabay_*/
+_scene_provider_routing_smoke*/
+_scan_*.txt
+tmp_*.txt
+tmp_diff_*.txt
+config/_tmp_*.json
+
+# Media outputs
+*.mp4
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.zip
+# Local probes/tests (no track)
+_pixabay_*.json
+_scene_provider_routing_*.json
+_tmp_*.py
+# Smoke outputs (local artifacts)
+_smoke_out/
+# Workspace / exports / logs
+*_WORKSPACE*
+workspace/
+exports/
+*.log

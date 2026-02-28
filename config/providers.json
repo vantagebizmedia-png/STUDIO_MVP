@@ -1,10 +1,7 @@
 {
-  "_comment": "Copia este archivo como providers.json y define tu API key como variable de entorno.",
-  "_uso": "Windows: $env:OPENAI_API_KEY='sk-...'  |  Linux/Mac: export OPENAI_API_KEY='sk-...'",
   "schema_version": 1,
   "text": {
     "mode": "DRY",
-    "_modos": "DRY (sin API, builders deterministas) | LIVE (llama API) | REPLAY (usa cache)",
     "active_provider": "openai_responses",
     "default_params": {
       "temperature": 0.2,
@@ -90,6 +87,23 @@
         "type",
         "url",
         "model"
+      ]
+    },
+    "pixabay_images": {
+      "type": "pixabay_stock",
+      "model": "",
+      "timeout_s": 120,
+      "api_key_env": "PIXABAY_API_KEY",
+      "image_type": "photo",
+      "orientation": "vertical",
+      "safesearch": true,
+      "per_page": 10,
+      "fingerprint_fields": [
+        "type",
+        "api_key_env",
+        "image_type",
+        "orientation",
+        "per_page"
       ]
     }
   },

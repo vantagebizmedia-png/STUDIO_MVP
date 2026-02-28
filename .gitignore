@@ -80,3 +80,4 @@ workspace/
 exports/
 *.log
 .codex-home/
+.codex-home/

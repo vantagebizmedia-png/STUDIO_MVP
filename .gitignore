@@ -79,3 +79,4 @@ _smoke_out/
 workspace/
 exports/
 *.log
+.codex-home/

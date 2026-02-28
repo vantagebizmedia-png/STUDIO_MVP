@@ -72,3 +72,10 @@ config/_tmp_*.json
 _pixabay_*.json
 _scene_provider_routing_*.json
 _tmp_*.py
+# Smoke outputs (local artifacts)
+_smoke_out/
+# Workspace / exports / logs
+*_WORKSPACE*
+workspace/
+exports/
+*.log

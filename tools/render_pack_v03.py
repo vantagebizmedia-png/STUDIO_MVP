@@ -11,6 +11,7 @@ Determinista:
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import shutil
 import subprocess
@@ -33,12 +34,17 @@ def _overlay_drawtext_for_scene(scene: dict, w: int, h: int) -> str:
             json.dump(scene, tf, ensure_ascii=False)
             tmp_json = tf.name
 
+        default_fontfile = "C:/Windows/Fonts/arial.ttf" if os.name == "nt" else ""
+
+        fontfile = os.environ.get("STUDIO_FONTFILE", default_fontfile).strip()
+
         cmd = [
             "python",
             str(Path(__file__).parent / "build_drawtext_filter.py"),
             "--scene-json", tmp_json,
             "--w", str(w),
             "--h", str(h),
+            "--fontfile", "C:/Windows/Fonts/arial.ttf",
         ]
         out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT).strip()
         return out
@@ -201,6 +207,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
 
 
 

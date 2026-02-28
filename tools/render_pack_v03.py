@@ -44,7 +44,7 @@ def _overlay_drawtext_for_scene(scene: dict, w: int, h: int) -> str:
             "--scene-json", tmp_json,
             "--w", str(w),
             "--h", str(h),
-            "--fontfile", "C:/Windows/Fonts/arial.ttf",
+            "--fontfile", fontfile,
         ]
         out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT).strip()
         return out
@@ -207,6 +207,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
 
 

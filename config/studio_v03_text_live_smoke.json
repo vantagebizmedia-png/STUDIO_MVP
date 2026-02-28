@@ -1,0 +1,7 @@
+{
+  "work_dir": "_v03_text_live_smoke/artifacts",
+  "workspace": "_v03_text_live_smoke/workspace",
+  "voice": { "provider": "demo_voice", "config": {} },
+  "image": { "provider": "demo_image", "config": {} },
+  "text":  { "provider": "openai_text", "config": {} }
+}

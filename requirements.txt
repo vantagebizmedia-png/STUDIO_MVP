@@ -6,3 +6,6 @@ moviepy==1.0.3
 imageio-ffmpeg==0.6.0
 
 edge-tts
+
+Pillow>=9.0.0
+

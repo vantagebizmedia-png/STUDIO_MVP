@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# app/providers/image_provider.py â€” ProviderImage (LIVE / REPLAY / DRY) con cache por pieza
+# app/providers/image_provider.py — ProviderImage (LIVE / REPLAY / DRY) con cache por pieza
 #
 # Config:
 #   config/providers.json -> section "image" y provider activo en "providers"
@@ -9,13 +9,26 @@
 
 import os
 import re
+import io
 import json
 import time
 import hashlib
 import base64
 import urllib.request
 import urllib.error
+import urllib.parse
 from typing import Any, Dict, Optional, Tuple
+
+# FIX: Importar Pillow a nivel de módulo para fallo temprano con mensaje claro
+try:
+    from PIL import Image, ImageDraw
+except ImportError as _pil_err:
+    raise ImportError(
+        "Pillow no está instalado. Ejecuta: pip install Pillow>=9.0.0\n"
+        f"(Error original: {_pil_err})"
+    ) from _pil_err
+
+
 
 
 # Importar utilidades compartidas (evita duplicación con voice_provider)
@@ -62,8 +75,10 @@ class ProviderImage:
         self.provider_type = str(self.pcfg.get("type", "")).strip()
         self.model = str(self.pcfg.get("model", "")).strip()
 
-        if self.provider_type != "http_json":
-            raise ValueError(f"ProviderImage solo soporta type=http_json (actual: {self.provider_type})")
+        if self.provider_type not in ("http_json", "pixabay_stock"):
+            raise ValueError(
+                f"ProviderImage solo soporta type=http_json|pixabay_stock (actual: {self.provider_type})"
+            )
 
         self.url = str(self.pcfg.get("url", "")).strip()
         self.method = str(self.pcfg.get("method", "POST")).upper().strip()
@@ -74,7 +89,14 @@ class ProviderImage:
         self.extract_paths = list(self.pcfg.get("extract_paths", []) or ["data.0.b64_json"])
         self.fingerprint_fields = list(self.pcfg.get("fingerprint_fields", []) or ["type", "url", "model"])
 
-        if not self.url:
+        # Pixabay-specific
+        self.api_key_env = str(self.pcfg.get("api_key_env", "PIXABAY_API_KEY")).strip() or "PIXABAY_API_KEY"
+        self.image_type = str(self.pcfg.get("image_type", "photo")).strip() or "photo"
+        self.orientation = str(self.pcfg.get("orientation", "vertical")).strip() or "vertical"
+        self.safesearch = bool(self.pcfg.get("safesearch", True))
+        self.per_page = int(self.pcfg.get("per_page", 10) or 10)
+
+        if self.provider_type == "http_json" and not self.url:
             raise ValueError("ProviderImage requiere url")
 
     def _provider_fingerprint(self) -> Dict[str, Any]:
@@ -153,10 +175,168 @@ class ProviderImage:
         meta = {"status": status, "content_type": ctype}
         return img_bytes, meta
 
+    def _choose_best_pixabay_hit(self, hits: Any, target_ratio: float = 9.0 / 16.0) -> Dict[str, Any]:
+        if not isinstance(hits, list) or not hits:
+            raise RuntimeError("Pixabay no devolvió resultados")
+
+        scored = []
+        for hit in hits:
+            if not isinstance(hit, dict):
+                continue
+
+            w = int(hit.get("imageWidth") or hit.get("webformatWidth") or 0)
+            h = int(hit.get("imageHeight") or hit.get("webformatHeight") or 0)
+            downloads = int(hit.get("downloads") or 0)
+            likes = int(hit.get("likes") or 0)
+            views = int(hit.get("views") or 0)
+
+            ratio = (w / h) if w > 0 and h > 0 else 1.0
+            ratio_penalty = abs(ratio - target_ratio)  # 0.0 = perfecto
+            ratio_score = max(0.0, 1.0 - ratio_penalty / 1.0) * 100.0
+
+            popularity_score = (
+                min(downloads / 5000.0, 1.0) * 50.0 +
+                min(likes / 500.0, 1.0) * 30.0 +
+                min(views / 50000.0, 1.0) * 20.0
+            )
+
+            size_bonus = 20.0 if (w >= 720 and h >= 1080) else (10.0 if w >= 480 else 0.0)
+
+            score = ratio_score * 0.5 + popularity_score * 0.35 + size_bonus * 0.15
+            scored.append((score, int(hit.get("id", 0) or 0), hit))
+
+        if not scored:
+            raise RuntimeError("Pixabay no devolvió hits utilizables")
+
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        return scored[0][2]
+
+    def _pixabay_call(self, prompt: str, params: Dict[str, Any]) -> Tuple[bytes, Dict[str, Any]]:
+        api_key = os.getenv(self.api_key_env, "").strip()
+        if not api_key:
+            raise RuntimeError(f"Falta {self.api_key_env} para provider pixabay_stock")
+
+        stock_query = str(params.get("stock_query", "") or "").strip() 
+        _raw_prompt = str(prompt or "").strip() 
+        _RENDER_PREFIX = "Imagen vertical 9:16, alta calidad, lista para reel." 
+        if _raw_prompt.startswith(_RENDER_PREFIX): 
+            _raw_prompt = _raw_prompt[len(_RENDER_PREFIX):].strip().lstrip("\n").strip() 
+        _raw_prompt = _raw_prompt[:100].strip() 
+        query = stock_query or _raw_prompt 
+        if not query: 
+            raise RuntimeError("Pixabay requiere query no vacía") 
+        image_type = str(params.get("image_type", self.image_type) or self.image_type).strip() or "photo"
+        orientation = str(params.get("orientation", self.orientation) or self.orientation).strip() or "vertical"
+        safesearch = params.get("safesearch", self.safesearch)
+        if isinstance(safesearch, str):
+            safesearch = safesearch.strip().lower() in ("1", "true", "yes", "on")
+        safesearch_str = "true" if bool(safesearch) else "false"
+        per_page = int(params.get("per_page", self.per_page) or self.per_page)
+
+        qs = urllib.parse.urlencode({
+            "key": api_key,
+            "q": query,
+            "image_type": image_type,
+            "orientation": orientation,
+            "safesearch": safesearch_str,
+            "per_page": str(per_page),
+            "page": "1",
+        })
+        search_url = f"https://pixabay.com/api/?{qs}"
+
+        req = urllib.request.Request(
+            search_url,
+            headers={"User-Agent": "STUDIO_MVP/0.3 pixabay_stock deterministic provider"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                raw = resp.read()
+                status = getattr(resp, "status", 200)
+                ctype = resp.headers.get("Content-Type", "")
+        except urllib.error.HTTPError as e:
+            raw = e.read()
+            raise RuntimeError(f"Pixabay HTTPError {e.code}: {raw[:400]!r}")
+        except Exception as e:
+            raise RuntimeError(f"Pixabay request falló: {e!r}")
+
+        try:
+            obj = json.loads(raw.decode("utf-8", errors="replace"))
+        except Exception:
+            raise RuntimeError(f"Pixabay devolvió respuesta no JSON (status={status}, content-type={ctype})")
+
+        hits = obj.get("hits", [])
+        best = self._choose_best_pixabay_hit(hits)
+
+        download_url = (
+            best.get("largeImageURL")
+            or best.get("webformatURL")
+            or best.get("previewURL")
+            or ""
+        )
+        if not download_url:
+            raise RuntimeError("Pixabay hit sin download URL")
+
+        req_img = urllib.request.Request(
+            download_url,
+            headers={"User-Agent": "STUDIO_MVP/0.3 pixabay_stock deterministic provider"},
+        )
+        try:
+            with urllib.request.urlopen(req_img, timeout=self.timeout_s) as resp:
+                img_bytes = resp.read()
+                img_ctype = resp.headers.get("Content-Type", "")
+        except urllib.error.HTTPError as e:
+            raw = e.read()
+            raise RuntimeError(f"Pixabay image HTTPError {e.code}: {raw[:400]!r}")
+        except Exception as e:
+            raise RuntimeError(f"Pixabay image download falló: {e!r}")
+
+        redacted_search_url = re.sub(r"([?&]key=)[^&]+", r"\1***REDACTED***", search_url)
+
+        meta = {
+            "status": status,
+            "content_type": ctype,
+            "image_content_type": img_ctype,
+            "query": query,
+            "stock_query_used": bool(stock_query),
+            "selected_from_total_hits": int(obj.get("totalHits", 0) or 0),
+            "asset_id": str(best.get("id", "")),
+            "page_url": str(best.get("pageURL", "") or ""),
+            "download_url": str(download_url),
+            "user": str(best.get("user", "") or ""),
+            "tags": str(best.get("tags", "") or ""),
+            "width": int(best.get("imageWidth") or best.get("webformatWidth") or 0),
+            "height": int(best.get("imageHeight") or best.get("webformatHeight") or 0),
+            "likes": int(best.get("likes") or 0),
+            "downloads": int(best.get("downloads") or 0),
+            "views": int(best.get("views") or 0),
+            "image_type": image_type,
+            "orientation": orientation,
+            "safesearch": safesearch_str,
+            "api_key_env": self.api_key_env,
+            "api_search_url": redacted_search_url,
+            "license_note": "Pixabay asset descargado localmente para uso determinista; revisar licencia y atribucion si aplica.",
+        }
+        return img_bytes, meta
+
+    def _normalize_image_bytes_to_png(self, img_bytes: bytes) -> bytes:
+
+        try:
+            src = Image.open(io.BytesIO(img_bytes))
+            if src.mode not in ("RGB", "RGBA"):
+                src = src.convert("RGB")
+            elif src.mode == "RGBA":
+                bg = Image.new("RGB", src.size, (255, 255, 255))
+                bg.paste(src, mask=src.split()[-1])
+                src = bg
+
+            out = io.BytesIO()
+            src.save(out, format="PNG", optimize=True)
+            return out.getvalue()
+        except Exception as e:
+            raise RuntimeError(f"No se pudo normalizar imagen a PNG: {e!r}")
+
     def _placeholder_png(self) -> bytes:
         # Placeholder robusto 9:16 (siempre válido para MoviePy/Pillow)
-        import io
-        from PIL import Image, ImageDraw
 
         w, h = 720, 1280
         img = Image.new('RGB', (w, h), (0, 0, 0))
@@ -168,13 +348,19 @@ class ProviderImage:
         return buf.getvalue()
 
 
+    def _live_call(self, prompt: str, params: Dict[str, Any]) -> tuple:
+        if self.provider_type == "pixabay_stock":
+            return self._pixabay_call(prompt, params)
+        return self._http_call(prompt, params)
+
+
     def _http_call_with_retry(self, prompt: str, params: Dict[str, Any], max_retries: int = 3) -> tuple:
         """Llama a la API con reintentos automáticos ante errores 429/5xx/red."""
         import time
         last_err = None
         for attempt in range(max_retries):
             try:
-                return self._http_call(prompt, params)
+                return self._live_call(prompt, params)
             except RuntimeError as e:
                 last_err = e
                 msg = str(e)
@@ -184,14 +370,14 @@ class ProviderImage:
                     print(f"  [retry {attempt+1}/{max_retries}] Error: {msg[:80]} — esperando {wait}s...")
                     time.sleep(wait)
                 else:
-                    raise  # Error sin retry (ej: 400, 401, prompt inválido)
+                    raise  # Error sin retry
         raise RuntimeError(f"API falló tras {max_retries} intentos: {last_err}")
 
     def generate(self, *, purpose: str, prompt: str, seed: Optional[int] = None, **overrides: Any) -> Dict[str, Any]:
         purpose = str(purpose or "image").strip()
         prompt = str(prompt or "").strip()
         if not prompt:
-            raise ValueError("prompt vacÃ­o")
+            raise ValueError("prompt vacío")
 
         params = dict(self.default_params)
         for k, v in overrides.items():
@@ -201,7 +387,7 @@ class ProviderImage:
         created_at = int(time.time())
         img_path, meta_path = self._cache_paths(cache_key)
 
-        # DRY: si hay cache, Ãºsalo; si no, placeholder
+        # DRY: si hay cache, úsalo; si no, placeholder
         if self.mode == "DRY":
             if self.cache_policy != "off" and os.path.exists(img_path):
                 return {"path": img_path, "provider": self.active_provider, "model": self.model, "mode": self.mode, "cache_hit": True, "cache_key": cache_key, "note": "image: dry cache_hit"}
@@ -229,6 +415,8 @@ class ProviderImage:
             return {"path": img_path, "provider": self.active_provider, "model": self.model, "mode": self.mode, "cache_hit": True, "cache_key": cache_key, "note": "image: live cache_hit"}
 
         img_bytes, http_meta = self._http_call_with_retry(prompt, params)
+        if self.provider_type == "pixabay_stock":
+            img_bytes = self._normalize_image_bytes_to_png(img_bytes)
         with open(img_path, "wb") as f:
             f.write(img_bytes)
 
@@ -245,4 +433,5 @@ class ProviderImage:
         }
         _write_json(meta_path, record)
         return {"path": img_path, "provider": self.active_provider, "model": self.model, "mode": self.mode, "cache_hit": False, "cache_key": cache_key, "note": "image: generated"}
+
 

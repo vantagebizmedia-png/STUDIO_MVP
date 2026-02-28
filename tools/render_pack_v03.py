@@ -26,6 +26,30 @@ def _vf(w: int, h: int, fit: str) -> str:
         )
     return f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},format=yuv420p"
 
+def _overlay_drawtext_for_scene(scene: dict, w: int, h: int) -> str:
+    """Devuelve 'drawtext=...' o '' si no hay texto (usa tools/build_drawtext_filter.py)."""
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tf:
+            json.dump(scene, tf, ensure_ascii=False)
+            tmp_json = tf.name
+
+        cmd = [
+            "python",
+            str(Path(__file__).parent / "build_drawtext_filter.py"),
+            "--scene-json", tmp_json,
+            "--w", str(w),
+            "--h", str(h),
+        ]
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT).strip()
+        return out
+    except Exception:
+        return ""
+    finally:
+        try:
+            if "tmp_json" in locals() and tmp_json:
+                Path(tmp_json).unlink(missing_ok=True)
+        except Exception:
+            pass
 def _pretty(cmd: List[str]) -> str:
     try:
         return subprocess.list2cmdline([str(x) for x in cmd])
@@ -48,44 +72,65 @@ def _resolve(pack_dir: Path, rel: str) -> Path:
     p = Path(rel)
     return p if p.is_absolute() else (pack_dir / p)
 
-def _make_segment(ffmpeg: str, img: Path, aud: Path, out_mp4: Path,
-                  w: int, h: int, fps: int, fit: str,
-                  crf: int, preset: str, abitrate: str,
-                  loglevel: str, stats: bool) -> None:
+def _make_segment(
+    ffmpeg: str,
+    img: Path,
+    aud: Path,
+    out_mp4: Path,
+    w: int,
+    h: int,
+    fps: int,
+    fit: str,
+    crf: int,
+    preset: str,
+    abitrate: str,
+    loglevel: str,
+    stats: bool,
+    vf_override: str = "",
+) -> None:
     cmd: List[str] = [ffmpeg, "-hide_banner", "-loglevel", loglevel, "-y"]
     if stats:
         cmd.append("-stats")
+
+    vf = vf_override or _vf(w, h, fit)
+
     cmd += [
         "-loop","1","-i",str(img),
         "-i",str(aud),
-        "-vf",_vf(w,h,fit),
+        "-vf",vf,
         "-r",str(fps),
         "-c:v","libx264","-pix_fmt","yuv420p","-preset",preset,"-crf",str(crf),
         "-c:a","aac","-b:a",abitrate,"-ar","44100","-ac","2",
         "-shortest","-movflags","+faststart",
         "-map_metadata","-1","-map_chapters","-1",
-        str(out_mp4)
+        str(out_mp4),
     ]
-    _run(cmd)
+    print("FFMPEG:", _pretty(cmd))
+    subprocess.check_call(cmd)
 
 def _concat(ffmpeg: str, segs: List[Path], out_mp4: Path, loglevel: str, stats: bool) -> None:
+    # concat demuxer (determinista)
     lst = out_mp4.parent / "_concat_list.txt"
     lines = []
     for p in segs:
-        s = str(p.resolve()).replace("\\","/")
+        # ffmpeg concat list prefiere paths con /
+        s = str(p.resolve()).replace("\\", "/").replace("'", "\\'")
         lines.append(f"file '{s}'")
     lst.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     cmd: List[str] = [ffmpeg, "-hide_banner", "-loglevel", loglevel, "-y"]
     if stats:
         cmd.append("-stats")
+
     cmd += [
         "-f","concat","-safe","0","-i",str(lst),
         "-c","copy",
-        "-movflags","+faststart","-map_metadata","-1","-map_chapters","-1",
-        str(out_mp4)
+        "-movflags","+faststart",
+        "-map_metadata","-1","-map_chapters","-1",
+        str(out_mp4),
     ]
-    _run(cmd)
+    print("FFMPEG:", _pretty(cmd))
+    subprocess.check_call(cmd)
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -123,11 +168,15 @@ def main() -> int:
                 idx = int(s.get("index", 0) or 0)
                 img = _resolve(pack_dir, str(s.get("image", "")))
                 aud = _resolve(pack_dir, str(s.get("audio", "")))
+                vf = _vf(args.w, args.h, args.fit)
+                dt = _overlay_drawtext_for_scene(s, args.w, args.h)
+                if dt:
+                    vf = vf + "," + dt
                 if not (img.exists() and aud.exists()):
                     raise SystemExit(f"ERROR: escena {idx} missing: image={img.exists()} audio={aud.exists()}")
                 seg = tmp_dir / f"seg_{idx:02d}.mp4"
                 _make_segment(args.ffmpeg, img, aud, seg, args.w, args.h, args.fps, args.fit,
-                              args.crf, args.preset, args.audio_bitrate, args.loglevel, args.stats)
+                              args.crf, args.preset, args.audio_bitrate, args.loglevel, args.stats, vf)
                 segs.append(seg)
             _concat(args.ffmpeg, segs, out, args.loglevel, args.stats)
         else:
@@ -152,3 +201,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
+

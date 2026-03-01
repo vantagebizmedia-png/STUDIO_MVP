@@ -19,7 +19,6 @@ import hashlib
 import json
 import os
 import re
-import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Any
 
@@ -39,6 +38,15 @@ def _provider_id(p: Any) -> str:
 def _sha8(text: str) -> str:
     h = hashlib.sha256(text.encode("utf-8")).hexdigest()
     return h[:8]
+
+def _rel_to_base(path: str, base_dir: str) -> str:
+    p = str(path or "").strip()
+    if not p:
+        return ""
+    base_abs = os.path.abspath(base_dir or ".")
+    abs_p = p if os.path.isabs(p) else os.path.abspath(os.path.join(base_abs, p))
+    rel = os.path.relpath(abs_p, start=base_abs)
+    return rel.replace("\\", "/")
 
 
 def _default_text_cache_dir() -> str:
@@ -168,7 +176,6 @@ class StudioPipeline:
                     "config": tcfg,
                     "prompt": prompt,
                     "output": out,
-                    "created_at_unix": int(time.time()),
                 }
                 with open(cache_path, "w", encoding="utf-8") as f:
                     f.write(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -179,24 +186,35 @@ class StudioPipeline:
 
     def _write_manifest(self, *, script_path: str, img_path: str, aud_path: str, scenes: list[dict] | None = None) -> None:
         try:
+            base_dir = os.path.abspath(self.work_dir or ".")
             manifest = {
                 "version": "v0.3",
                 "mode": "RUN",
-                "work_dir": os.path.abspath(self.work_dir),
-                "config_path": str(self._v03_config_path or ""),
+                "work_dir": ".",
+                "config_path": _rel_to_base(str(self._v03_config_path or ""), base_dir),
                 "providers": {
                     "text": _provider_id(self.text),
                     "image": _provider_id(self.image),
                     "voice": _provider_id(self.voice),
                 },
                 "artifacts": {
-                    "script": os.path.abspath(script_path),
-                    "image": os.path.abspath(img_path),
-                    "audio": os.path.abspath(aud_path),
+                    "script": _rel_to_base(script_path, base_dir),
+                    "image": _rel_to_base(img_path, base_dir),
+                    "audio": _rel_to_base(aud_path, base_dir),
                 },
             }
             if scenes:
-                manifest["scenes"] = scenes
+                scenes_rel = []
+                for s in scenes:
+                    row = dict(s or {})
+                    arts = dict(row.get("artifacts") or {})
+                    row["artifacts"] = {
+                        "script": _rel_to_base(str(arts.get("script", "")), base_dir),
+                        "image": _rel_to_base(str(arts.get("image", "")), base_dir),
+                        "audio": _rel_to_base(str(arts.get("audio", "")), base_dir),
+                    }
+                    scenes_rel.append(row)
+                manifest["scenes"] = scenes_rel
             outp = os.path.join(self.work_dir, "manifest_v03.json")
             with open(outp, "w", encoding="utf-8") as f:
                 f.write(json.dumps(manifest, ensure_ascii=False, indent=2))

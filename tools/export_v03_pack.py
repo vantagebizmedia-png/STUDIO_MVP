@@ -13,11 +13,11 @@ y escribe pack.json con sección scenes[] (paths relativos)
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
 from pathlib import Path
-from datetime import datetime, timezone
 
 def read_json(p: Path) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
@@ -28,6 +28,16 @@ def read_json_sig(p: Path) -> dict:
 def safe_copy(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(str(src), str(dst))
+
+def _rel_to_base(path: str, base_dir: Path) -> str:
+    p = str(path or "").strip()
+    if not p:
+        return ""
+    base_abs = base_dir.resolve()
+    src = Path(p)
+    if not src.is_absolute():
+        src = (base_abs / src).resolve()
+    return os.path.relpath(str(src), start=str(base_abs)).replace("\\", "/")
 
 def _compact_music_strategy_text(*parts: object) -> str:
     vals = []
@@ -85,7 +95,12 @@ def derive_tag(manifest: dict) -> str:
     iname = Path(ip).name
     if iname.startswith("image_") and iname.endswith(".png"):
         return iname[len("image_"):-len(".png")]
-    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    stable_blob = {
+        "artifacts": manifest.get("artifacts") or {},
+        "scenes": manifest.get("scenes") or [],
+    }
+    raw = json.dumps(stable_blob, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:8]
 
 def pick_default_out_root(manifest: dict) -> Path:
     cfgp = (manifest.get("config_path") or "").strip()
@@ -120,10 +135,14 @@ def main() -> int:
 
     manifest = read_json(mpath)
 
-    work_dir = (manifest.get("work_dir") or "")
-    if not work_dir:
-        work_dir = str(mpath.parent)
-    work_dir = str(Path(work_dir).resolve())
+    manifest_dir = mpath.parent.resolve()
+    work_dir = manifest_dir
+    manifest_work_dir = str(manifest.get("work_dir") or "").strip()
+    if manifest_work_dir:
+        wd = Path(manifest_work_dir)
+        if not wd.is_absolute():
+            wd = (manifest_dir / wd)
+        work_dir = wd.resolve()
 
     artifacts = manifest.get("artifacts") or {}
     script_p = Path(artifacts.get("script") or "")
@@ -131,11 +150,11 @@ def main() -> int:
     audio_p  = Path(artifacts.get("audio")  or "")
 
     if script_p and not script_p.is_absolute():
-        script_p = Path(work_dir) / script_p
+        script_p = work_dir / script_p
     if image_p and not image_p.is_absolute():
-        image_p = Path(work_dir) / image_p
+        image_p = work_dir / image_p
     if audio_p and not audio_p.is_absolute():
-        audio_p = Path(work_dir) / audio_p
+        audio_p = work_dir / audio_p
 
     missing = []
     for k, p in [("script", script_p), ("image", image_p), ("audio", audio_p)]:
@@ -162,7 +181,6 @@ def main() -> int:
     (pack_dir / "artifacts").mkdir(parents=True, exist_ok=True)
 
     # Copias base (compat)
-    safe_copy(mpath, pack_dir / "manifest_v03.json")
     safe_copy(script_p, pack_dir / "artifacts" / "script.txt")
     safe_copy(image_p,  pack_dir / "artifacts" / "image.png")
     safe_copy(audio_p,  pack_dir / "artifacts" / "audio.wav")
@@ -171,7 +189,7 @@ def main() -> int:
     # FIX: preservar music_strategy.json si ya existe (evita sobreescribir estrategias ricas)
     _existing_ms = None
     for _ms_candidate in [
-        Path(work_dir) / "music_strategy.json",
+        work_dir / "music_strategy.json",
         mpath.parent / "music_strategy.json",
     ]:
         if _ms_candidate.exists():
@@ -201,9 +219,9 @@ def main() -> int:
             ap2 = Path(arts.get("audio") or "")
 
             # resolver relativos contra work_dir por si acaso
-            if sp and not sp.is_absolute(): sp = Path(work_dir) / sp
-            if ip and not ip.is_absolute(): ip = Path(work_dir) / ip
-            if ap2 and not ap2.is_absolute(): ap2 = Path(work_dir) / ap2
+            if sp and not sp.is_absolute(): sp = work_dir / sp
+            if ip and not ip.is_absolute(): ip = work_dir / ip
+            if ap2 and not ap2.is_absolute(): ap2 = work_dir / ap2
 
             if not (sp.exists() and ip.exists() and ap2.exists()):
                 continue
@@ -229,18 +247,40 @@ def main() -> int:
                 "audio":  f"artifacts/scenes/scene_{idx:02d}/audio.wav",
             })
 
+    manifest_export = dict(manifest)
+    manifest_export["work_dir"] = "."
+    manifest_export["config_path"] = _rel_to_base(str(manifest.get("config_path", "")), manifest_dir)
+    base_arts = dict(manifest_export.get("artifacts") or {})
+    manifest_export["artifacts"] = {
+        "script": _rel_to_base(str(base_arts.get("script", "")), work_dir),
+        "image": _rel_to_base(str(base_arts.get("image", "")), work_dir),
+        "audio": _rel_to_base(str(base_arts.get("audio", "")), work_dir),
+    }
+    in_scenes = manifest_export.get("scenes") or []
+    if isinstance(in_scenes, list) and in_scenes:
+        scenes_export = []
+        for s in in_scenes:
+            row = dict(s or {})
+            arts = dict(row.get("artifacts") or {})
+            row["artifacts"] = {
+                "script": _rel_to_base(str(arts.get("script", "")), work_dir),
+                "image": _rel_to_base(str(arts.get("image", "")), work_dir),
+                "audio": _rel_to_base(str(arts.get("audio", "")), work_dir),
+            }
+            scenes_export.append(row)
+        manifest_export["scenes"] = scenes_export
+    (pack_dir / "manifest_v03.json").write_text(json.dumps(manifest_export, ensure_ascii=False, indent=2), encoding="utf-8")
+
     pack_meta = {
         "pack_version": "v0.3",
         "tag": tag,
-        "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00","Z"),
         "source": {
-            "manifest_path": str(mpath),
-            "work_dir": work_dir,
-            "config_path": manifest.get("config_path",""),
+            "manifest_path": "manifest_v03.json",
+            "work_dir": _rel_to_base(str(work_dir), manifest_dir),
+            "config_path": _rel_to_base(str(manifest.get("config_path", "")), manifest_dir),
             "providers": manifest.get("providers", {}),
         },
         "paths": {
-            "pack_dir": str(pack_dir),
             "script": "artifacts/script.txt",
             "image":  "artifacts/image.png",
             "audio":  "artifacts/audio.wav",

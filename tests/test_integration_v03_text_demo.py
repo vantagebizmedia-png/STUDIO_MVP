@@ -26,10 +26,11 @@ def test_v03_text_demo_generates_manifest_and_artifacts(tmp_path):
     arts = m.get("artifacts") or {}
     for k in ("script", "image", "audio"):
         assert arts.get(k), f"manifest.artifacts.{k} vacio"
+        assert not Path(arts[k]).is_absolute(), f"manifest.artifacts.{k} debe ser relativo: {arts[k]}"
 
-    sp = Path(arts["script"])
-    ip = Path(arts["image"])
-    ap = Path(arts["audio"])
+    sp = (work_dir / arts["script"]).resolve()
+    ip = (work_dir / arts["image"]).resolve()
+    ap = (work_dir / arts["audio"]).resolve()
     assert sp.exists(), f"script no existe: {sp}"
     assert ip.exists(), f"image no existe: {ip}"
     assert ap.exists(), f"audio no existe: {ap}"

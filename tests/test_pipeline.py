@@ -81,11 +81,17 @@ class TestStudioPipeline(unittest.TestCase):
             p.run("NARRACION: uno\n---\nNARRACION: dos\n---\nNARRACION: tres")
 
             wd = Path(tmp)
+            global_scripts = [p for p in wd.glob("script_*.txt") if not re.search(r"_s\d{2}\.txt$", p.name)]
+            self.assertEqual(len(global_scripts), 1, f"se esperaba 1 script global, hay {len(global_scripts)}")
+            m = re.fullmatch(r"script_([0-9a-f]{8})\.txt", global_scripts[0].name)
+            self.assertIsNotNone(m, f"nombre de script global invalido: {global_scripts[0].name}")
+            tag = str(m.group(1))
+
             for idx in (1, 2, 3):
-                legacy_script = list(wd.glob(f"script_*_s{idx:02d}.txt"))
+                legacy_script = wd / f"script_{tag}_s{idx:02d}.txt"
                 legacy_image = list(wd.glob(f"image_*_s{idx:02d}.png"))
                 legacy_audio = list(wd.glob(f"audio_*_s{idx:02d}.wav"))
-                self.assertTrue(legacy_script, f"falta script legacy escena {idx}")
+                self.assertTrue(legacy_script.exists(), f"falta script legacy escena {idx}")
                 self.assertTrue(legacy_image, f"falta image legacy escena {idx}")
                 self.assertTrue(legacy_audio, f"falta audio legacy escena {idx}")
 
@@ -96,10 +102,16 @@ class TestStudioPipeline(unittest.TestCase):
                 self.assertGreater((alias_dir / "script.txt").stat().st_size, 0)
                 self.assertGreater((alias_dir / "image.png").stat().st_size, 0)
                 self.assertGreater((alias_dir / "audio.wav").stat().st_size, 0)
-                script_txt = (alias_dir / "script.txt").read_text(encoding="utf-8")
+                script_txt = legacy_script.read_text(encoding="utf-8")
+                self.assertTrue(script_txt.startswith(f"ESCENA {idx:02d}\n"))
                 self.assertIn("NARRACION:", script_txt)
                 self.assertIn("ONSCREEN:", script_txt)
                 self.assertIn("STOCK_QUERY:", script_txt)
+                self.assertTrue(script_txt.rstrip().endswith("---"))
+                self.assertEqual(script_txt.count("ESCENA "), 1)
+                self.assertEqual(script_txt.count("NARRACION:"), 1)
+                self.assertEqual(script_txt.count("ONSCREEN:"), 1)
+                self.assertEqual(script_txt.count("STOCK_QUERY:"), 1)
 
             manifest = json.loads((wd / "manifest_v03.json").read_text(encoding="utf-8"))
             for scene in manifest.get("scenes") or []:

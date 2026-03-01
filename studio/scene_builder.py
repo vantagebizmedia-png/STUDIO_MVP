@@ -73,6 +73,7 @@ def split_raw_scenes(text: str, max_scenes: int, mode: str = "auto") -> List[str
 
 
 _TAG_RE = re.compile(r"^(NARRACION|ONSCREEN|STOCK_QUERY)\s*:\s*(.*)$", re.IGNORECASE)
+_SCENE_HDR_RE = re.compile(r"^ESCENA\s+\d+\s*$", re.IGNORECASE)
 
 
 def _clean_text(s: str) -> str:
@@ -80,19 +81,53 @@ def _clean_text(s: str) -> str:
     return s
 
 
-def _make_stock_query_fallback(text: str) -> str:
-    """
-    Fallback ultra simple y determinista: toma 3-7 palabras "útiles".
-    No pretende ser inteligente; solo evitar queries vacías.
-    """
-    t = (text or "").lower()
-    t = re.sub(r"[^a-z0-9áéíóúüñ ]+", " ", t)
-    words = [w for w in t.split() if len(w) >= 3]
-    stop = {"que","para","con","una","uno","unos","unas","este","esta","esto","como","por","del","las","los","sobre","hoy","aqui","más","mas","pero"}
-    words = [w for w in words if w not in stop]
+def _split_sentences(text: str) -> List[str]:
+    out = [s.strip() for s in re.split(r"(?<=[\.\!\?])\s+", _clean_text(text)) if s.strip()]
+    if out:
+        return out
+    t = _clean_text(text)
+    return [t] if t else []
+
+
+def _truncate_sentences(text: str, max_sentences: int) -> str:
+    sent = _split_sentences(text)
+    if not sent:
+        return ""
+    return " ".join(sent[:max(1, int(max_sentences or 1))]).strip()
+
+
+def _truncate_words(text: str, max_words: int) -> str:
+    words = [w for w in _clean_text(text).split(" ") if w]
     if not words:
-        return "video vertical motivación"
-    return " ".join(words[:7])
+        return ""
+    return " ".join(words[:max(1, int(max_words or 1))]).strip()
+
+
+def _sanitize_stock_query(text: str) -> str:
+    t = (text or "").lower()
+    t = t.replace('"', " ").replace("'", " ")
+    t = re.sub(r"[^a-z0-9áéíóúüñ ]+", " ", t)
+    return _clean_text(t)
+
+
+def _fallback_narration(seed: str) -> str:
+    base = _truncate_words(_clean_text(seed), 6)
+    if not base:
+        base = "idea principal del tema"
+    txt = f"{base} guía esta escena. El mensaje se explica con claridad."
+    return _truncate_sentences(txt, 2)
+
+
+def _fallback_onscreen(seed: str) -> str:
+    _ = seed
+    return _truncate_words("Idea clave enfoque claro uso practico", 6)
+
+
+def _fallback_stock_query(seed: str) -> str:
+    base = _sanitize_stock_query(seed)
+    if base:
+        return _truncate_words(base, 4)
+    return "persona explicando tema estudio"
 
 
 @dataclass
@@ -121,6 +156,10 @@ def parse_scene_block(block: str) -> Dict[str, str]:
         line = raw.strip()
         if not line:
             continue
+        if line == "---":
+            continue
+        if _SCENE_HDR_RE.match(line):
+            continue
         m = _TAG_RE.match(line)
         if m:
             key = m.group(1).upper()
@@ -136,10 +175,25 @@ def parse_scene_block(block: str) -> Dict[str, str]:
 
     narration = _clean_text(" ".join(narration_lines))
     onscreen = _clean_text(onscreen)
-    stock_query = _clean_text(stock_query)
+    stock_query = _sanitize_stock_query(stock_query)
 
+    if not narration:
+        narration = _fallback_narration(block)
+    if not onscreen:
+        onscreen = _fallback_onscreen(narration or block)
     if not stock_query:
-        stock_query = _make_stock_query_fallback(narration)
+        stock_query = _fallback_stock_query(narration or onscreen or block)
+
+    narration = _truncate_sentences(narration, 3)
+    onscreen = _truncate_words(onscreen, 10)
+    stock_query = _truncate_words(_sanitize_stock_query(stock_query), 6)
+
+    if not narration:
+        narration = _truncate_sentences(_fallback_narration(block), 3)
+    if not onscreen:
+        onscreen = _truncate_words(_fallback_onscreen(block), 10)
+    if not stock_query:
+        stock_query = _truncate_words(_sanitize_stock_query(_fallback_stock_query(block)), 6)
 
     return {"narration": narration, "onscreen": onscreen, "stock_query": stock_query}
 
@@ -165,3 +219,18 @@ def build_scenes(script: str, *, max_scenes: int, split_mode: str = "auto", base
         ))
     return scenes
 
+
+def render_scenes_strict(scenes: List[SceneSpec]) -> str:
+    blocks: List[str] = []
+    for s in scenes or []:
+        blocks.append(
+            "\n".join(
+                [
+                    f"ESCENA {int(s.index):02d}",
+                    f"NARRACION: {s.narration}",
+                    f"ONSCREEN: {s.onscreen}",
+                    f"STOCK_QUERY: {s.stock_query}",
+                ]
+            ).strip()
+        )
+    return "\n---\n".join([b for b in blocks if b]).strip()

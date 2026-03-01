@@ -24,12 +24,27 @@ def test_v03_multiscene_generates_scenes_and_manifest():
     assert isinstance(scenes, list) and len(scenes) >= 2, f"manifest.scenes invalido: {scenes}"
 
     for s in scenes:
+        idx = int(s.get("index", 0) or 0)
+        assert idx >= 1, f"scene index invalido: {s}"
+        for field in ("narration", "onscreen", "stock_query"):
+            assert field in s, f"scene sin {field}: {s}"
         arts = (s.get("artifacts") or {})
         for k in ("script","image","audio"):
             raw = arts.get(k, "")
             assert raw, f"scene artifact missing path: {k}"
+            expected = f"artifacts/scenes/scene_{idx:02d}/"
+            assert str(raw).replace("\\", "/").startswith(expected), f"scene alias path invalido: {k} -> {raw}"
             fp0 = Path(raw)
             assert not fp0.is_absolute(), f"scene artifact path debe ser relativo: {k} -> {raw}"
             fp = (work_dir / fp0).resolve()
             assert fp.exists(), f"scene artifact missing: {k} -> {fp}"
             assert fp.stat().st_size > 0, f"scene artifact empty: {k} -> {fp}"
+
+    global_arts = m.get("artifacts") or {}
+    script_rel = str(global_arts.get("script") or "")
+    image_rel = str(global_arts.get("image") or "")
+    audio_rel = str(global_arts.get("audio") or "")
+    assert script_rel and image_rel and audio_rel, f"artifacts globales invalidos: {global_arts}"
+    assert "_s01" in script_rel.replace("\\", "/"), f"script global debe apuntar a escena 1: {script_rel}"
+    assert "_s01" in image_rel.replace("\\", "/"), f"image global debe apuntar a escena 1: {image_rel}"
+    assert "_s01" in audio_rel.replace("\\", "/"), f"audio global debe apuntar a escena 1: {audio_rel}"

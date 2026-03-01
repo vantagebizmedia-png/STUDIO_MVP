@@ -39,6 +39,33 @@ def _rel_to_base(path: str, base_dir: Path) -> str:
         src = (base_abs / src).resolve()
     return os.path.relpath(str(src), start=str(base_abs)).replace("\\", "/")
 
+
+def _resolve_scene_sources(work_dir: Path, idx: int, arts: dict) -> tuple[Path, Path, Path]:
+    stable_dir = work_dir / "artifacts" / "scenes" / f"scene_{idx:02d}"
+    stable_script = stable_dir / "script.txt"
+    stable_image = stable_dir / "image.png"
+    stable_audio = stable_dir / "audio.wav"
+    if stable_script.exists() and stable_image.exists() and stable_audio.exists():
+        return stable_script, stable_image, stable_audio
+
+    sp = Path(arts.get("script") or "")
+    ip = Path(arts.get("image") or "")
+    ap = Path(arts.get("audio") or "")
+    if sp and not sp.is_absolute():
+        sp = work_dir / sp
+    if ip and not ip.is_absolute():
+        ip = work_dir / ip
+    if ap and not ap.is_absolute():
+        ap = work_dir / ap
+    return sp, ip, ap
+
+
+def _scene_index(row: dict) -> int:
+    try:
+        return int(row.get("index", 0) or 0)
+    except Exception:
+        return 0
+
 def _compact_music_strategy_text(*parts: object) -> str:
     vals = []
     for p in parts:
@@ -211,18 +238,17 @@ def main() -> int:
     scenes_rel = []
     scenes = manifest.get("scenes") or []
     if isinstance(scenes, list) and scenes:
-        for s in scenes:
+        scenes_sorted = sorted(
+            [dict(s or {}) for s in scenes if isinstance(s, dict)],
+            key=_scene_index,
+        )
+        for s in scenes_sorted:
             idx = int(s.get("index", 0) or 0)
+            if idx <= 0:
+                continue
+
             arts = (s.get("artifacts") or {})
-            sp = Path(arts.get("script") or "")
-            ip = Path(arts.get("image") or "")
-            ap2 = Path(arts.get("audio") or "")
-
-            # resolver relativos contra work_dir por si acaso
-            if sp and not sp.is_absolute(): sp = work_dir / sp
-            if ip and not ip.is_absolute(): ip = work_dir / ip
-            if ap2 and not ap2.is_absolute(): ap2 = work_dir / ap2
-
+            sp, ip, ap2 = _resolve_scene_sources(work_dir, idx, arts)
             if not (sp.exists() and ip.exists() and ap2.exists()):
                 continue
 

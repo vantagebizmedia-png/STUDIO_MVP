@@ -1,15 +1,12 @@
 {
   "work_dir": "_v03_smoke_multiscene/artifacts",
   "workspace": "_v03_smoke_multiscene/workspace",
-  "providers": {
-    "text":  { "provider": "demo_text",  "config": {} },
-    "image": { "provider": "demo_image", "config": {} },
-    "voice": { "provider": "demo_voice", "config": {} }
+  "voice": {
+    "provider": "demo_voice",
+    "config": {}
   },
-  "mode": "RUN",
-  "replay_strict": true,
-  "multiscene": true,
-  "max_scenes": 3,
-  "scene_split": "dash",
-  "fit": "crop"
+  "image": {
+    "provider": "demo_image",
+    "config": {}
+  }
 }

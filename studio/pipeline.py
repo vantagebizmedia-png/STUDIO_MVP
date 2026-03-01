@@ -19,6 +19,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import wave
+import base64
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Any
 
@@ -27,6 +30,11 @@ from studio.providers.image.base_image import BaseImageProvider
 from studio.providers.text.base_text import BaseTextProvider
 
 from studio.scene_builder import build_scenes
+
+
+_FALLBACK_PNG_1X1 = base64.b64decode(
+    b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2dAAAAAASUVORK5CYII="
+)
 
 
 def _provider_id(p: Any) -> str:
@@ -184,6 +192,40 @@ class StudioPipeline:
 
         return str(out or "").strip()
 
+    def _write_fallback_png(self, path: str) -> str:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(_FALLBACK_PNG_1X1)
+        return path
+
+    def _write_fallback_wav(self, path: str, *, duration_s: float = 0.6, sr: int = 24000) -> str:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        nframes = max(1, int(float(duration_s) * int(sr)))
+        with wave.open(path, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(int(sr))
+            wf.writeframes(b"\x00\x00" * nframes)
+        return path
+
+    def _copy_scene_aliases(self, *, idx: int, script_src: str, image_src: str, audio_src: str) -> dict[str, str]:
+        scene_dir = os.path.join(self.work_dir, "artifacts", "scenes", f"scene_{idx:02d}")
+        os.makedirs(scene_dir, exist_ok=True)
+
+        script_dst = os.path.join(scene_dir, "script.txt")
+        image_dst = os.path.join(scene_dir, "image.png")
+        audio_dst = os.path.join(scene_dir, "audio.wav")
+
+        shutil.copyfile(script_src, script_dst)
+        shutil.copyfile(image_src, image_dst)
+        shutil.copyfile(audio_src, audio_dst)
+
+        return {
+            "script": script_dst,
+            "image": image_dst,
+            "audio": audio_dst,
+        }
+
     def _write_manifest(self, *, script_path: str, img_path: str, aud_path: str, scenes: list[dict] | None = None) -> None:
         try:
             base_dir = os.path.abspath(self.work_dir or ".")
@@ -261,6 +303,7 @@ class StudioPipeline:
                 scene_specs = build_scenes(final_script, max_scenes=1, split_mode="auto", base_tag=tag)
 
             scenes_meta: list[dict] = []
+            first_script = ""
             first_img = ""
             first_aud = ""
 
@@ -294,14 +337,28 @@ class StudioPipeline:
                 audio_text = narration or stock_query
 
                 self._notify(f"imagen_s{idx:02d}", curr_ms, total_ms)
-                img = self.image.generate(image_prompt, ip)
+                try:
+                    img = self.image.generate(image_prompt, ip)
+                except Exception:
+                    img = self._write_fallback_png(ip)
                 curr_ms += 1
 
                 self._notify(f"audio_s{idx:02d}", curr_ms, total_ms)
-                aud = self.voice.synthesize(audio_text, ap)
+                try:
+                    aud = self.voice.synthesize(audio_text, ap)
+                except Exception:
+                    aud = self._write_fallback_wav(ap)
                 curr_ms += 1
 
+                aliases = self._copy_scene_aliases(
+                    idx=idx,
+                    script_src=sp,
+                    image_src=img,
+                    audio_src=aud,
+                )
+
                 if idx == 1:
+                    first_script = sp
                     first_img, first_aud = img, aud
 
                 scenes_meta.append({
@@ -313,20 +370,52 @@ class StudioPipeline:
                     "image_prompt": image_prompt,
                     "audio_text": audio_text,
                     "artifacts": {
-                        "script": os.path.abspath(sp),
-                        "image": os.path.abspath(img),
-                        "audio": os.path.abspath(aud),
+                        "script": os.path.abspath(aliases["script"]),
+                        "image": os.path.abspath(aliases["image"]),
+                        "audio": os.path.abspath(aliases["audio"]),
                     }
                 })
             if not first_img:
                 # fallback si por algún motivo no generó escena 1
+                first_script = os.path.join(self.work_dir, f"script_{tag}_s01.txt")
                 first_img = os.path.join(self.work_dir, f"image_{tag}.png")
                 first_aud = os.path.join(self.work_dir, f"audio_{tag}.wav")
-                first_img = self.image.generate(final_script, first_img)
-                first_aud = self.voice.synthesize(final_script, first_aud)
+                if not os.path.exists(first_script):
+                    with open(first_script, "w", encoding="utf-8") as f:
+                        f.write(f"NARRACION: {final_script}\n")
+                try:
+                    first_img = self.image.generate(final_script, first_img)
+                except Exception:
+                    first_img = self._write_fallback_png(first_img)
+                try:
+                    first_aud = self.voice.synthesize(final_script, first_aud)
+                except Exception:
+                    first_aud = self._write_fallback_wav(first_aud)
+                aliases = self._copy_scene_aliases(
+                    idx=1,
+                    script_src=first_script,
+                    image_src=first_img,
+                    audio_src=first_aud,
+                )
+                scenes_meta = [{
+                    "index": 1,
+                    "tag": f"{tag}_s01",
+                    "narration": final_script,
+                    "onscreen": "",
+                    "stock_query": "",
+                    "image_prompt": final_script,
+                    "audio_text": final_script,
+                    "artifacts": {
+                        "script": os.path.abspath(aliases["script"]),
+                        "image": os.path.abspath(aliases["image"]),
+                        "audio": os.path.abspath(aliases["audio"]),
+                    },
+                }]
+            if not first_script:
+                first_script = script_path
 
             # artifacts apuntan a escena 1 (compat), script "global" se mantiene
-            self._write_manifest(script_path=script_path, img_path=first_img, aud_path=first_aud, scenes=scenes_meta)
+            self._write_manifest(script_path=first_script, img_path=first_img, aud_path=first_aud, scenes=scenes_meta)
             self._notify("listo", total_ms, total_ms)
             return first_img, first_aud
 

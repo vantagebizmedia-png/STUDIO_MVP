@@ -341,12 +341,14 @@ class StudioPipeline:
                 if not narration and not stock_query:
                     continue
 
-                # Guardamos un script por escena (estructurado) para trazabilidad
-                sp = os.path.join(self.work_dir, f"script_{stag}.txt")
+                # Guardamos un script legacy por escena: script_<tag>_sNN.txt
+                sp = os.path.join(self.work_dir, f"script_{tag}_s{idx:02d}.txt")
                 with open(sp, "w", encoding="utf-8") as f:
+                    f.write(f"ESCENA {idx:02d}\n")
                     f.write(f"NARRACION: {narration}\n")
                     f.write(f"ONSCREEN: {onscreen}\n")
                     f.write(f"STOCK_QUERY: {stock_query}\n")
+                    f.write("---\n")
 
                 ip = os.path.join(self.work_dir, f"image_{stag}.png")
                 ap = os.path.join(self.work_dir, f"audio_{stag}.wav")
@@ -400,9 +402,11 @@ class StudioPipeline:
                 first_aud = os.path.join(self.work_dir, f"audio_{tag}.wav")
                 if not os.path.exists(first_script):
                     with open(first_script, "w", encoding="utf-8") as f:
+                        f.write("ESCENA 01\n")
                         f.write(f"NARRACION: {final_script}\n")
                         f.write("ONSCREEN: Idea clave enfoque claro uso practico\n")
                         f.write("STOCK_QUERY: persona explicando tema estudio\n")
+                        f.write("---\n")
                 try:
                     first_img = self.image.generate(final_script, first_img)
                 except Exception:

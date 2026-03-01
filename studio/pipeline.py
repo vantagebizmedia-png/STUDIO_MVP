@@ -29,7 +29,7 @@ from studio.providers.voice.base_voice import BaseVoiceProvider
 from studio.providers.image.base_image import BaseImageProvider
 from studio.providers.text.base_text import BaseTextProvider
 
-from studio.scene_builder import build_scenes
+from studio.scene_builder import build_scenes, render_scenes_strict
 
 
 _FALLBACK_PNG_1X1 = base64.b64decode(
@@ -175,14 +175,31 @@ class StudioPipeline:
             except Exception:
                 pass  # fallback a generar de nuevo
 
-        out = self.text.generate(prompt)
+        prompt_in = prompt
+        if bool(getattr(self, "multiscene", False)) and int(getattr(self, "max_scenes", 1) or 1) > 1:
+            max_scenes = max(1, int(getattr(self, "max_scenes", 1) or 1))
+            prompt_in = (
+                "Devuelve solo guion multiescena con formato estricto.\n"
+                f"Reglas: hasta {max_scenes} escenas.\n"
+                "Cada escena debe usar exactamente este bloque:\n"
+                "ESCENA NN\n"
+                "NARRACION: ...\n"
+                "ONSCREEN: ...\n"
+                "STOCK_QUERY: ...\n"
+                "---\n"
+                "No agregues texto fuera de esos bloques.\n\n"
+                "Prompt base:\n"
+                f"{prompt}"
+            )
+
+        out = self.text.generate(prompt_in)
         if cache_on:
             try:
                 payload = {
                     "version": "v0.3",
                     "provider": provider_name,
                     "config": tcfg,
-                    "prompt": prompt,
+                    "prompt": prompt_in,
                     "output": out,
                 }
                 with open(cache_path, "w", encoding="utf-8") as f:
@@ -289,6 +306,13 @@ class StudioPipeline:
         if not final_script:
             raise ValueError("guion final vacío")
 
+        # Multi-scene (si aplica)
+        if bool(getattr(self, "multiscene", False)) and int(getattr(self, "max_scenes", 1) or 1) > 1:
+            scene_specs = build_scenes(final_script, max_scenes=int(self.max_scenes), split_mode=str(self.scene_split), base_tag=None)
+            if not scene_specs:
+                scene_specs = build_scenes(final_script, max_scenes=1, split_mode="auto", base_tag=None)
+            final_script = render_scenes_strict(scene_specs)
+
         tag = _sha8(final_script)
 
         # script "global" siempre
@@ -296,11 +320,8 @@ class StudioPipeline:
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(final_script)
 
-        # Multi-scene (si aplica)
         if bool(getattr(self, "multiscene", False)) and int(getattr(self, "max_scenes", 1) or 1) > 1:
             scene_specs = build_scenes(final_script, max_scenes=int(self.max_scenes), split_mode=str(self.scene_split), base_tag=tag)
-            if not scene_specs:
-                scene_specs = build_scenes(final_script, max_scenes=1, split_mode="auto", base_tag=tag)
 
             scenes_meta: list[dict] = []
             first_script = ""
@@ -323,12 +344,9 @@ class StudioPipeline:
                 # Guardamos un script por escena (estructurado) para trazabilidad
                 sp = os.path.join(self.work_dir, f"script_{stag}.txt")
                 with open(sp, "w", encoding="utf-8") as f:
-                    if narration:
-                        f.write(f"NARRACION: {narration}\n")
-                    if onscreen:
-                        f.write(f"ONSCREEN: {onscreen}\n")
-                    if stock_query:
-                        f.write(f"STOCK_QUERY: {stock_query}\n")
+                    f.write(f"NARRACION: {narration}\n")
+                    f.write(f"ONSCREEN: {onscreen}\n")
+                    f.write(f"STOCK_QUERY: {stock_query}\n")
 
                 ip = os.path.join(self.work_dir, f"image_{stag}.png")
                 ap = os.path.join(self.work_dir, f"audio_{stag}.wav")
@@ -383,6 +401,8 @@ class StudioPipeline:
                 if not os.path.exists(first_script):
                     with open(first_script, "w", encoding="utf-8") as f:
                         f.write(f"NARRACION: {final_script}\n")
+                        f.write("ONSCREEN: Idea clave enfoque claro uso practico\n")
+                        f.write("STOCK_QUERY: persona explicando tema estudio\n")
                 try:
                     first_img = self.image.generate(final_script, first_img)
                 except Exception:

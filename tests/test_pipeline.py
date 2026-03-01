@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 import json
+import re
 from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -51,6 +52,13 @@ class _FailImage(BaseImageProvider):
 
 
 class TestStudioPipeline(unittest.TestCase):
+    @staticmethod
+    def _count_sentences(text: str) -> int:
+        parts = [s.strip() for s in re.split(r"(?<=[\.\!\?])\s+", str(text or "").strip()) if s.strip()]
+        if parts:
+            return len(parts)
+        return 1 if str(text or "").strip() else 0
+
     def test_run_crea_archivos_y_retorna_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = StudioPipeline(voice=_DummyVoice(), image=_DummyImage(), work_dir=tmp)
@@ -88,12 +96,21 @@ class TestStudioPipeline(unittest.TestCase):
                 self.assertGreater((alias_dir / "script.txt").stat().st_size, 0)
                 self.assertGreater((alias_dir / "image.png").stat().st_size, 0)
                 self.assertGreater((alias_dir / "audio.wav").stat().st_size, 0)
+                script_txt = (alias_dir / "script.txt").read_text(encoding="utf-8")
+                self.assertIn("NARRACION:", script_txt)
+                self.assertIn("ONSCREEN:", script_txt)
+                self.assertIn("STOCK_QUERY:", script_txt)
 
             manifest = json.loads((wd / "manifest_v03.json").read_text(encoding="utf-8"))
             for scene in manifest.get("scenes") or []:
                 self.assertIn("narration", scene)
                 self.assertIn("onscreen", scene)
                 self.assertIn("stock_query", scene)
+                self.assertLessEqual(self._count_sentences(scene.get("narration", "")), 3)
+                self.assertLessEqual(len(str(scene.get("onscreen", "")).split()), 10)
+                sq = str(scene.get("stock_query", ""))
+                self.assertLessEqual(len(sq.split()), 6)
+                self.assertRegex(sq, r"^[a-z0-9áéíóúüñ ]+$")
                 arts = scene.get("artifacts") or {}
                 for k in ("script", "image", "audio"):
                     raw = str(arts.get(k) or "")

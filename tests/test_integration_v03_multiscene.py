@@ -1,6 +1,15 @@
 import json
+import re
 from pathlib import Path
 import subprocess
+
+
+def _count_sentences(text: str) -> int:
+    parts = [s.strip() for s in re.split(r"(?<=[\.\!\?])\s+", str(text or "").strip()) if s.strip()]
+    if parts:
+        return len(parts)
+    return 1 if str(text or "").strip() else 0
+
 
 def test_v03_multiscene_generates_scenes_and_manifest():
     cfg = Path("config/studio_v03_multiscene_text_smoke.json")
@@ -28,6 +37,12 @@ def test_v03_multiscene_generates_scenes_and_manifest():
         assert idx >= 1, f"scene index invalido: {s}"
         for field in ("narration", "onscreen", "stock_query"):
             assert field in s, f"scene sin {field}: {s}"
+            assert str(s.get(field) or "").strip(), f"scene {idx} sin texto en {field}"
+        assert _count_sentences(s.get("narration", "")) <= 3
+        assert len(str(s.get("onscreen", "")).split()) <= 10
+        sq = str(s.get("stock_query", ""))
+        assert len(sq.split()) <= 6
+        assert re.fullmatch(r"[a-z0-9áéíóúüñ ]+", sq), f"stock_query invalido: {sq}"
         arts = (s.get("artifacts") or {})
         for k in ("script","image","audio"):
             raw = arts.get(k, "")
@@ -39,6 +54,10 @@ def test_v03_multiscene_generates_scenes_and_manifest():
             fp = (work_dir / fp0).resolve()
             assert fp.exists(), f"scene artifact missing: {k} -> {fp}"
             assert fp.stat().st_size > 0, f"scene artifact empty: {k} -> {fp}"
+        scene_script = (work_dir / Path(str(arts["script"]))).read_text(encoding="utf-8")
+        assert "NARRACION:" in scene_script
+        assert "ONSCREEN:" in scene_script
+        assert "STOCK_QUERY:" in scene_script
 
     global_arts = m.get("artifacts") or {}
     script_rel = str(global_arts.get("script") or "")

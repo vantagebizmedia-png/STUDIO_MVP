@@ -26,6 +26,10 @@ def test_v03_multiscene_generates_scenes_and_manifest():
     for s in scenes:
         arts = (s.get("artifacts") or {})
         for k in ("script","image","audio"):
-            fp = Path(arts.get(k,""))
+            raw = arts.get(k, "")
+            assert raw, f"scene artifact missing path: {k}"
+            fp0 = Path(raw)
+            assert not fp0.is_absolute(), f"scene artifact path debe ser relativo: {k} -> {raw}"
+            fp = (work_dir / fp0).resolve()
             assert fp.exists(), f"scene artifact missing: {k} -> {fp}"
             assert fp.stat().st_size > 0, f"scene artifact empty: {k} -> {fp}"

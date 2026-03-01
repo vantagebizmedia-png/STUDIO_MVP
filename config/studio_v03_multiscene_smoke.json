@@ -2,9 +2,9 @@
   "work_dir": "_v03_smoke_multiscene/artifacts",
   "workspace": "_v03_smoke_multiscene/workspace",
   "providers": {
-    "text":  "demo_text",
-    "image": "demo_image",
-    "voice": "demo_voice"
+    "text":  { "provider": "demo_text",  "config": {} },
+    "image": { "provider": "demo_image", "config": {} },
+    "voice": { "provider": "demo_voice", "config": {} }
   },
   "mode": "RUN",
   "replay_strict": true,

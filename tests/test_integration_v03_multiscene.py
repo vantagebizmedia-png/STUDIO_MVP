@@ -31,6 +31,17 @@ def test_v03_multiscene_generates_scenes_and_manifest():
     m = json.loads(man.read_text(encoding="utf-8"))
     scenes = m.get("scenes") or []
     assert isinstance(scenes, list) and len(scenes) >= 2, f"manifest.scenes invalido: {scenes}"
+    global_arts = m.get("artifacts") or {}
+    script_rel = str(global_arts.get("script") or "")
+    image_rel = str(global_arts.get("image") or "")
+    audio_rel = str(global_arts.get("audio") or "")
+    assert script_rel and image_rel and audio_rel, f"artifacts globales invalidos: {global_arts}"
+    assert "_s01" in script_rel.replace("\\", "/"), f"script global debe apuntar a escena 1: {script_rel}"
+    assert "_s01" in image_rel.replace("\\", "/"), f"image global debe apuntar a escena 1: {image_rel}"
+    assert "_s01" in audio_rel.replace("\\", "/"), f"audio global debe apuntar a escena 1: {audio_rel}"
+    tag_match = re.search(r"script_([0-9a-f]{8})_s01\.txt$", script_rel.replace("\\", "/"))
+    assert tag_match, f"script global debe conservar formato legacy de escena 1: {script_rel}"
+    tag = str(tag_match.group(1))
 
     for s in scenes:
         idx = int(s.get("index", 0) or 0)
@@ -55,15 +66,16 @@ def test_v03_multiscene_generates_scenes_and_manifest():
             assert fp.exists(), f"scene artifact missing: {k} -> {fp}"
             assert fp.stat().st_size > 0, f"scene artifact empty: {k} -> {fp}"
         scene_script = (work_dir / Path(str(arts["script"]))).read_text(encoding="utf-8")
+        assert scene_script.startswith(f"ESCENA {idx:02d}\n"), f"scene script sin header canonico: {arts['script']}"
         assert "NARRACION:" in scene_script
         assert "ONSCREEN:" in scene_script
         assert "STOCK_QUERY:" in scene_script
+        assert scene_script.rstrip().endswith("---"), f"scene script sin cierre canonico: {arts['script']}"
+        assert scene_script.count("ESCENA ") == 1
+        assert scene_script.count("NARRACION:") == 1
+        assert scene_script.count("ONSCREEN:") == 1
+        assert scene_script.count("STOCK_QUERY:") == 1
 
-    global_arts = m.get("artifacts") or {}
-    script_rel = str(global_arts.get("script") or "")
-    image_rel = str(global_arts.get("image") or "")
-    audio_rel = str(global_arts.get("audio") or "")
-    assert script_rel and image_rel and audio_rel, f"artifacts globales invalidos: {global_arts}"
-    assert "_s01" in script_rel.replace("\\", "/"), f"script global debe apuntar a escena 1: {script_rel}"
-    assert "_s01" in image_rel.replace("\\", "/"), f"image global debe apuntar a escena 1: {image_rel}"
-    assert "_s01" in audio_rel.replace("\\", "/"), f"audio global debe apuntar a escena 1: {audio_rel}"
+        legacy_script = work_dir / f"script_{tag}_s{idx:02d}.txt"
+        assert legacy_script.exists(), f"falta script legacy por escena: {legacy_script}"
+        assert legacy_script.read_text(encoding="utf-8") == scene_script

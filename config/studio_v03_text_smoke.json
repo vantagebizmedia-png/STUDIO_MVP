@@ -11,5 +11,10 @@
   },
   "text": {
     "provider": "demo_text"
+  },
+  "pipe": {
+    "multiscene": true,
+    "max_scenes": 6,
+    "scene_split": "auto"
   }
 }

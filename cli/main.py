@@ -1,6 +1,18 @@
 # -*- coding: utf-8 -*-
 """CLI v0.3
 
+def apply_pipe_knobs(pipeline, pipe_cfg: dict) -> None:
+    try:
+        if not isinstance(pipe_cfg, dict):
+            return
+        if "multiscene" in pipe_cfg:
+            setattr(pipeline, "multiscene", bool(pipe_cfg.get("multiscene", False)))
+        if "max_scenes" in pipe_cfg:
+            setattr(pipeline, "max_scenes", int(pipe_cfg.get("max_scenes", 1) or 1))
+        if "scene_split" in pipe_cfg:
+            setattr(pipeline, "scene_split", str(pipe_cfg.get("scene_split", "auto") or "auto"))
+    except Exception:
+        pass
 Modos:
 - --demo                 : demo interno (sin API)
 - --legacy-demo          : legacy usando config DEMO DRY (seguro)
@@ -122,3 +134,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

@@ -8,6 +8,10 @@ param(
 )
 
 $ErrorActionPreference="Stop"
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repo = $RepoRoot
+. "$PSScriptRoot\resolve_python.ps1"
+$py = Resolve-PythonExe -RepoRoot $RepoRoot
 chcp 65001 | Out-Null
 
 $V03Config = ".\config\studio_v03_edge_voice_smoke.json"
@@ -34,7 +38,7 @@ try {
   $j.voice.mode = "DRY"
   ($j | ConvertTo-Json -Depth 50) | Set-Content -Encoding UTF8 $prov
 
-  $out = python .\tools\release_pack_v03.py --v03-config $V03Config --script $ScriptText --overwrite 2>&1
+  $out = & $py .\tools\release_pack_v03.py --v03-config $V03Config --script $ScriptText --overwrite 2>&1
   $out | Out-Host
 
   $packLine = ($out | Select-String -Pattern "^PACK_DIR:\s*" | Select-Object -Last 1).Line
@@ -42,7 +46,7 @@ try {
   $packDir = ($packLine -replace "^PACK_DIR:\s*","").Trim()
   Write-Host "PACK_DIR => $packDir" -ForegroundColor Green
 
-  python .\tools\render_pack_v03.py --pack-dir "$packDir" --w $W --h $H --fps $FPS --fit $Fit --keep-tmp
+  & $py .\tools\render_pack_v03.py --pack-dir "$packDir" --w $W --h $H --fps $FPS --fit $Fit --keep-tmp
 }
 finally {
   Copy-Item $bak $prov -Force

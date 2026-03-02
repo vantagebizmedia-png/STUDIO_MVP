@@ -12,6 +12,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repo = $RepoRoot
+. "$PSScriptRoot\resolve_python.ps1"
+$py = Resolve-PythonExe -RepoRoot $RepoRoot
 
 chcp 65001 | Out-Null
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
@@ -20,10 +24,9 @@ $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
 
 if (!(Test-Path -LiteralPath ".\\run.py")) { throw "Ejecuta desde la raíz del repo (run.py)" }
-Get-Command python -ErrorAction Stop | Out-Null
 
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repoRoot = $RepoRoot
 $preferredWsRoot = Join-Path $env:USERPROFILE ("STUDIO_WORKSPACE_SMOKE_V03_" + $stamp)
 $fallbackWsRoot = Join-Path $repoRoot (Join-Path "_tmp" ("STUDIO_WORKSPACE_SMOKE_V03_" + $stamp))
 $wsRoot = $preferredWsRoot
@@ -93,7 +96,7 @@ Write-Host "TMP_CONFIG=$tmpCfg" -ForegroundColor DarkGray
 
 # 2) LIVE (v0.3 config) -> genera manifest_v03.json en work_dir
 Write-Host "== LIVE (v0.3 config) ==" -ForegroundColor Cyan
-& python -m cli.main --v03-config $tmpCfg --script $Prompt
+& $py -m cli.main --v03-config $tmpCfg --script $Prompt
 if ($LASTEXITCODE -ne 0) { throw "LIVE falló (exit=$LASTEXITCODE)" }
 
 $manifest = Join-Path $wsArtifacts "manifest_v03.json"
@@ -101,7 +104,7 @@ if (!(Test-Path -LiteralPath $manifest)) { throw "No existe manifest_v03.json en
 
 # 3) EXPORT v0.3 -> pack_v03_* (auto out-root basado en workspace del config)
 Write-Host "== EXPORT v0.3 ==" -ForegroundColor Cyan
-$exportOut = & python .\tools\export_v03_pack.py --manifest $manifest
+$exportOut = & $py .\tools\export_v03_pack.py --manifest $manifest
 if ($LASTEXITCODE -ne 0) { throw "export_v03_pack falló (exit=$LASTEXITCODE)" }
 
 $packDir = ($exportOut | Where-Object { $_ -like "PACK_DIR:*" } | Select-Object -Last 1)
@@ -113,12 +116,12 @@ Write-Host "PACK_DIR=$packDir" -ForegroundColor Green
 
 # 4) VALIDATE BEFORE RENDER (fail fast)
 Write-Host "== VALIDATE (pre-render) ==" -ForegroundColor Cyan
-& python .\tools\validate_pack.py --pack-dir $packDir
+& $py .\tools\validate_pack.py --pack-dir $packDir
 if ($LASTEXITCODE -ne 0) { throw "validate_pack (pre-render) falló (exit=$LASTEXITCODE)" }
 
 # 5) RENDER
 Write-Host "== RENDER ==" -ForegroundColor Cyan
-& python .\tools\render_pack_v03.py --pack-dir $packDir --fit $Fit --w $W --h $H --fps $FPS --loglevel error
+& $py .\tools\render_pack_v03.py --pack-dir $packDir --fit $Fit --w $W --h $H --fps $FPS --loglevel error
 if ($LASTEXITCODE -ne 0) { throw "render_pack_v03 falló (exit=$LASTEXITCODE)" }
 
 $video = Join-Path $packDir "video.mp4"
@@ -140,19 +143,19 @@ $finalPath = Join-Path $packDir "video_final.mp4"
 $srtPath  = Join-Path $packDir "subtitles.srt"
 $subsVid  = Join-Path $packDir "video_final_subs.mp4"
 
-python (Join-Path $repoRoot "tools\make_subtitles_from_pack_v03.py") --pack $packDir --output $srtPath
-python (Join-Path $repoRoot "tools\burn_subtitles.py") --video (Join-Path $packDir "video_final.mp4") --srt $srtPath --output $subsVid
+& $py (Join-Path $repoRoot "tools\make_subtitles_from_pack_v03.py") --pack $packDir --output $srtPath
+& $py (Join-Path $repoRoot "tools\burn_subtitles.py") --video (Join-Path $packDir "video_final.mp4") --srt $srtPath --output $subsVid
 
 Write-Host "SRT : $srtPath"
 Write-Host "SUBS: $subsVid"
 # --- SMOKE_SUBS_PATCH_END ---
 Write-Host "== VALIDATE + FIX ==" -ForegroundColor Cyan
-& python .\tools\validate_pack.py --pack-dir $packDir --fix
+& $py .\tools\validate_pack.py --pack-dir $packDir --fix
 if ($LASTEXITCODE -ne 0) { throw "validate_pack --fix falló (exit=$LASTEXITCODE)" }
 
 # 8) ZIP
 Write-Host "== ZIP ==" -ForegroundColor Cyan
-$zipOut = & python .\tools\zip_pack.py --pack-dir $packDir --overwrite
+$zipOut = & $py .\tools\zip_pack.py --pack-dir $packDir --overwrite
 if ($LASTEXITCODE -ne 0) { throw "zip_pack falló (exit=$LASTEXITCODE)" }
 
 $zipPath = ($zipOut | Where-Object { $_ -like "ZIP:*" } | Select-Object -Last 1)
@@ -193,7 +196,7 @@ Write-Host "HANDOFF_READY: $handoffPath"
 
 # --- SMOKE_OUT_PATCH_BEGIN ---
 # Copia resultados a .\_smoke_out\<run>\ antes de limpiar el workspace temporal
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repoRoot = $RepoRoot
 $outBase  = Join-Path $repoRoot "_smoke_out"
 New-Item -ItemType Directory -Force $outBase | Out-Null
 $outRun   = Join-Path $outBase ("smoke_v03_" + $stamp)

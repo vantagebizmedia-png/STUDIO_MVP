@@ -5,6 +5,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repo = $RepoRoot
+. "$PSScriptRoot\resolve_python.ps1"
+$py = Resolve-PythonExe -RepoRoot $RepoRoot
 
 if ([string]::IsNullOrWhiteSpace($env:PIXABAY_API_KEY)) {
     throw "Falta la variable de entorno PIXABAY_API_KEY"
@@ -12,7 +16,7 @@ if ([string]::IsNullOrWhiteSpace($env:PIXABAY_API_KEY)) {
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-python .\tools\pixabay_fetch_image.py `
+& $py .\tools\pixabay_fetch_image.py `
   --query $Query `
   --out-dir $OutDir
 

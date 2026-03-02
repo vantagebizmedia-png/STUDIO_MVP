@@ -14,6 +14,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repo = $RepoRoot
+. "$PSScriptRoot\resolve_python.ps1"
+$py = Resolve-PythonExe -RepoRoot $RepoRoot
 
 if (!(Test-Path -LiteralPath ".\run.py")) { throw "Ejecuta desde la raíz (run.py)" }
 if (!(Test-Path -LiteralPath ".\tools\run_v03.ps1")) { throw "Falta tools\run_v03.ps1" }
@@ -42,7 +46,7 @@ ONSCREEN: prueba
 STOCK_QUERY: cuaderno notas
 "@
 
-  & python -m cli.main --v03-config ".\config\studio_v03_multiscene_smoke.json" --script $scriptMultiscene
+  & $py -m cli.main --v03-config ".\config\studio_v03_multiscene_smoke.json" --script $scriptMultiscene
   exit $LASTEXITCODE
 }
 

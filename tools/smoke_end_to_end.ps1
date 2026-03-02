@@ -1,20 +1,21 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repo = $RepoRoot
+. "$PSScriptRoot\resolve_python.ps1"
+$py = Resolve-PythonExe -RepoRoot $RepoRoot
 chcp 65001 | Out-Null
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
-$repo = (Resolve-Path ".").Path
 Set-Location $repo
-
-# Python bueno (wrapper estable)
-$py = "C:\Users\vanta\AppData\Local\Python\bin\python.exe"
-if (!(Test-Path -LiteralPath $py)) { throw "No existe python wrapper: $py" }
-
-# Temp local para evitar permisos raros en %TEMP%
-New-Item -ItemType Directory -Force "$repo\.tmp\pytest" | Out-Null
-$env:TEMP = (Resolve-Path "$repo\.tmp\pytest").Path
+# Temp fuera del repo (evita permisos/locks en .tmp)
+$runId = Get-Date -Format "yyyyMMdd_HHmmss"
+$baseTemp = Join-Path $env:LOCALAPPDATA "STUDIO_MVP\tmp"
+New-Item -ItemType Directory -Force $baseTemp | Out-Null
+$smokeTemp = Join-Path $baseTemp ("pytest_" + $runId)
+New-Item -ItemType Directory -Force $smokeTemp | Out-Null
+$env:TEMP = (Resolve-Path $smokeTemp).Path
 $env:TMP  = $env:TEMP
-
 Write-Host "=== SMOKE v0.3 (determinista) ==="
 
 # Compila SOLO carpetas relevantes (evita _archive con cosas rotas)
@@ -54,3 +55,4 @@ if (!(Test-Path $zip)) { throw "Falta ZIP final: $zip" }
 if (!(Test-Path $sha)) { throw "Falta SHA final: $sha" }
 
 Write-Host "OK: HANDOFF sanity passed"
+

@@ -2,6 +2,10 @@ param()
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repo = $RepoRoot
+. "$PSScriptRoot\resolve_python.ps1"
+$py = Resolve-PythonExe -RepoRoot $RepoRoot
 
 chcp 65001 | Out-Null
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
@@ -18,11 +22,11 @@ Write-Host "Compileall (solo studio/ cli/ tests/ app/)..." -ForegroundColor Cyan
 $targets = @(".\studio",".\cli",".\tests")
 if (Test-Path -LiteralPath ".\app") { $targets += ".\app" }
 
-python -m compileall -q @targets
+& $py -m compileall -q @targets
 if ($LASTEXITCODE -ne 0) { throw "compileall falló (exit=$LASTEXITCODE)" }
 
 Write-Host "Unittest..." -ForegroundColor Cyan
-python -m unittest -q
+& $py -m unittest -q
 if ($LASTEXITCODE -ne 0) { throw "unittest falló (exit=$LASTEXITCODE)" }
 
 function Run-ChildPwsh([string[]]$ChildArgs, [string]$Label) {
@@ -37,7 +41,7 @@ Run-ChildPwsh @("-File",".\tools\run_v03.ps1","-Mode","legacy","-Script","hola",
 
 Write-Host "Runner v0.3 config (--v03-config)..." -ForegroundColor Cyan
 $env:STUDIO_ALLOW_LIVE="1"
-python -m cli.main --v03-config .\config\studio_v03_smoke.json --script "smoke v03 config"
+& $py -m cli.main --v03-config .\config\studio_v03_smoke.json --script "smoke v03 config"
 Remove-Item Env:STUDIO_ALLOW_LIVE -ErrorAction SilentlyContinue
 if ($LASTEXITCODE -ne 0) { throw "v03-config falló (exit=$LASTEXITCODE)" }
 Write-Host "OK SMOKE v0.3" -ForegroundColor Green

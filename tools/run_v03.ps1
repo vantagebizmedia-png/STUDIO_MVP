@@ -16,6 +16,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repo = $RepoRoot
+. "$PSScriptRoot\resolve_python.ps1"
+$py = Resolve-PythonExe -RepoRoot $RepoRoot
 
 chcp 65001 | Out-Null
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
@@ -24,33 +28,32 @@ $env:PYTHONUTF8="1"
 $env:PYTHONIOENCODING="utf-8"
 
 if (!(Test-Path -LiteralPath ".\run.py")) { throw "Ejecuta desde la raíz (run.py)" }
-Get-Command python -ErrorAction Stop | Out-Null
 
 function Invoke-StudioCli([string[]]$PyArgs) {
-  Write-Host ("Running: python " + ($PyArgs -join " ")) -ForegroundColor Cyan
-  & python @PyArgs
+  Write-Host ("Running: $py " + ($PyArgs -join " ")) -ForegroundColor Cyan
+  & $py @PyArgs
   exit $LASTEXITCODE
 }
 
 if ($Mode -eq "demo") {
-  $py = @("-m","cli.main","--demo","--script",$Script)
-  if ($WorkDir) { $py += @("--work-dir",$WorkDir) }
-  Invoke-StudioCli $py
+  $pyArgs = @("-m","cli.main","--demo","--script",$Script)
+  if ($WorkDir) { $pyArgs += @("--work-dir",$WorkDir) }
+  Invoke-StudioCli $pyArgs
 }
 
 if ($Mode -eq "legacy-demo") {
-  $py = @("-m","cli.main","--legacy-demo","--script",$Script)
-  if ($WorkDir) { $py += @("--work-dir",$WorkDir) }
-  if ($Workspace) { $py += @("--workspace",$Workspace) }
-  Invoke-StudioCli $py
+  $pyArgs = @("-m","cli.main","--legacy-demo","--script",$Script)
+  if ($WorkDir) { $pyArgs += @("--work-dir",$WorkDir) }
+  if ($Workspace) { $pyArgs += @("--workspace",$Workspace) }
+  Invoke-StudioCli $pyArgs
 }
 
 if ($Mode -eq "legacy") {
-  $py = @("-m","cli.main","--legacy","--script",$Script,"--force-mode",$ForceMode)
-  if ($ProvidersJson) { $py += @("--providers-json",$ProvidersJson) }
-  if ($Workspace) { $py += @("--workspace",$Workspace) }
-  if ($WorkDir) { $py += @("--work-dir",$WorkDir) }
-  Invoke-StudioCli $py
+  $pyArgs = @("-m","cli.main","--legacy","--script",$Script,"--force-mode",$ForceMode)
+  if ($ProvidersJson) { $pyArgs += @("--providers-json",$ProvidersJson) }
+  if ($Workspace) { $pyArgs += @("--workspace",$Workspace) }
+  if ($WorkDir) { $pyArgs += @("--work-dir",$WorkDir) }
+  Invoke-StudioCli $pyArgs
 }
 
 throw "Mode inválido: $Mode"

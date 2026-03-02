@@ -1,5 +1,9 @@
-﻿Set-StrictMode -Version Latest
+Set-StrictMode -Version Latest
 $ErrorActionPreference="Stop"
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repo = $RepoRoot
+. "$PSScriptRoot\resolve_python.ps1"
+$py = Resolve-PythonExe -RepoRoot $RepoRoot
 
 function Fail($msg) { Write-Host $msg -ForegroundColor Red; exit 1 }
 
@@ -23,7 +27,6 @@ New-Item -ItemType Directory -Force $out   | Out-Null
 New-Item -ItemType Directory -Force $cache | Out-Null
 
 # python
-try { $py = (Get-Command python -ErrorAction Stop).Source } catch { Fail "FATAL: python no está en PATH" }
 Write-Host "python: $py" -ForegroundColor Green
 
 # ffmpeg

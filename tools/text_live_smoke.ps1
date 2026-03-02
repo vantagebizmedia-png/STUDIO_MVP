@@ -4,6 +4,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repo = $RepoRoot
+. "$PSScriptRoot\resolve_python.ps1"
+$py = Resolve-PythonExe -RepoRoot $RepoRoot
 chcp 65001 | Out-Null
 
 if (-not $env:OPENAI_API_KEY -or $env:OPENAI_API_KEY.Trim().Length -lt 20) {
@@ -23,7 +27,7 @@ try {
   ($j | ConvertTo-Json -Depth 50) | Set-Content -Encoding UTF8 $prov
 
   # Release v03
-  python .\tools\release_pack_v03.py --v03-config $V03Config --script $ScriptText --overwrite
+  & $py .\tools\release_pack_v03.py --v03-config $V03Config --script $ScriptText --overwrite
 
 } finally {
   # Revert seguro SIEMPRE

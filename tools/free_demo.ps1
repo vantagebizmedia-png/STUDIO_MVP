@@ -14,14 +14,18 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repo = $RepoRoot
+. "$PSScriptRoot\resolve_python.ps1"
+$py = Resolve-PythonExe -RepoRoot $RepoRoot
 
 if (!(Test-Path -LiteralPath ".\run.py")) { throw "Ejecuta desde la raíz (run.py)" }
 
-$py = @("-m","cli.free_demo")
+$pyArgs = @("-m","cli.free_demo")
 
-if ($Run) { $py += @("--run") } else { $py += @("--check") }
+if ($Run) { $pyArgs += @("--run") } else { $pyArgs += @("--check") }
 
-$py += @(
+$pyArgs += @(
   "--script", $Script,
   "--out-root", $OutRoot,
   "--edge-voice", $EdgeVoice,
@@ -30,5 +34,5 @@ $py += @(
   "--hf-provider", $HfProvider
 )
 
-& python @py
+& $py @pyArgs
 exit $LASTEXITCODE

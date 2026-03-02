@@ -73,6 +73,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference="Stop"
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repo = $RepoRoot
+. "$PSScriptRoot\resolve_python.ps1"
+$py = Resolve-PythonExe -RepoRoot $RepoRoot
 # STUDIO_FIX_MAXSCENES_V1: ensure --max_scenes always has a value (avoid argparse error)
 $__sbCount = $null
 try {
@@ -98,7 +102,7 @@ chcp 65001 | Out-Null
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $OutputEncoding = [Text.UTF8Encoding]::new($false)
 
-$Repo = Split-Path $PSScriptRoot -Parent
+$Repo = $RepoRoot
 $Ws = $env:STUDIO_WORKSPACE
 if (-not $Ws) { throw "STUDIO_WORKSPACE no esta seteado. Corre: .\studio.ps1 doctor" }
 if (-not [IO.Path]::IsPathRooted($Ws)) { throw "STUDIO_WORKSPACE debe ser absoluto: $Ws" }
@@ -191,7 +195,7 @@ if ($null -ne $argsList) {
 }
 # /ARGFILTER_V1
 
-python $(Join-Path (Resolve-Path (Join-Path $PSScriptRoot "..")).Path "run.py") "IGNORED" --seed $Seed --max_scenes 999 @argsList
+& $py (Join-Path $RepoRoot "run.py") "IGNORED" --seed $Seed --max_scenes 999 @argsList
 $exit = $LASTEXITCODE
 if ($exit -ne 0) { throw "run.py fallÃ³ (exit=$exit). No se copiarÃ¡ ningÃºn output." }
 

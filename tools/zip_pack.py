@@ -8,14 +8,11 @@ Uso:
 from __future__ import annotations
 
 import argparse
-import os
 import zipfile
 from pathlib import Path
-from datetime import datetime, timezone
 
 def default_out(pack_dir: Path) -> Path:
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    return pack_dir.parent / f"{pack_dir.name}_{ts}.zip"
+    return pack_dir.parent / f"{pack_dir.name}.final_delivery.zip"
 
 def add_dir(z: zipfile.ZipFile, root: Path, rel_base: Path) -> None:
     for p in root.rglob("*"):

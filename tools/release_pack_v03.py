@@ -4,7 +4,7 @@ Release bundle v0.3 (1 comando):
   RUN (cli.main --v03-config ...) -> manifest_v03.json
   EXPORT (export_v03_pack.py) -> pack_v03_<tag>/
   VALIDATE (validate_pack.py --fix)
-  ZIP (zip_pack.py) -> pack_v03_<tag>_<ts>.zip
+  ZIP (zip_pack.py) -> pack_v03_<tag>.final_delivery.zip
 
 Uso:
   python tools/release_pack_v03.py --v03-config config/studio_v03_text_smoke.json --script "hola" --overwrite
@@ -20,6 +20,17 @@ def run(cmd: list[str]) -> None:
     p = subprocess.run(cmd, text=True)
     if p.returncode != 0:
         raise SystemExit(f"ERROR: comando falló (exit={p.returncode}): {' '.join(cmd)}")
+
+
+def run_capture(cmd: list[str]) -> str:
+    p = subprocess.run(cmd, text=True, capture_output=True)
+    if p.stdout:
+        print(p.stdout, end="")
+    if p.stderr:
+        print(p.stderr, end="")
+    if p.returncode != 0:
+        raise SystemExit(f"ERROR: comando falló (exit={p.returncode}): {' '.join(cmd)}")
+    return str(p.stdout or "")
 
 def read_json(p: Path) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
@@ -54,28 +65,19 @@ def main() -> int:
     exp_cmd = ["python", "tools/export_v03_pack.py", "--manifest", str(manifest)]
     if args.overwrite:
         exp_cmd.append("--overwrite")
-    run(exp_cmd)
+    exp_out = run_capture(exp_cmd)
 
-    # Leer manifest exportado para derivar tag y ubicar pack_dir:
-    m = read_json(manifest)
-    cfgp = (m.get("config_path") or str(cfg)).strip()
-
-    # Determinar exports root usando misma lógica: workspace del config
-    cfg2 = json.loads(Path(cfgp).read_text(encoding="utf-8-sig"))
-    ws = (cfg2.get("workspace") or "").strip()
-    if ws:
-        ws_p = Path(ws)
-        if not ws_p.is_absolute():
-            ws_p = (Path.cwd() / ws_p).resolve()
-        exports_root = (ws_p / "exports").resolve()
-    else:
-        exports_root = (Path("workspace") / "exports").resolve()
-
-    # Pack más reciente
-    packs = sorted([p for p in exports_root.glob("pack_v03_*") if p.is_dir()], key=lambda x: x.stat().st_mtime, reverse=True)
-    if not packs:
-        raise SystemExit(f"ERROR: no encontré packs en {exports_root}")
-    pack_dir = packs[0]
+    pack_dir = None
+    for line in reversed(exp_out.splitlines()):
+        if line.strip().startswith("PACK_DIR:"):
+            raw = line.split(":", 1)[1].strip()
+            if raw:
+                pack_dir = Path(raw).expanduser().resolve()
+                break
+    if pack_dir is None:
+        raise SystemExit("ERROR: export_v03_pack.py no reportó PACK_DIR en stdout.")
+    if not pack_dir.exists() or not pack_dir.is_dir():
+        raise SystemExit(f"ERROR: PACK_DIR inválido reportado por export: {pack_dir}")
 
     # 3) VALIDATE (+fix checksums)
     run(["python", "tools/validate_pack.py", "--pack-dir", str(pack_dir), "--fix"])

@@ -86,8 +86,14 @@ def force_mode_copy(src_json: str, dst_json: str, mode: str) -> str:
     with open(src_json, "r", encoding="utf-8") as f:
         obj = json.load(f)
 
+    
     pipe_cfg = dict((obj.get("pipe") or {}) if isinstance(obj, dict) else {})
 
+        if not pipe_cfg:
+
+            # Compat: configs viejos con knobs al nivel raíz
+
+            pipe_cfg = {k: obj.get(k) for k in ("multiscene", "max_scenes", "scene_split") if k in obj}
     obj.setdefault("voice", {})
     obj.setdefault("image", {})
     obj["voice"]["mode"] = mode
@@ -152,8 +158,14 @@ def build_pipeline_from_v03_config(config_path: str) -> StudioPipeline:
     with open(config_path, "r", encoding="utf-8-sig") as f:
         obj = json.load(f)
 
+    
     pipe_cfg = dict((obj.get("pipe") or {}) if isinstance(obj, dict) else {})
 
+        if not pipe_cfg:
+
+            # Compat: configs viejos con knobs al nivel raíz
+
+            pipe_cfg = {k: obj.get(k) for k in ("multiscene", "max_scenes", "scene_split") if k in obj}
     work_dir = os.path.abspath(obj.get("work_dir") or "_v03_from_config/artifacts")
     workspace = obj.get("workspace") or ""
     if workspace:
@@ -198,4 +210,5 @@ def build_pipeline_from_v03_config(config_path: str) -> StudioPipeline:
     except Exception:
         pass
     return pipe
+
 

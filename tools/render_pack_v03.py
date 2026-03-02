@@ -176,6 +176,8 @@ def _concat(ffmpeg: str, segs: List[Path], out_mp4: Path, loglevel: str, stats: 
     print("FFMPEG:", _pretty(cmd))
     subprocess.check_call(cmd)
 
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pack-dir", required=True)
@@ -321,6 +323,7 @@ def _burn_subtitles_from_pack(
     print("FFMPEG:", _pretty(cmd))
     subprocess.check_call(cmd)
     return True
+
 
 
 

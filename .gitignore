@@ -90,3 +90,5 @@ _v03_smoke_cfg*/
 _v03_legacy_run*/
 _v03_*/
 _freeze_*/
+# Allow committed tool scripts
+!tools/smoke_live_to_workspace_v03.ps1

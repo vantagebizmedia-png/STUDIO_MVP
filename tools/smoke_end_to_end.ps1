@@ -18,12 +18,7 @@ $env:TMP  = $env:TEMP
 Write-Host "=== SMOKE v0.3 (determinista) ==="
 
 # Compila SOLO carpetas relevantes (evita _archive con cosas rotas)
-& $py -c "import compileall, sys, os; ok=True;
-ok = ok and compileall.compile_dir('studio', quiet=1) if os.path.isdir('studio') else ok;
-ok = ok and compileall.compile_dir('cli', quiet=1) if os.path.isdir('cli') else ok;
-ok = ok and compileall.compile_dir('tools', quiet=1) if os.path.isdir('tools') else ok;
-ok = ok and compileall.compile_dir('tests', quiet=1) if os.path.isdir('tests') else ok;
-sys.exit(0 if ok else 1)"
+& $py -c "import compileall, sys, os; ok=True; ok = ok and compileall.compile_dir('studio', quiet=1) if os.path.isdir('studio') else ok; ok = ok and compileall.compile_dir('cli', quiet=1) if os.path.isdir('cli') else ok; ok = ok and compileall.compile_dir('tools', quiet=1) if os.path.isdir('tools') else ok; ok = ok and compileall.compile_dir('tests', quiet=1) if os.path.isdir('tests') else ok; sys.exit(0 if ok else 1)"
 
 # Tests (sin cacheprovider; basetemp controlado)
 & $py -m pytest -q --basetemp $env:TEMP -p no:cacheprovider

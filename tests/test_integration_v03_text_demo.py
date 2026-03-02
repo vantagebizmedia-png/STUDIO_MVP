@@ -1,8 +1,6 @@
 import json
-import sys
 from pathlib import Path
 import subprocess
-import sys
 
 def test_v03_text_demo_generates_manifest_and_artifacts(tmp_path):
     # Corre CLI con config demo_text (offline)
@@ -10,7 +8,7 @@ def test_v03_text_demo_generates_manifest_and_artifacts(tmp_path):
     assert cfg.exists(), "Falta config/studio_v03_text_smoke.json"
 
     p = subprocess.run(
-        [sys.executable, "-m", "cli.main", "--v03-config", str(cfg), "--script", "integration test v03 text"],
+        ["python", "-m", "cli.main", "--v03-config", str(cfg), "--script", "integration test v03 text"],
         text=True,
         capture_output=True,
     )
@@ -40,4 +38,3 @@ def test_v03_text_demo_generates_manifest_and_artifacts(tmp_path):
     assert sp.stat().st_size > 0, "script.txt vacio"
     assert ip.stat().st_size > 0, "image.png vacio"
     assert ap.stat().st_size > 0, "audio.wav vacio"
-

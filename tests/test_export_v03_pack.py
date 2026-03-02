@@ -2,7 +2,6 @@
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -32,7 +31,8 @@ def test_export_v03_pack_uses_manifest_parent_and_emits_relative_paths(tmp_path)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
     out_root = tmp_path / "exports"
-    cmd = [sys.executable,
+    cmd = [
+        "python",
         "tools/export_v03_pack.py",
         "--manifest",
         str(manifest_path),
@@ -138,7 +138,8 @@ def test_export_v03_pack_multiscene_paths_are_stable_and_relative(tmp_path):
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
     out_root = tmp_path / "exports"
-    cmd = [sys.executable,
+    cmd = [
+        "python",
         "tools/export_v03_pack.py",
         "--manifest",
         str(manifest_path),
@@ -169,4 +170,3 @@ def test_export_v03_pack_multiscene_paths_are_stable_and_relative(tmp_path):
             rel = str(arts.get(k) or "")
             assert rel, f"manifest exportado sin scenes.artifacts.{k}"
             assert not Path(rel).is_absolute(), f"manifest exportado con absoluto en scenes.artifacts.{k}: {rel}"
-

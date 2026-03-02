@@ -296,9 +296,41 @@ class StudioPipeline:
         scenes: list[dict] | None = None,
         subtitles_path: str = "",
     ) -> None:
+        """
+        v0.3 manifest writer (bridge):
+        - Mantiene artifacts + scenes legacy (compat)
+        - Añade scenes_v03 + scene_builder_v03 (Scene Builder LIVE)
+        - NO rompe export actual porque scenes_v03 referencia paths ya presentes en scenes[].artifacts
+        """
         try:
             base_dir = os.path.abspath(self.work_dir or ".")
-            manifest = {
+
+            def _abs_from_rel(relp: str) -> str:
+                p = str(relp or "").strip()
+                if not p:
+                    return ""
+                if os.path.isabs(p):
+                    return p
+                return os.path.abspath(os.path.join(base_dir, p))
+
+            def _wav_ms(path_abs: str) -> int:
+                try:
+                    if not path_abs:
+                        return 0
+                    if not os.path.exists(path_abs):
+                        return 0
+                    with wave.open(path_abs, "rb") as wf:
+                        fr = wf.getframerate()
+                        if fr <= 0:
+                            return 0
+                        frames = wf.getnframes()
+                        sec = frames / float(fr)
+                        ms = int(round(sec * 1000.0))
+                        return max(0, ms)
+                except Exception:
+                    return 0
+
+            manifest: dict[str, Any] = {
                 "version": "v0.3",
                 "mode": "RUN",
                 "work_dir": ".",
@@ -314,11 +346,13 @@ class StudioPipeline:
                     "audio": _rel_to_base(aud_path, base_dir),
                 },
             }
+
             sub_rel = _rel_to_base(str(subtitles_path or ""), base_dir)
             if sub_rel:
                 manifest["artifacts"]["subtitles"] = sub_rel
+
+            scenes_rel: list[dict] = []
             if scenes:
-                scenes_rel = []
                 for s in scenes:
                     row = dict(s or {})
                     arts = dict(row.get("artifacts") or {})
@@ -329,12 +363,115 @@ class StudioPipeline:
                     }
                     scenes_rel.append(row)
                 manifest["scenes"] = scenes_rel
+
+            # -----------------------------
+            # Scene Builder v03 (LIVE) -> scenes_v03[]
+            # -----------------------------
+            scenes_v03: list[dict] = []
+            total_ms = 0
+            cursor = 0
+
+            if scenes_rel:
+                # Multi-scene: timeline = suma de duraciones de audios por escena
+                for i, sc in enumerate(scenes_rel):
+                    idx1 = int(sc.get("index") or (i + 1))
+                    sid = f"s{idx1:02d}"
+
+                    narration = str(sc.get("narration") or sc.get("audio_text") or "").strip()
+                    onscreen = str(sc.get("onscreen") or "").strip()
+                    q = str(sc.get("stock_query") or "").strip()
+                    if not q:
+                        q = narration or "concepto abstracto"
+
+                    a_rel = str((sc.get("artifacts") or {}).get("audio") or "")
+                    a_abs = _abs_from_rel(a_rel)
+                    dur = _wav_ms(a_abs)
+
+                    start_ms = int(cursor)
+                    end_ms = int(cursor + dur) if dur > 0 else int(cursor)
+
+                    scenes_v03.append(
+                        {
+                            "id": sid,
+                            "index": i,
+                            "start_ms": start_ms,
+                            "end_ms": end_ms,
+                            "duration_ms": int(max(0, end_ms - start_ms)),
+                            "script_text": narration or onscreen or f"Escena {idx1:02d}",
+                            "image_query": q,
+                            "assets": {
+                                # OJO: apuntamos a paths existentes en scenes legacy
+                                "image": str((sc.get("artifacts") or {}).get("image") or ""),
+                                "audio_clip": str((sc.get("artifacts") or {}).get("audio") or ""),
+                                "image_meta": {
+                                    "provider": "pixabay" if "pixabay" in str(_provider_id(self.image)).lower() else "image_provider",
+                                    "cache_hit": False,
+                                    "cache_key": "",
+                                    "query": q,
+                                },
+                            },
+                        }
+                    )
+
+                    cursor = end_ms
+                total_ms = int(cursor)
+
+            else:
+                # Single scene: usa artifacts globales
+                a_rel = str((manifest.get("artifacts") or {}).get("audio") or "")
+                a_abs = _abs_from_rel(a_rel)
+                total_ms = _wav_ms(a_abs)
+
+                # intentamos leer el script global
+                scr_rel = str((manifest.get("artifacts") or {}).get("script") or "")
+                scr_abs = _abs_from_rel(scr_rel)
+                script_txt = ""
+                try:
+                    if scr_abs and os.path.exists(scr_abs):
+                        with open(scr_abs, "r", encoding="utf-8", errors="ignore") as f:
+                            script_txt = (f.read() or "").strip()
+                except Exception:
+                    script_txt = ""
+
+                if not script_txt:
+                    script_txt = "Escena 01."
+
+                scenes_v03 = [
+                    {
+                        "id": "s01",
+                        "index": 0,
+                        "start_ms": 0,
+                        "end_ms": int(total_ms if total_ms > 0 else 0),
+                        "duration_ms": int(total_ms if total_ms > 0 else 0),
+                        "script_text": script_txt,
+                        "image_query": "concepto abstracto",
+                        "assets": {
+                            "image": str((manifest.get("artifacts") or {}).get("image") or ""),
+                            "audio_clip": str((manifest.get("artifacts") or {}).get("audio") or ""),
+                            "image_meta": {
+                                "provider": "pixabay" if "pixabay" in str(_provider_id(self.image)).lower() else "image_provider",
+                                "cache_hit": False,
+                                "cache_key": "",
+                                "query": "concepto abstracto",
+                            },
+                        },
+                    }
+                ]
+
+            # Validación mínima (no rompe)
+            if isinstance(scenes_v03, list) and len(scenes_v03) >= 1:
+                manifest["scenes_v03"] = scenes_v03
+                manifest["scene_builder_v03"] = {
+                    "max_scenes": int(getattr(self, "max_scenes", 1) or 1),
+                    "total_audio_ms": int(total_ms or 0),
+                    "note": "generated in LIVE by studio/pipeline.py; scenes legacy preserved",
+                }
+
             outp = os.path.join(self.work_dir, "manifest_v03.json")
             with open(outp, "w", encoding="utf-8") as f:
                 f.write(json.dumps(manifest, ensure_ascii=False, indent=2))
         except Exception:
             pass
-
     def run(self, script: str) -> tuple[str, str]:
         """Ejecuta pipeline v0.3.
 
@@ -521,5 +658,6 @@ class StudioPipeline:
         self._write_manifest(script_path=script_path, img_path=img, aud_path=aud, scenes=None)
         self._notify("listo", curr, total)
         return img, aud
+
 
 

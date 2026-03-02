@@ -59,6 +59,11 @@ class TestStudioPipeline(unittest.TestCase):
             return len(parts)
         return 1 if str(text or "").strip() else 0
 
+    @staticmethod
+    def _parse_srt_blocks(raw: str) -> list[list[str]]:
+        chunks = [c.strip() for c in str(raw or "").strip().split("\n\n") if c.strip()]
+        return [chunk.splitlines() for chunk in chunks]
+
     def test_run_crea_archivos_y_retorna_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = StudioPipeline(voice=_DummyVoice(), image=_DummyImage(), work_dir=tmp)
@@ -114,6 +119,18 @@ class TestStudioPipeline(unittest.TestCase):
                 self.assertEqual(script_txt.count("STOCK_QUERY:"), 1)
 
             manifest = json.loads((wd / "manifest_v03.json").read_text(encoding="utf-8"))
+            srt_path = wd / "artifacts" / "subtitles.srt"
+            self.assertTrue(srt_path.exists(), "falta artifacts/subtitles.srt")
+            srt_blocks = self._parse_srt_blocks(srt_path.read_text(encoding="utf-8"))
+            self.assertEqual(len(srt_blocks), len(manifest.get("scenes") or []))
+            tc_re = re.compile(r"^\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}$")
+            for i, block in enumerate(srt_blocks, start=1):
+                self.assertGreaterEqual(len(block), 3, f"bloque SRT incompleto #{i}")
+                self.assertEqual(block[0], str(i))
+                self.assertRegex(block[1], tc_re)
+                self.assertTrue(" ".join(block[2:]).strip())
+
+            self.assertEqual((manifest.get("artifacts") or {}).get("subtitles"), "artifacts/subtitles.srt")
             for scene in manifest.get("scenes") or []:
                 self.assertIn("narration", scene)
                 self.assertIn("onscreen", scene)

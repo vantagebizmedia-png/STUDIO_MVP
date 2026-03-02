@@ -36,6 +36,13 @@ def test_v03_multiscene_generates_scenes_and_manifest():
     image_rel = str(global_arts.get("image") or "")
     audio_rel = str(global_arts.get("audio") or "")
     assert script_rel and image_rel and audio_rel, f"artifacts globales invalidos: {global_arts}"
+    subtitles_rel = str(global_arts.get("subtitles") or "")
+    assert subtitles_rel, f"artifacts.subtitles faltante: {global_arts}"
+    subtitles_p0 = Path(subtitles_rel)
+    assert not subtitles_p0.is_absolute(), f"artifacts.subtitles debe ser relativo: {subtitles_rel}"
+    subtitles_fp = (work_dir / subtitles_p0).resolve()
+    assert subtitles_fp.exists(), f"subtitles.srt no existe: {subtitles_fp}"
+    assert subtitles_fp.stat().st_size > 0, f"subtitles.srt vacio: {subtitles_fp}"
     assert "_s01" in script_rel.replace("\\", "/"), f"script global debe apuntar a escena 1: {script_rel}"
     assert "_s01" in image_rel.replace("\\", "/"), f"image global debe apuntar a escena 1: {image_rel}"
     assert "_s01" in audio_rel.replace("\\", "/"), f"audio global debe apuntar a escena 1: {audio_rel}"

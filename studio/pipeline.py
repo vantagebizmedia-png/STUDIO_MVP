@@ -47,6 +47,25 @@ def _sha8(text: str) -> str:
     h = hashlib.sha256(text.encode("utf-8")).hexdigest()
     return h[:8]
 
+
+def _format_srt_time(ms_total: int) -> str:
+    ms = max(0, int(ms_total))
+    hh = ms // 3600000
+    rem = ms % 3600000
+    mm = rem // 60000
+    rem = rem % 60000
+    ss = rem // 1000
+    mmm = rem % 1000
+    return f"{hh:02d}:{mm:02d}:{ss:02d},{mmm:03d}"
+
+
+def _sanitize_subtitle_text(text: str, idx: int) -> str:
+    clean = str(text or "").replace("\r", " ").replace("\n", " ").strip()
+    if clean:
+        return clean
+    return f"Escena {idx:02d}."
+
+
 def _rel_to_base(path: str, base_dir: str) -> str:
     p = str(path or "").strip()
     if not p:
@@ -243,7 +262,40 @@ class StudioPipeline:
             "audio": audio_dst,
         }
 
-    def _write_manifest(self, *, script_path: str, img_path: str, aud_path: str, scenes: list[dict] | None = None) -> None:
+    def _write_subtitles_srt(self, scenes: list[dict]) -> str:
+        outp = os.path.join(self.work_dir, "artifacts", "subtitles.srt")
+        os.makedirs(os.path.dirname(outp) or ".", exist_ok=True)
+
+        ordered = sorted(
+            [dict(s or {}) for s in (scenes or []) if int((s or {}).get("index", 0) or 0) >= 1],
+            key=lambda x: int(x.get("index", 0) or 0),
+        )
+        scene_duration_ms = 2500
+        blocks: list[str] = []
+        for pos, scene in enumerate(ordered):
+            idx = int(scene.get("index", 0) or 0) or (pos + 1)
+            start_ms = pos * scene_duration_ms
+            end_ms = (pos + 1) * scene_duration_ms
+            text = _sanitize_subtitle_text(str(scene.get("narration", "") or ""), idx)
+            blocks.append(
+                f"{pos + 1}\n"
+                f"{_format_srt_time(start_ms)} --> {_format_srt_time(end_ms)}\n"
+                f"{text}\n"
+            )
+        payload = "\n".join(blocks).rstrip() + "\n"
+        with open(outp, "w", encoding="utf-8") as f:
+            f.write(payload)
+        return outp
+
+    def _write_manifest(
+        self,
+        *,
+        script_path: str,
+        img_path: str,
+        aud_path: str,
+        scenes: list[dict] | None = None,
+        subtitles_path: str = "",
+    ) -> None:
         try:
             base_dir = os.path.abspath(self.work_dir or ".")
             manifest = {
@@ -262,6 +314,9 @@ class StudioPipeline:
                     "audio": _rel_to_base(aud_path, base_dir),
                 },
             }
+            sub_rel = _rel_to_base(str(subtitles_path or ""), base_dir)
+            if sub_rel:
+                manifest["artifacts"]["subtitles"] = sub_rel
             if scenes:
                 scenes_rel = []
                 for s in scenes:
@@ -438,8 +493,16 @@ class StudioPipeline:
             if not first_script:
                 first_script = script_path
 
+            subtitles_path = self._write_subtitles_srt(scenes_meta)
+
             # artifacts apuntan a escena 1 (compat), script "global" se mantiene
-            self._write_manifest(script_path=first_script, img_path=first_img, aud_path=first_aud, scenes=scenes_meta)
+            self._write_manifest(
+                script_path=first_script,
+                img_path=first_img,
+                aud_path=first_aud,
+                scenes=scenes_meta,
+                subtitles_path=subtitles_path,
+            )
             self._notify("listo", total_ms, total_ms)
             return first_img, first_aud
 

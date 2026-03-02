@@ -1,6 +1,38 @@
 # -*- coding: utf-8 -*-
 """Renderiza un pack exportado (pack_v03_*) a video.mp4 usando FFmpeg.
 
+def _detect_subtitles_srt(pack_dir: str) -> str:
+    try:
+        import os, json
+        pd = os.path.abspath(pack_dir or "")
+        if not pd or not os.path.isdir(pd):
+            return ""
+        # 1) si existe directo
+        direct = os.path.join(pd, "subtitles.srt")
+        if os.path.exists(direct):
+            return direct
+        # 2) si manifest tiene artifacts.subtitles
+        mf = os.path.join(pd, "manifest_v03.json")
+        if os.path.exists(mf):
+            m = json.loads(open(mf, "r", encoding="utf-8").read())
+            sub = ((m.get("artifacts") or {}).get("subtitles") or "").strip()
+            if sub:
+                cand = os.path.join(pd, sub)
+                if os.path.exists(cand):
+                    return cand
+        # 3) si pack.json tiene source/paths (o scenes) - best effort
+        pj = os.path.join(pd, "pack.json")
+        if os.path.exists(pj):
+            p = json.loads(open(pj, "r", encoding="utf-8").read())
+            # algunos packs podrían guardar ruta directa
+            sub = (p.get("subtitles") or "").strip()
+            if sub:
+                cand = os.path.join(pd, sub)
+                if os.path.exists(cand):
+                    return cand
+        return ""
+    except Exception:
+        return ""
 Compat:
 - pack sin scenes: usa artifacts/image.png + artifacts/audio.wav
 - pack con scenes[] (pack.json): renderiza segmentos y concatena
@@ -215,6 +247,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
 
 

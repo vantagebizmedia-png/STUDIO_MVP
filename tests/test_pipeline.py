@@ -119,8 +119,8 @@ class TestStudioPipeline(unittest.TestCase):
                 self.assertEqual(script_txt.count("STOCK_QUERY:"), 1)
 
             manifest = json.loads((wd / "manifest_v03.json").read_text(encoding="utf-8"))
-            srt_path = wd / "artifacts" / "subtitles.srt"
-            self.assertTrue(srt_path.exists(), "falta artifacts/subtitles.srt")
+            srt_path = wd / "subtitles.srt"
+            self.assertTrue(srt_path.exists(), "falta subtitles.srt")
             srt_blocks = self._parse_srt_blocks(srt_path.read_text(encoding="utf-8"))
             self.assertEqual(len(srt_blocks), len(manifest.get("scenes") or []))
             tc_re = re.compile(r"^\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}$")
@@ -130,7 +130,7 @@ class TestStudioPipeline(unittest.TestCase):
                 self.assertRegex(block[1], tc_re)
                 self.assertTrue(" ".join(block[2:]).strip())
 
-            self.assertEqual((manifest.get("artifacts") or {}).get("subtitles"), "artifacts/subtitles.srt")
+            self.assertEqual((manifest.get("artifacts") or {}).get("subtitles"), "subtitles.srt")
             for scene in manifest.get("scenes") or []:
                 self.assertIn("narration", scene)
                 self.assertIn("onscreen", scene)
@@ -171,3 +171,4 @@ class TestStudioPipeline(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

@@ -86,3 +86,4 @@ def test_v03_multiscene_generates_scenes_and_manifest():
         legacy_script = work_dir / f"script_{tag}_s{idx:02d}.txt"
         assert legacy_script.exists(), f"falta script legacy por escena: {legacy_script}"
         assert legacy_script.read_text(encoding="utf-8") == scene_script
+

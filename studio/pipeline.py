@@ -263,7 +263,7 @@ class StudioPipeline:
         }
 
     def _write_subtitles_srt(self, scenes: list[dict]) -> str:
-        outp = os.path.join(self.work_dir, "artifacts", "subtitles.srt")
+        outp = os.path.join(self.work_dir, "subtitles.srt")
         os.makedirs(os.path.dirname(outp) or ".", exist_ok=True)
 
         ordered = sorted(
@@ -521,3 +521,5 @@ class StudioPipeline:
         self._write_manifest(script_path=script_path, img_path=img, aud_path=aud, scenes=None)
         self._notify("listo", curr, total)
         return img, aud
+
+

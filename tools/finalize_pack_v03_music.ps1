@@ -36,6 +36,10 @@ $videoFinal = Join-Path $pack "video_final.mp4"
 
 if (!(Test-Path -LiteralPath $video)) { throw "Falta video.mp4 (no puedo continuar): $video" }
 
+# Captura versión de ffmpeg (para determinismo/registro)
+$ffver = $null
+try { $ffver = (& ffmpeg -version 2>$null | Select-Object -First 1) } catch { $ffver = $null }
+
 # 2) Música (opcional)
 if ($MusicFile -and $MusicFile.Trim().Length -gt 0) {
   $music = (Resolve-Path $MusicFile).Path
@@ -51,19 +55,17 @@ if ($MusicFile -and $MusicFile.Trim().Length -gt 0) {
   Write-Host "OUT  : $videoMusic"
   Write-Host ""
 
-  # Ducking simple con sidechaincompress:
-  # - Stream 0: voz/video (incluye audio de voz)
-  # - Stream 1: música
-  # Mezcla: música atenuada por voz
-  $ff = "ffmpeg"
-
+  # Ducking + limiter (evita clipping)
   $filter = @"
-[1:a]volume=${MusicVolume}[m];
+[1:a:0]volume=${MusicVolume}[m];
 [m][0:a]sidechaincompress=ratio=${DuckingRatio}:threshold=0.02:attack=5:release=200[md];
-[0:a][md]amix=inputs=2:weights=1 1:normalize=0[aout]
+[0:a][md]amix=inputs=2:weights=1 1:normalize=0[mx];
+[mx]alimiter=limit=0.98[aout]
 "@.Trim()
 
-  & $ff -hide_banner -y `
+  # Nota: el MP3 puede traer portada (attached pic) como stream de video.
+  # Para "limpieza" sin cambiar comportamiento, silenciamos el banner y dejamos loglevel en error.
+  & ffmpeg -hide_banner -loglevel error -y `
     -i $baseForMusic `
     -stream_loop -1 -i $music `
     -filter_complex $filter `
@@ -118,19 +120,20 @@ $shaFile = "$zipPath.sha256.txt"
 ) | Set-Content -Encoding UTF8 $shaFile
 
 $handoff = Join-Path $pack "HANDOFF_READY.txt"
-@(
-  "HANDOFF_READY"
-  "PACK: $pack"
-  "ZIP: $zipPath"
-  "ZIP_SHA256: $($zh.Hash)"
-  ""
-  "OUTPUTS:"
-  ($include | ForEach-Object { " - " + $_ })
-) | Set-Content -Encoding UTF8 $handoff
+$lines = @()
+$lines += "HANDOFF_READY"
+$lines += "PACK: $pack"
+$lines += "ZIP: $zipPath"
+$lines += "ZIP_SHA256: $($zh.Hash)"
+if ($ffver) { $lines += ("FFMPEG: " + $ffver) }
+$lines += ""
+$lines += "OUTPUTS:"
+$lines += ($include | ForEach-Object { " - " + $_ })
+
+$lines | Set-Content -Encoding UTF8 $handoff
 
 Write-Host ""
 Write-Host "OK: ZIP + SHA256 + HANDOFF_READY.txt" -ForegroundColor Green
 Write-Host "ZIP: $zipPath"
 Write-Host "SHA: $shaFile"
 Write-Host "TXT: $handoff"
-

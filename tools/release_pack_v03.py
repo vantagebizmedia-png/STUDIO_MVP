@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import subprocess
 from pathlib import Path
 
@@ -37,11 +38,13 @@ def read_json(p: Path) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--python-exe", default="", help="Python exe para subprocess (default: sys.executable)")
     ap.add_argument("--v03-config", required=True)
     ap.add_argument("--script", default="hola live")
     ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args()
 
+    python_exe = (args.python_exe or sys.executable)
     cfg = Path(args.v03_config).resolve()
     if not cfg.exists():
         raise SystemExit(f"ERROR: no existe config: {cfg}")
@@ -62,7 +65,7 @@ def main() -> int:
             raise SystemExit(f"ERROR: no encontré manifest_v03.json en {work_dir} ni en fallback.")
 
     # 2) EXPORT
-    exp_cmd = ["python", "tools/export_v03_pack.py", "--manifest", str(manifest)]
+    exp_cmd = [python_exe, "tools/export_v03_pack.py", "--manifest", str(manifest)]
     if args.overwrite:
         exp_cmd.append("--overwrite")
     exp_out = run_capture(exp_cmd)
@@ -80,10 +83,10 @@ def main() -> int:
         raise SystemExit(f"ERROR: PACK_DIR inválido reportado por export: {pack_dir}")
 
     # 3) VALIDATE (+fix checksums)
-    run(["python", "tools/validate_pack.py", "--pack-dir", str(pack_dir), "--fix"])
+    run([python_exe, "tools/validate_pack.py", "--pack-dir", str(pack_dir), "--fix"])
 
     # 4) ZIP PACK
-    zip_cmd = ["python", "tools/zip_pack.py", "--pack-dir", str(pack_dir)]
+    zip_cmd = [python_exe, "tools/zip_pack.py", "--pack-dir", str(pack_dir)]
     if args.overwrite:
         zip_cmd.append("--overwrite")
     run(zip_cmd)
@@ -95,3 +98,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

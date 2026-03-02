@@ -81,3 +81,5 @@ exports/
 *.log
 .codex-home/
 .codex-home/
+# local temp
+.tmp/

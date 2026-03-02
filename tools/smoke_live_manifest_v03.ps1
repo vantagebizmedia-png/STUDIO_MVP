@@ -1,5 +1,5 @@
 param(
-  # smoke estándar genera aquí
+  # LIVE artifacts dir (por defecto _v03_smoke_cfg\artifacts)
   [string]$LiveDir = "",
   [int]$MaxScenes = 6
 )
@@ -10,13 +10,7 @@ chcp 65001 | Out-Null
 
 $repo = (Resolve-Path ".").Path
 
-# 0) Corre SMOKE LIVE (no asumimos que ya corrió)
-$smoke = Join-Path $repo "tools\studio.ps1"
-if (-not (Test-Path $smoke)) { throw "No existe: $smoke" }
-
-pwsh -NoProfile -ExecutionPolicy Bypass -File $smoke -Mode smoke
-
-# 1) Descubre LiveDir si no lo pasas (preferimos _v03_smoke_cfg\artifacts)
+# 1) Descubre LiveDir si no lo pasas
 if (-not $LiveDir -or $LiveDir.Trim().Length -lt 3) {
   $cand = Join-Path $repo "_v03_smoke_cfg\artifacts"
   if (Test-Path $cand) {
@@ -44,7 +38,7 @@ if (-not ($m.PSObject.Properties.Name -contains "scenes_v03")) { throw "manifest
 
 $sc = @($m.scenes_v03)
 if ($sc.Count -lt 1) { throw "scenes_v03[] vacío en LIVE" }
-if ($sc.Count -gt $MaxScenes) { throw "scenes_v03.Count > MaxScenes en LIVE" }
+if ($sc.Count -gt $MaxScenes) { throw "scenes_v03.Count > MaxScenes en LIVE (Count=$($sc.Count) MaxScenes=$MaxScenes)" }
 
 $total = 0
 try { $total = [int]($m.scene_builder_v03.total_audio_ms) } catch { $total = 0 }
@@ -64,22 +58,18 @@ for ($i=0; $i -lt $sc.Count; $i++) {
 
   if ($start -lt 0) { throw "start_ms < 0 en escena $i (LIVE)" }
   if ($end -le $start) { throw "end_ms <= start_ms en escena $i (LIVE) (start=$start end=$end)" }
-  if ($start -lt $prevEnd) { throw "timestamps no monotónicos en escena $i (LIVE)" }
+  if ($start -lt $prevEnd) { throw "timestamps no monotónicos en escena $i (LIVE) prevEnd=$prevEnd start=$start" }
   $prevEnd = $end
 
   $imgRel = $s.assets.image
   if (-not $imgRel) { throw "Escena $i sin assets.image (LIVE)" }
-
-  $imgRel = [string]$imgRel
-  $imgRel = $imgRel.Replace("/", "\")  # tolera json con /
+  $imgRel = ([string]$imgRel).Replace("/", "\")
   $imgPath = Join-Path $live $imgRel
   if (-not (Test-Path $imgPath)) { throw "Imagen no existe (LIVE): $imgPath" }
 
   $acRel = $s.assets.audio_clip
   if (-not $acRel) { throw "Escena $i sin assets.audio_clip (LIVE)" }
-
-  $acRel = [string]$acRel
-  $acRel = $acRel.Replace("/", "\")
+  $acRel = ([string]$acRel).Replace("/", "\")
   $acPath = Join-Path $live $acRel
   if (-not (Test-Path $acPath)) { throw "Audio clip no existe (LIVE): $acPath" }
 }

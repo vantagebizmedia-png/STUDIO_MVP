@@ -21,6 +21,9 @@ from pathlib import Path
 from typing import Iterable
 
 
+FIXED_ZIP_DT = (1980, 1, 1, 0, 0, 0)
+
+
 def sha256_file(p: Path) -> str:
     h = hashlib.sha256()
     with p.open("rb") as f:
@@ -30,7 +33,7 @@ def sha256_file(p: Path) -> str:
 
 
 def _stable_files(root: Path) -> Iterable[Path]:
-    items = [p for p in root.rglob("*") if p.is_file()]
+    items = [p for p in root.rglob("*") if p.is_file() and p.name != "HANDOFF_READY.txt"]
     return sorted(items, key=lambda x: str(x.relative_to(root)).replace("\\", "/"))
 
 
@@ -41,7 +44,7 @@ def make_deterministic_zip(pack_dir: Path, out_zip: Path) -> None:
             rel = fp.relative_to(pack_dir)
             arc = (Path(pack_dir.name) / rel).as_posix()
             zi = zipfile.ZipInfo(arc)
-            zi.date_time = (1980, 1, 1, 0, 0, 0)
+            zi.date_time = FIXED_ZIP_DT
             zi.compress_type = zipfile.ZIP_DEFLATED
             zi.external_attr = 0o100644 << 16
             zf.writestr(zi, fp.read_bytes())
@@ -71,10 +74,11 @@ def write_handoff_ready(pack_dir: Path, zip_path: Path, zip_sha: str, auto_music
     return out
 
 
-def _run(cmd: list[str]) -> None:
-    p = subprocess.run(cmd, text=True)
-    if p.returncode != 0:
-        raise SystemExit(f"ERROR: comando falló (exit={p.returncode}): {' '.join(cmd)}")
+def _run(cmd: list[str], **kwargs) -> None:
+    # kwargs: capture_output, stdin, etc.
+    p = subprocess.run(cmd, text=True, **kwargs)
+    if getattr(p, "returncode", 1) != 0:
+        raise SystemExit(f"ERROR: comando falló (exit={p.returncode}): {' '.join([str(x) for x in cmd])}")
 
 
 def ensure_video_base(pack_dir: Path, python_exe: str) -> Path:
@@ -106,7 +110,7 @@ def produce_delivery_videos(pack_dir: Path, python_exe: str, auto_music: bool, m
             "-ExecutionPolicy",
             "Bypass",
             "-File",
-            "tools/finalize_pack_auto_music.ps1",
+            "finalize_pack_auto_music.ps1",
             "-PackDir",
             str(pack_dir),
             "-MusicDir",
@@ -117,14 +121,20 @@ def produce_delivery_videos(pack_dir: Path, python_exe: str, auto_music: bool, m
             "video_music_auto.mp4",
             "-FinalVideoName",
             "video_final.mp4",
-        ])
+        ], cwd=str(Path(__file__).resolve().parent))
         if not video_music.exists() or video_music.stat().st_size <= 0:
             raise SystemExit(f"ERROR: falta video_music_auto.mp4 en {pack_dir}")
         if not video_final.exists() or video_final.stat().st_size <= 0:
             raise SystemExit(f"ERROR: falta video_final.mp4 en {pack_dir}")
     else:
+        # sin auto-music: copia determinista del video base
         _copy_file(video, video_music)
         _copy_file(video, video_final)
+
+        if not video_music.exists() or video_music.stat().st_size <= 0:
+            raise SystemExit(f"ERROR: falta video_music_auto.mp4 en {pack_dir}")
+        if not video_final.exists() or video_final.stat().st_size <= 0:
+            raise SystemExit(f"ERROR: falta video_final.mp4 en {pack_dir}")
 
     return video, video_music, video_final
 
@@ -143,24 +153,33 @@ def main() -> int:
     if not (pack_dir / "pack.json").exists():
         raise SystemExit(f"ERROR: no existe pack.json en: {pack_dir}")
 
-    produce_delivery_videos(pack_dir, args.python_exe, bool(args.auto_music), str(args.music_dir))
+    auto_music = bool(getattr(args, "auto_music", False) or getattr(args, "autoMusic", False) or getattr(args, "automusic", False))
+    produce_delivery_videos(pack_dir, args.python_exe, auto_music, str(args.music_dir))
 
+    # ZIP + sha (en el parent del pack)
     zip_path = pack_dir.parent / f"{pack_dir.name}.final_delivery.zip"
     make_deterministic_zip(pack_dir, zip_path)
-    sha_path = write_sha_file(zip_path)
-    zip_sha = sha_path.read_text(encoding="ascii").split("  ", 1)[0].strip().lower()
-    handoff = write_handoff_ready(pack_dir, zip_path, zip_sha, bool(args.auto_music))
+    sha_file = write_sha_file(zip_path)
 
-    print("OK: finalize handoff")
-    print("PACK_DIR:", str(pack_dir))
-    print("VIDEO_BASE:", str(pack_dir / "video.mp4"))
-    print("VIDEO_MUSIC_AUTO:", str(pack_dir / "video_music_auto.mp4"))
-    print("VIDEO_FINAL:", str(pack_dir / "video_final.mp4"))
-    print("ZIP:", str(zip_path))
-    print("ZIP_SHA256_FILE:", str(sha_path))
-    print("HANDOFF_READY:", str(handoff))
+    # HANDOFF_READY dentro del pack
+    zip_sha = sha256_file(zip_path)
+    write_handoff_ready(pack_dir, zip_path, zip_sha, auto_music)
+
+    # sanity final
+    if not (pack_dir / "video.mp4").exists():
+        raise SystemExit("ERROR: falta video.mp4")
+    if not (pack_dir / "video_music_auto.mp4").exists():
+        raise SystemExit("ERROR: falta video_music_auto.mp4")
+    if not (pack_dir / "video_final.mp4").exists():
+        raise SystemExit("ERROR: falta video_final.mp4")
+    if not zip_path.exists() or zip_path.stat().st_size <= 0:
+        raise SystemExit("ERROR: no se generó el ZIP final")
+    if not sha_file.exists() or sha_file.stat().st_size <= 0:
+        raise SystemExit("ERROR: no se generó el SHA del ZIP")
+
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

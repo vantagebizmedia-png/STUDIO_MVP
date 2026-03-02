@@ -71,7 +71,7 @@ def test_finalize_handoff_auto_music_uses_music_outputs(tmp_path, monkeypatch):
 
     calls = []
 
-    def _fake_run(cmd, text=True):
+    def _fake_run(cmd, text=True, **kwargs):
         calls.append([str(x) for x in cmd])
         if "finalize_pack_auto_music.ps1" in [str(x) for x in cmd]:
             (pack_dir / "video_music_auto.mp4").write_bytes(b"music-video")
@@ -94,3 +94,4 @@ def test_finalize_handoff_auto_music_uses_music_outputs(tmp_path, monkeypatch):
     assert (pack_dir / "video_music_auto.mp4").read_bytes() == b"music-video"
     assert (pack_dir / "video_final.mp4").read_bytes() == b"music-video"
     assert "AUTO_MUSIC_ENABLED: true" in (pack_dir / "HANDOFF_READY.txt").read_text(encoding="utf-8")
+

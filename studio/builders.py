@@ -86,6 +86,8 @@ def force_mode_copy(src_json: str, dst_json: str, mode: str) -> str:
     with open(src_json, "r", encoding="utf-8") as f:
         obj = json.load(f)
 
+    pipe_cfg = dict((obj.get("pipe") or {}) if isinstance(obj, dict) else {})
+
     obj.setdefault("voice", {})
     obj.setdefault("image", {})
     obj["voice"]["mode"] = mode
@@ -150,6 +152,8 @@ def build_pipeline_from_v03_config(config_path: str) -> StudioPipeline:
     with open(config_path, "r", encoding="utf-8-sig") as f:
         obj = json.load(f)
 
+    pipe_cfg = dict((obj.get("pipe") or {}) if isinstance(obj, dict) else {})
+
     work_dir = os.path.abspath(obj.get("work_dir") or "_v03_from_config/artifacts")
     workspace = obj.get("workspace") or ""
     if workspace:
@@ -184,9 +188,9 @@ def build_pipeline_from_v03_config(config_path: str) -> StudioPipeline:
     # HOTFIX: knobs multiscene desde config v0.3
     try:
         setattr(pipe, "_v03_config_path", config_path)
-        setattr(pipe, "multiscene", bool(obj.get("multiscene", False)))
-        setattr(pipe, "max_scenes", int(obj.get("max_scenes", 1) or 1))
-        setattr(pipe, "scene_split", str(obj.get("scene_split", "auto") or "auto"))
+        setattr(pipe, "multiscene", bool(pipe_cfg.get("multiscene", False)))
+        setattr(pipe, "max_scenes", int(pipe_cfg.get("max_scenes", 1) or 1))
+        setattr(pipe, "scene_split", str(pipe_cfg.get("scene_split", "auto") or "auto"))
     except Exception:
         pass
     try:
@@ -195,27 +199,3 @@ def build_pipeline_from_v03_config(config_path: str) -> StudioPipeline:
         pass
     return pipe
 
-
-    from studio.registry import build_provider
-
-    config_path = os.path.abspath(config_path)
-    with open(config_path, "r", encoding="utf-8-sig") as f:
-        obj = json.load(f)
-
-    work_dir = os.path.abspath(obj.get("work_dir") or "_v03_from_config/artifacts")
-    workspace = obj.get("workspace") or ""
-    if workspace:
-        os.environ["STUDIO_WORKSPACE"] = os.path.abspath(workspace)
-
-    v = obj.get("voice") or {}
-    i = obj.get("image") or {}
-
-    voice = build_provider(v.get("provider", ""), v.get("config") or {})
-    image = build_provider(i.get("provider", ""), i.get("config") or {})
-
-    if hasattr(voice, "validate"):
-        voice.validate()
-    if hasattr(image, "validate"):
-        image.validate()
-
-    return StudioPipeline(voice=voice, image=image, work_dir=work_dir)

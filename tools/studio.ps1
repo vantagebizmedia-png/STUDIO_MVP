@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("demo","legacy-demo","legacy","smoke","smoke-e2e")]
+  [ValidateSet("demo","legacy-demo","legacy","smoke","smoke-e2e","smoke-multiscene")]
   [string]$Mode = "smoke",
 
   [string]$Script = "hola",
@@ -21,6 +21,28 @@ if (!(Test-Path -LiteralPath ".\tools\smoke_v03.ps1")) { throw "Falta tools\smok
 
 if ($Mode -eq "smoke") {
   & powershell -NoProfile -NoLogo -NonInteractive -ExecutionPolicy Bypass -File .\tools\smoke_v03.ps1
+  exit $LASTEXITCODE
+}
+
+if ($Mode -eq "smoke-multiscene") {
+  & powershell -NoProfile -NoLogo -NonInteractive -ExecutionPolicy Bypass -File .\tools\smoke_v03.ps1
+  if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+  }
+
+  $scriptMultiscene = @"
+ESCENA 01
+NARRACION: prueba uno.
+ONSCREEN: prueba
+STOCK_QUERY: persona estudio
+---
+ESCENA 02
+NARRACION: prueba dos.
+ONSCREEN: prueba
+STOCK_QUERY: cuaderno notas
+"@
+
+  & python -m cli.main --v03-config ".\config\studio_v03_multiscene_smoke.json" --script $scriptMultiscene
   exit $LASTEXITCODE
 }
 

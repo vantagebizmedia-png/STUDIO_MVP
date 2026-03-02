@@ -234,6 +234,18 @@ def main() -> int:
                           args.crf, args.preset, args.audio_bitrate, args.loglevel, args.stats)
 
         if out.exists():
+                            # Burn-in subtitles (si existe pack_dir/subtitles.srt)
+                try:
+                    out_sub = out.with_name("video_subtitles.mp4")
+                    if _burn_subtitles_from_pack(
+                        args.ffmpeg, pack_dir, out, out_sub,
+                        args.crf, args.preset, args.audio_bitrate,
+                        args.loglevel, args.stats,
+                    ):
+                        print("OK: video_subtitles creado")
+                        print(f"VIDEO_SUBTITLES: {out_sub}")
+                except Exception as e:
+                    print(f"WARNING: burn subtitles failed: {e}")
             print("OK: video creado")
             print("VIDEO:", str(out))
             print("BYTES:", out.stat().st_size)
@@ -254,5 +266,60 @@ if __name__ == "__main__":
 
 
 
+
+
+
+def _ffmpeg_subtitles_path(p: Path) -> str:
+    # Similar a tools/burn_subtitles.py
+    s = str(p.resolve()).replace("\\", "/")
+    # Escapa "C:" -> "C\:" para el filtro subtitles
+    if len(s) >= 2 and s[1] == ":":
+        s = s[0] + "\\:" + s[2:]
+    return s
+
+
+def _burn_subtitles_from_pack(
+    ffmpeg: str,
+    pack_dir: Path,
+    video_in: Path,
+    video_out: Path,
+    crf: str,
+    preset: str,
+    audio_bitrate: str,
+    loglevel: str,
+    stats: bool,
+) -> bool:
+    srt = pack_dir / "subtitles.srt"
+    if not srt.exists():
+        return False
+
+    sub_path = _ffmpeg_subtitles_path(srt)
+    vf = (
+        f"subtitles='{sub_path}':charenc=UTF-8:"
+        f"force_style='FontName=Arial,FontSize=20,Outline=2,Shadow=0,MarginV=28,Alignment=2'"
+    )
+
+    cmd: List[str] = [ffmpeg, "-hide_banner", "-loglevel", loglevel, "-y"]
+    if stats:
+        cmd.append("-stats")
+
+    cmd += [
+        "-i", str(video_in),
+        "-vf", vf,
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-preset", str(preset),
+        "-crf", str(crf),
+        "-c:a", "aac",
+        "-b:a", str(audio_bitrate),
+        "-movflags", "+faststart",
+        "-map_metadata", "-1",
+        "-map_chapters", "-1",
+        str(video_out),
+    ]
+
+    print("FFMPEG:", _pretty(cmd))
+    subprocess.check_call(cmd)
+    return True
 
 

@@ -180,6 +180,28 @@ def _concat(ffmpeg: str, segs: List[Path], out_mp4: Path, loglevel: str, stats: 
 
 
 
+
+def _ffmpeg_subtitles_path(p: Path) -> str:
+    # Similar a tools/burn_subtitles.py
+    s = str(p.resolve()).replace("\\", "/")
+    # Escapa "C:" -> "C\:" para el filtro subtitles
+    if len(s) >= 2 and s[1] == ":":
+        s = s[0] + "\\:" + s[2:]
+    return s
+
+
+
+def _burn_subtitles_from_pack(
+    ffmpeg: str,
+    pack_dir: Path,
+    video_in: Path,
+    video_out: Path,
+    crf: str,
+    preset: str,
+    audio_bitrate: str,
+    loglevel: str,
+    stats: bool,
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pack-dir", required=True)
@@ -264,37 +286,6 @@ def main() -> int:
         else:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
-
-
-
-
-
-
-
-
-def _ffmpeg_subtitles_path(p: Path) -> str:
-    # Similar a tools/burn_subtitles.py
-    s = str(p.resolve()).replace("\\", "/")
-    # Escapa "C:" -> "C\:" para el filtro subtitles
-    if len(s) >= 2 and s[1] == ":":
-        s = s[0] + "\\:" + s[2:]
-    return s
-
-
-def _burn_subtitles_from_pack(
-    ffmpeg: str,
-    pack_dir: Path,
-    video_in: Path,
-    video_out: Path,
-    crf: str,
-    preset: str,
-    audio_bitrate: str,
-    loglevel: str,
-    stats: bool,
 ) -> bool:
     srt = pack_dir / "subtitles.srt"
     if not srt.exists():
@@ -328,6 +319,20 @@ def _burn_subtitles_from_pack(
     print("FFMPEG:", _pretty(cmd))
     subprocess.check_call(cmd)
     return True
+
+
+
+
+
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+
+
+
 
 
 

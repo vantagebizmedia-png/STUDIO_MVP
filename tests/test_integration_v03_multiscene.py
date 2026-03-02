@@ -1,6 +1,10 @@
 import json
 import re
+import sys
+import subprocess
 from pathlib import Path
+import subprocess
+import sys
 import subprocess
 
 
@@ -17,7 +21,7 @@ def test_v03_multiscene_generates_scenes_and_manifest():
 
     script = "escena uno\n---\nescena dos\n---\nescena tres"
     p = subprocess.run(
-        ["python", "-m", "cli.main", "--v03-config", str(cfg), "--script", script],
+        [sys.executable, "-m", "cli.main", "--v03-config", str(cfg), "--script", script],
         text=True,
         capture_output=True,
     )
@@ -86,4 +90,5 @@ def test_v03_multiscene_generates_scenes_and_manifest():
         legacy_script = work_dir / f"script_{tag}_s{idx:02d}.txt"
         assert legacy_script.exists(), f"falta script legacy por escena: {legacy_script}"
         assert legacy_script.read_text(encoding="utf-8") == scene_script
+
 

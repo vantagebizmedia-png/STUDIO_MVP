@@ -1,8 +1,12 @@
 import json
 import sys
+import sys
+import subprocess
 from pathlib import Path
 import subprocess
 import sys
+import sys
+import subprocess
 
 def test_v03_text_demo_generates_manifest_and_artifacts(tmp_path):
     # Corre CLI con config demo_text (offline)
@@ -40,4 +44,5 @@ def test_v03_text_demo_generates_manifest_and_artifacts(tmp_path):
     assert sp.stat().st_size > 0, "script.txt vacio"
     assert ip.stat().st_size > 0, "image.png vacio"
     assert ap.stat().st_size > 0, "audio.wav vacio"
+
 

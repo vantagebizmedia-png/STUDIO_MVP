@@ -2,6 +2,8 @@
 
 import json
 import subprocess
+import sys
+import subprocess
 from pathlib import Path
 
 
@@ -31,8 +33,7 @@ def test_export_v03_pack_uses_manifest_parent_and_emits_relative_paths(tmp_path)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
     out_root = tmp_path / "exports"
-    cmd = [
-        "python",
+    cmd = [sys.executable,
         "tools/export_v03_pack.py",
         "--manifest",
         str(manifest_path),
@@ -40,7 +41,7 @@ def test_export_v03_pack_uses_manifest_parent_and_emits_relative_paths(tmp_path)
         str(out_root),
         "--overwrite",
     ]
-    p1 = subprocess.run(cmd, text=True, capture_output=True)
+    p1 = subprocess.run(cmd, text=True, capture_output=True, stdin=subprocess.DEVNULL)
     assert p1.returncode == 0, f"export 1 fallo:\nSTDOUT:\n{p1.stdout}\nSTDERR:\n{p1.stderr}"
 
     pack_dir = out_root / "pack_v03_abcd1234"
@@ -75,7 +76,7 @@ def test_export_v03_pack_uses_manifest_parent_and_emits_relative_paths(tmp_path)
         assert rel, f"manifest exportado sin artifacts.{k}"
         assert not Path(rel).is_absolute(), f"manifest exportado con path absoluto: artifacts.{k}={rel}"
 
-    p2 = subprocess.run(cmd, text=True, capture_output=True)
+    p2 = subprocess.run(cmd, text=True, capture_output=True, stdin=subprocess.DEVNULL)
     assert p2.returncode == 0, f"export 2 fallo:\nSTDOUT:\n{p2.stdout}\nSTDERR:\n{p2.stderr}"
     pack_json_2 = pack_json_path.read_text(encoding="utf-8")
     assert pack_json_1 == pack_json_2, "pack.json debe ser estable entre exports iguales"
@@ -138,8 +139,7 @@ def test_export_v03_pack_multiscene_paths_are_stable_and_relative(tmp_path):
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
     out_root = tmp_path / "exports"
-    cmd = [
-        "python",
+    cmd = [sys.executable,
         "tools/export_v03_pack.py",
         "--manifest",
         str(manifest_path),
@@ -147,7 +147,7 @@ def test_export_v03_pack_multiscene_paths_are_stable_and_relative(tmp_path):
         str(out_root),
         "--overwrite",
     ]
-    p = subprocess.run(cmd, text=True, capture_output=True)
+    p = subprocess.run(cmd, text=True, capture_output=True, stdin=subprocess.DEVNULL)
     assert p.returncode == 0, f"export multiscene fallo:\nSTDOUT:\n{p.stdout}\nSTDERR:\n{p.stderr}"
 
     pack_dir = out_root / "pack_v03_t1234567_s01"
@@ -170,3 +170,4 @@ def test_export_v03_pack_multiscene_paths_are_stable_and_relative(tmp_path):
             rel = str(arts.get(k) or "")
             assert rel, f"manifest exportado sin scenes.artifacts.{k}"
             assert not Path(rel).is_absolute(), f"manifest exportado con absoluto en scenes.artifacts.{k}: {rel}"
+

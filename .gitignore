@@ -84,3 +84,9 @@ exports/
 # local temp
 .tmp/
 _exports/
+# Local runs/outputs
+_demo_out*/
+_v03_smoke_cfg*/
+_v03_legacy_run*/
+_v03_*/
+_freeze_*/

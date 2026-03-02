@@ -1,7 +1,3 @@
-Set-StrictMode -Version Latest
-$ErrorActionPreference="Stop"
-chcp 65001 | Out-Null
-
 param(
   [Parameter(Mandatory=$true)][string]$PackDir,
   [int]$W = 1080,
@@ -9,6 +5,10 @@ param(
   [int]$Fps = 30,
   [ValidateSet("crop","contain")][string]$Fit = "crop"
 )
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference="Stop"
+chcp 65001 | Out-Null
 
 $pack  = (Resolve-Path $PackDir).Path
 $video = Join-Path $pack "video.mp4"

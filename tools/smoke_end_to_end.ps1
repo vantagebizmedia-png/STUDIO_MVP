@@ -8,13 +8,33 @@ chcp 65001 | Out-Null
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
 Set-Location $repo
-# Temp fuera del repo (evita permisos/locks en .tmp)
+# Temp fuera del repo (evita permisos/locks). Con fallback si una ruta da "Access denied".
 $runId = Get-Date -Format "yyyyMMdd_HHmmss"
-$baseTemp = Join-Path $env:LOCALAPPDATA "STUDIO_MVP\tmp"
-New-Item -ItemType Directory -Force $baseTemp | Out-Null
-$smokeTemp = Join-Path $baseTemp ("pytest_" + $runId)
-New-Item -ItemType Directory -Force $smokeTemp | Out-Null
-$env:TEMP = (Resolve-Path $smokeTemp).Path
+
+$baseCandidates = @(
+  (Join-Path $env:LOCALAPPDATA "STUDIO_MVP\tmp"),
+  (Join-Path $env:TEMP "STUDIO_MVP\tmp"),
+  (Join-Path (Join-Path $env:USERPROFILE "AppData\Local\Temp") "STUDIO_MVP\tmp")
+)
+
+$smokeTemp = $null
+foreach ($baseTemp in $baseCandidates) {
+  try {
+    New-Item -ItemType Directory -Force $baseTemp | Out-Null
+    $cand = Join-Path $baseTemp ("pytest_" + $runId)
+    New-Item -ItemType Directory -Force $cand | Out-Null
+    $smokeTemp = (Resolve-Path $cand).Path
+    break
+  } catch {
+    # sigue probando
+  }
+}
+
+if (-not $smokeTemp) {
+  throw "No pude crear carpeta TEMP para smoke. Probé: $($baseCandidates -join '; ')"
+}
+
+$env:TEMP = $smokeTemp
 $env:TMP  = $env:TEMP
 Write-Host "=== SMOKE v0.3 (determinista) ==="
 
@@ -55,4 +75,5 @@ if (!(Test-Path $zip)) { throw "Falta ZIP final: $zip" }
 if (!(Test-Path $sha)) { throw "Falta SHA final: $sha" }
 
 Write-Host "OK: HANDOFF sanity passed"
+
 

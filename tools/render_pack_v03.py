@@ -178,6 +178,8 @@ def _concat(ffmpeg: str, segs: List[Path], out_mp4: Path, loglevel: str, stats: 
 
 
 
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pack-dir", required=True)
@@ -236,21 +238,21 @@ def main() -> int:
                           args.crf, args.preset, args.audio_bitrate, args.loglevel, args.stats)
 
         if out.exists():
-# Burn-in subtitles (si existe pack_dir/subtitles.srt)
-try:
-    if "_burn_subtitles_from_pack" in globals():
-        out_sub = out.with_name("video_subtitles.mp4")
-        if _burn_subtitles_from_pack(
-            args.ffmpeg, pack_dir, out, out_sub,
-            args.crf, args.preset, args.audio_bitrate,
-            args.loglevel, args.stats,
-        ):
-            print("OK: video_subtitles creado")
-            print(f"VIDEO_SUBTITLES: {out_sub}")
-    else:
-        print("WARNING: burn subtitles skipped: helper not defined")
-except Exception as e:
-    print(f"WARNING: burn subtitles failed: {e}")
+            # Burn-in subtitles (si existe pack_dir/subtitles.srt)
+            try:
+                if "_burn_subtitles_from_pack" in globals():
+                    out_sub = out.with_name("video_subtitles.mp4")
+                    if _burn_subtitles_from_pack(
+                        args.ffmpeg, pack_dir, out, out_sub,
+                        args.crf, args.preset, args.audio_bitrate,
+                        args.loglevel, args.stats,
+                    ):
+                        print("OK: video_subtitles creado")
+                        print(f"VIDEO_SUBTITLES: {out_sub}")
+                else:
+                    print("WARNING: burn subtitles skipped: helper not defined")
+            except Exception as e:
+                print(f"WARNING: burn subtitles failed: {e}")
             print("OK: video creado")
             print("VIDEO:", str(out))
             print("BYTES:", out.stat().st_size)
@@ -326,6 +328,7 @@ def _burn_subtitles_from_pack(
     print("FFMPEG:", _pretty(cmd))
     subprocess.check_call(cmd)
     return True
+
 
 
 

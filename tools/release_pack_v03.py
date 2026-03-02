@@ -50,7 +50,7 @@ def main() -> int:
         raise SystemExit(f"ERROR: no existe config: {cfg}")
 
     # 1) RUN
-    run(["python", "-m", "cli.main", "--v03-config", str(cfg), "--script", args.script])
+    run([python_exe, "-m", "cli.main", "--v03-config", str(cfg), "--script", args.script])
 
     # Encontrar manifest en work_dir desde config (preferido) o fallback en _v03_smoke_cfg/artifacts
     cfg_obj = json.loads(cfg.read_text(encoding="utf-8-sig"))
@@ -98,4 +98,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 

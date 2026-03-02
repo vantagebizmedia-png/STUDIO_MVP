@@ -83,3 +83,4 @@ exports/
 .codex-home/
 # local temp
 .tmp/
+_exports/

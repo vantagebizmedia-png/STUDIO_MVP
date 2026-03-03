@@ -6,8 +6,6 @@ from __future__ import annotations
 from typing import Dict, Any
 from studio.scene_builder_v03 import build_scenes_v03
 from studio.stock_query_pixabay_v03 import resolve_image_for_scene
-
-
 def apply_scene_builder_to_manifest(
     manifest: Dict[str, Any],
     *,
@@ -16,13 +14,14 @@ def apply_scene_builder_to_manifest(
 ) -> Dict[str, Any]:
     """
     Modifica manifest in-place (y lo retorna):
-      - manifest["scenes"] = [...]
+      - manifest["scenes_v03"] = [...]   (NUEVO: fuente de verdad v0.3)
+      - opcional: manifest["scenes"]     (legacy, solo si no existe)
       - manifest["stock_cache"] para determinismo
       - por escena: assets.image y assets.image_meta
 
     Inputs esperados (usa fallback si faltan):
       - script/script_text/text
-      - audio.duration_ms o audio_duration_ms
+      - scene_builder_v03.total_audio_ms (preferido) o audio.duration_ms/audio_duration_ms
       - seed
       - replay_strict o text_generation.replay_strict
     """
@@ -32,11 +31,17 @@ def apply_scene_builder_to_manifest(
         or manifest.get("text", "")
     )
 
+    # total_ms: preferir scene_builder_v03.total_audio_ms (post-patch)
     total_ms = 0
-    if isinstance(manifest.get("audio"), dict) and "duration_ms" in manifest["audio"]:
-        total_ms = int(manifest["audio"]["duration_ms"] or 0)
-    else:
-        total_ms = int(manifest.get("audio_duration_ms") or 0)
+    sb = manifest.get("scene_builder_v03")
+    if isinstance(sb, dict):
+        total_ms = int(sb.get("total_audio_ms") or 0)
+
+    if total_ms <= 0:
+        if isinstance(manifest.get("audio"), dict) and "duration_ms" in manifest["audio"]:
+            total_ms = int(manifest["audio"]["duration_ms"] or 0)
+        else:
+            total_ms = int(manifest.get("audio_duration_ms") or 0)
 
     replay_strict = bool(manifest.get("replay_strict") or False)
     tg = manifest.get("text_generation")
@@ -47,8 +52,8 @@ def apply_scene_builder_to_manifest(
 
     scenes = build_scenes_v03(
         script_text=script_text,
-        max_scenes=max_scenes,
-        total_audio_ms=total_ms,
+        max_scenes=int(max_scenes or 1),
+        total_audio_ms=int(total_ms or 0),
     )
 
     stock_cache = manifest.get("stock_cache")
@@ -74,5 +79,11 @@ def apply_scene_builder_to_manifest(
             "query": q,
         }
 
-    manifest["scenes"] = scenes
+    # ✅ Fuente de verdad v0.3:
+    manifest["scenes_v03"] = scenes
+
+    # ✅ Legacy: no pisar si ya existe
+    if "scenes" not in manifest or not isinstance(manifest.get("scenes"), list) or len(manifest.get("scenes") or []) == 0:
+        manifest["scenes"] = scenes
+
     return manifest

@@ -41,7 +41,8 @@ Run-ChildPwsh @("-File",".\tools\run_v03.ps1","-Mode","legacy","-Script","hola",
 
 Write-Host "Runner v0.3 config (--v03-config)..." -ForegroundColor Cyan
 $env:STUDIO_ALLOW_LIVE="1"
-& $py -m cli.main --v03-config .\config\studio_v03_smoke.json --script "smoke v03 config"
+& $py -m cli.main --v03-config .\config\studio_v03_smoke.json --script "Este es un guion de prueba determinista para validar el Scene Builder v03. Queremos múltiples escenas aunque el texto venga en un solo párrafo. La idea es que el sistema divida el contenido en segmentos consecutivos. Cada segmento debe tener su image_query y su rango de tiempo. Esto permite luego recortar audio por escena y pedir una imagen por escena. Finalmente verificamos que scenes_v03 tenga más de una escena. Agregamos más contenido para asegurar suficientes palabras y disparar el chunking."
 Remove-Item Env:STUDIO_ALLOW_LIVE -ErrorAction SilentlyContinue
 if ($LASTEXITCODE -ne 0) { throw "v03-config falló (exit=$LASTEXITCODE)" }
 Write-Host "OK SMOKE v0.3" -ForegroundColor Green
+

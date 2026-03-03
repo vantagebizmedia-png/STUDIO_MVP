@@ -12,74 +12,55 @@ def _norm_space(s: str) -> str:
     s = (s or "").strip()
     s = re.sub(r"\s+", " ", s)
     return s
-
-
-def split_script_into_scenes(script_text: str, max_scenes: int) -> List[str]:
+def split_script_into_scenes(script_text: str, max_scenes: int) -> list[str]:
     """
-    Split determinista (v03):
-      1) Preferir párrafos/líneas (si existen).
-      2) Si no alcanza, dividir por frases.
-      3) Si aún no alcanza y el texto es suficientemente largo, forzar N escenas por chunking de palabras.
-      4) Recortar a max_scenes (merge del resto en la última).
+    Split determinista en hasta N escenas, aunque venga en 1 párrafo.
+    Regla: troceo contiguo por palabras, repartiendo casi-equitativo.
+    - No usa heurísticas que colapsen a 1 escena.
+    - Si hay pocas palabras, devuelve <= max_scenes (nunca 0).
     """
+    txt = (script_text or "").strip()
     if max_scenes < 1:
         max_scenes = 1
 
-    raw_text = (script_text or "").strip()
-    text = _norm_space(raw_text)
-    if not text:
+    if not txt:
         return [""]
 
-    # 1) Párrafos: doble salto, o múltiples líneas
-    paras = [p.strip() for p in re.split(r"\n{2,}", raw_text) if p.strip()]
-    if len(paras) <= 1:
-        # si venía con varias líneas simples, úsalas como base
-        lines = [ln.strip() for ln in re.split(r"\r?\n", raw_text) if ln.strip()]
-        if len(lines) > 1:
-            paras = lines
+    if max_scenes == 1:
+        return [txt]
 
-    chunks = [_norm_space(p) for p in paras if _norm_space(p)]
+    words = txt.split()
+    if not words:
+        return [""]
 
-    # 2) Frases por puntuación (si aún es 1 bloque)
-    if len(chunks) <= 1:
-        parts = re.split(r"(?<=[\.\!\?])\s+", text)
-        chunks = [_norm_space(p) for p in parts if _norm_space(p)]
+    # n escenas objetivo (pero no más que #words para evitar escenas vacías)
+    n = min(int(max_scenes), len(words))
+    if n < 1:
+        n = 1
 
-    # 3) Forzar N escenas por palabras si no hay separadores útiles
-    #    (solo si el texto es lo bastante largo como para justificarlo)
-    if len(chunks) < max_scenes:
-        words = [w for w in re.split(r"\s+", text) if w]
-        # umbral mínimo para evitar dividir textos cortos sin sentido
-        if len(words) >= 30:
-            # objetivo: hasta max_scenes, con grupos contiguos casi iguales
-            n = min(max_scenes, max(1, int(math.ceil(len(words) / 18.0))))
-            n = max(n, len(chunks))  # no reducir lo ya detectado
-            if n > 1:
-                base = len(words) // n
-                rem = len(words) % n
-                forced = []
-                idx = 0
-                for i in range(n):
-                    take = base + (1 if i < rem else 0)
-                    seg = " ".join(words[idx: idx + take]).strip()
-                    if seg:
-                        forced.append(seg)
-                    idx += take
-                if forced:
-                    chunks = forced
+    # tamaño base + reparto de rem
+    base = len(words) // n
+    rem = len(words) - (base * n)
 
-    # Si aún quedó vacío (caso raro), fallback
-    if not chunks:
-        chunks = [text]
+    out: list[str] = []
+    i = 0
+    for k in range(1, n + 1):
+        take = base + (1 if k <= rem else 0)
+        if take < 1:
+            take = 1
+        chunk_words = words[i : i + take]
+        i += take
+        out.append(" ".join(chunk_words).strip())
 
-    # 4) Recorte/merge determinista a max_scenes
-    if len(chunks) <= max_scenes:
-        return chunks
+    # Si quedaron palabras (por seguridad), se agregan a la última escena
+    if i < len(words) and out:
+        out[-1] = (out[-1] + " " + " ".join(words[i:])).strip()
 
-    head = chunks[: max_scenes - 1]
-    tail = " ".join(chunks[max_scenes - 1 :]).strip()
-    return head + [tail]
+    # Garantía: nunca devolver lista vacía
+    if not out:
+        return [txt]
 
+    return out
 def make_image_query(scene_text: str) -> str:
     """
     Query simple y determinista:
@@ -178,4 +159,5 @@ def build_scenes_v03(
             }
         )
     return scenes
+
 

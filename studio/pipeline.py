@@ -233,16 +233,55 @@ class StudioPipeline:
         with open(path, "wb") as f:
             f.write(_FALLBACK_PNG_1X1)
         return path
+def _write_fallback_wav(self, path: str, *, duration_s: float = 20.0, sr: int = 22050) -> str:
+    """
+    Fallback determinista (sin TTS real):
+    - Genera un WAV PCM mono 16-bit con SILENCIO (0) de duración configurable.
+    - Importante: duration_s por defecto es largo para que total_audio_ms no sea 1000ms.
+    - Permite override por env var STUDIO_FALLBACK_AUDIO_S (float).
+    """
+    import os
+    import wave
+    import struct
 
-    def _write_fallback_wav(self, path: str, *, duration_s: float = 0.6, sr: int = 24000) -> str:
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        nframes = max(1, int(float(duration_s) * int(sr)))
-        with wave.open(path, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(int(sr))
-            wf.writeframes(b"\x00\x00" * nframes)
-        return path
+    # Override opcional por environment (determinista si el operador lo fija)
+    try:
+        env_s = os.environ.get("STUDIO_FALLBACK_AUDIO_S", "").strip()
+        if env_s:
+            duration_s = float(env_s)
+    except Exception:
+        pass
+
+    duration_s = float(duration_s or 0.0)
+    if duration_s < 0.2:
+        duration_s = 0.2
+
+    sr = int(sr or 22050)
+    if sr < 8000:
+        sr = 8000
+
+    nframes = int(round(duration_s * sr))
+    if nframes < 1:
+        nframes = 1
+
+    # Asegura carpeta
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+
+    # PCM 16-bit mono: 2 bytes/frame
+    with wave.open(path, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+
+        chunk = 4096
+        zero = struct.pack("<h", 0)
+        left = nframes
+        while left > 0:
+            take = chunk if left > chunk else left
+            wf.writeframes(zero * take)
+            left -= take
+
+    return path
 
     def _copy_scene_aliases(self, *, idx: int, script_src: str, image_src: str, audio_src: str) -> dict[str, str]:
         scene_dir = os.path.join(self.work_dir, "artifacts", "scenes", f"scene_{idx:02d}")
@@ -658,6 +697,7 @@ class StudioPipeline:
         self._write_manifest(script_path=script_path, img_path=img, aud_path=aud, scenes=None)
         self._notify("listo", curr, total)
         return img, aud
+
 
 
 

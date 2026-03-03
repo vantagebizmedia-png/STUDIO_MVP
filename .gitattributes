@@ -1,12 +1,7 @@
-# Normaliza finales de línea
+# Keep consistent line endings in repo
 * text=auto
 
-# PowerShell siempre CRLF
-*.ps1 text eol=crlf
-*.cmd text eol=crlf
-*.bat text eol=crlf
-
-# Python LF
-*.py  text eol=lf
-*.json text eol=lf
-*.md text eol=lf
+# PowerShell scripts: store as LF
+*.ps1 text eol=lf
+*.psm1 text eol=lf
+*.psd1 text eol=lf

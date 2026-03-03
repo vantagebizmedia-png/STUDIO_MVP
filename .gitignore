@@ -1,51 +1,52 @@
-# workspace / runs / logs
+# =========================
+# STUDIO_MVP - .gitignore
+# =========================
+
+# --- workspace / runs / logs ---
 STUDIO_WORKSPACE/
+workspace/
 runs/
 tmp/
 cache/
 *_logs/
 *.log
 
-# outputs generados en repo
+# --- outputs generados en repo ---
 _demo_out/
 _demo_out_legacy/
-_v03_legacy_run/
 _v03_smoke_cfg/
-
-# python
-__pycache__/
-*.pyc
-.venv/
-# local helper scripts / prompts (no versionar)
-_codex_readonly_prompt.txt
-tools/patch_between_markers.ps1
-tools/patch_blocks.ps1
-tools/patch_blocks_no_timeout.ps1
-# --- local/temp outputs ---
-.codex-home/
-.tmp/
-tmp/
-workspace/
-_archive/
-_archives/
+_v03_legacy_run/
+_freeze_*/
+_v03_*/
+exports/
 _exports/
 exports_final/
-exports/
-music/
 _smoke_out/
 _vcs_extract/
-_v03_smoke_cfg/
-_v03_legacy_run/
+
+# --- local temp / archives ---
+.codex-home/
+.tmp/
+_archive/
+_archives/
 _live_smoke_*/
 _pixabay_*/
 _scene_provider_routing_smoke/
 _tmp_*/
+
+# --- backups ---
 *.bak_*
 *.bak
-*.log
-*.txt
-*.png
-config/_tmp_*.json
+
+# --- local scans / notes (si son temporales) ---
+_scan_*.txt
+tmp_*.txt
+
+# --- python ---
+__pycache__/
+*.pyc
+.venv/
+
 # --- local experiments (no versionar) ---
 tools/hf_probe_models.py
 tools/hf_test_infer.py
@@ -56,11 +57,3 @@ tools/patch_render_debug_v2.py
 tools/patch_render_debug_v3.py
 tools/render_pack_v03.cmd
 tools/render_pack_v03.ps1
-# --- local experiments (no versionar) ---
-tools/hf_probe_models.py
-tools/hf_test_infer.py
-tools/patch_hf_image_model.py
-tools/patch_hf_image_model_v2.py
-tools/patch_render_debug.py
-tools/patch_render_debug_v2.py
-tools/patch_render_debug_v3.py

@@ -1,7 +1,16 @@
 import argparse
 import json
+import os
+import sys
 import wave
 from pathlib import Path
+
+
+# --- Asegura imports del repo (studio.*) aunque se ejecute fuera del cwd del repo ---
+_THIS = Path(__file__).resolve()
+_REPO = _THIS.parents[1]  # .../tools/ -> repo root
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
 
 from studio.scene_builder_v03 import build_scenes_v03
 
@@ -28,7 +37,6 @@ def _wav_ms(path: Path) -> int:
 
 
 def _resolve_audio_path(pack_dir: Path, obj: dict) -> Path | None:
-    # 1) intenta desde artifacts del manifest (si existen)
     art = obj.get("artifacts") or {}
     audio_rel = None
     for k in ("audio", "audio_path", "aud", "voice", "narration_audio"):
@@ -45,7 +53,6 @@ def _resolve_audio_path(pack_dir: Path, obj: dict) -> Path | None:
         if p2.exists():
             return p2
 
-    # 2) fallback: WAV más grande
     wavs = list(pack_dir.glob("*.wav"))
     if not wavs:
         wavs = list((pack_dir / "artifacts").glob("*.wav"))
@@ -73,7 +80,6 @@ def main() -> int:
     if max_scenes < 1:
         max_scenes = 1
 
-    # script_text (fuente para split)
     script_text = (
         obj.get("script")
         or obj.get("script_text")
@@ -81,20 +87,17 @@ def main() -> int:
         or ""
     )
 
-    # total_audio_ms real desde WAV
     apath = _resolve_audio_path(pack_dir, obj)
     total_ms = _wav_ms(apath) if apath else 0
     if total_ms <= 0:
-        total_ms = 1000  # compat
+        total_ms = 1000
 
-    # ✅ RECONSTRUIR scenes_v03 SIEMPRE (no confiar en el viejo)
     scenes_v03 = build_scenes_v03(
         script_text=str(script_text or ""),
         max_scenes=max_scenes,
         total_audio_ms=int(total_ms),
     )
 
-    # scene_builder_v03 meta
     sb = obj.get("scene_builder_v03") or {}
     if not isinstance(sb, dict):
         sb = {}

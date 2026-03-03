@@ -16,3 +16,8 @@ _v03_smoke_cfg/
 __pycache__/
 *.pyc
 .venv/
+# local helper scripts / prompts (no versionar)
+_codex_readonly_prompt.txt
+tools/patch_between_markers.ps1
+tools/patch_blocks.ps1
+tools/patch_blocks_no_timeout.ps1

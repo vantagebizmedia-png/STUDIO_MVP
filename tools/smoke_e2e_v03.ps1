@@ -52,6 +52,30 @@ function Run-StepPwsh {
   }
 }
 
+function Run-StepPy {
+  param(
+    [Parameter(Mandatory=$true)][string]$Title,
+    [Parameter(Mandatory=$true)][string[]]$Args
+  )
+  try {
+    & python @Args
+    if ($LASTEXITCODE -ne 0) {
+      throw ($Title + " falló (ExitCode=" + $LASTEXITCODE + ")")
+    }
+  }
+  catch {
+    $script:hadError = $true
+    Write-Host "Exception:" -ForegroundColor Red
+    Write-Host $Title -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
+
+    if ($FailFast) {
+      Write-Host "FAIL-FAST: deteniendo en el primer error." -ForegroundColor Red
+      exit 1
+    }
+  }
+}
+
 if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -lt 3) {
   $WorkspaceRoot = $env:STUDIO_WORKSPACE
 }
@@ -63,10 +87,13 @@ $smToWs       = Join-Path $repo "tools\smoke_live_to_workspace_v03.ps1"
 $smLiveMan    = Join-Path $repo "tools\smoke_live_manifest_v03.ps1"
 $apSubsLive   = Join-Path $repo "tools\apply_subtitles_live_v03.ps1"
 $smSubsLive   = Join-Path $repo "tools\smoke_subtitles_live_v03.ps1"
+$patchScene   = Join-Path $repo "tools\patch_manifest_scene_builder_v03.py"
+
 Require-File $smToWs
 Require-File $smLiveMan
 Require-File $apSubsLive
 Require-File $smSubsLive
+Require-File $patchScene
 
 $smFinalizeFull = Join-Path $repo "tools\smoke_finalize_full_v03.ps1"
 if ($PackDir -and $PackDir.Trim().Length -ge 3) { Require-File $smFinalizeFull }
@@ -107,6 +134,14 @@ if (-not $hit) { throw ("No pude leer LIVE_WORKSPACE_DIR. Revisa OUT log: " + $l
 
 $live = ($hit.Line -replace "^LIVE_WORKSPACE_DIR=", "").Trim()
 if (-not (Test-Path -LiteralPath $live)) { throw ("LIVE_WORKSPACE_DIR no existe: " + $live) }
+
+Write-Host ("`n[2/5] LIVE: scene_builder patch (pack-dir=" + $live + ", max_scenes=" + $MaxScenes + ")") -ForegroundColor Yellow
+Run-StepPy -Title "[2/5] patch_manifest_scene_builder_v03" -Args @(
+  "-B",
+  $patchScene,
+  "--pack-dir", $live,
+  "--max-scenes", ([string]$MaxScenes)
+)
 
 Write-Host ("`n[2/5] LIVE: smoke_live_manifest_v03 (live=" + $live + ")") -ForegroundColor Yellow
 Run-StepPwsh -Title "[2/5] smoke_live_manifest_v03" -Args @(

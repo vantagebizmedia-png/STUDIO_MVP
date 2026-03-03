@@ -1,18 +1,17 @@
 import argparse
 import json
-import os
 import sys
 import wave
 from pathlib import Path
 
-
-# --- Asegura imports del repo (studio.*) aunque se ejecute fuera del cwd del repo ---
+# --- Asegura imports del repo aunque se ejecute fuera del cwd del repo ---
 _THIS = Path(__file__).resolve()
 _REPO = _THIS.parents[1]  # .../tools/ -> repo root
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
 from studio.scene_builder_v03 import build_scenes_v03
+from studio.stock_query_pixabay_v03 import resolve_image_for_scene
 
 
 def _find_manifest(pack_dir: Path) -> Path:
@@ -63,6 +62,45 @@ def _resolve_audio_path(pack_dir: Path, obj: dict) -> Path | None:
     return None
 
 
+def _extract_script_text(obj: dict) -> str:
+    # 1) claves top-level típicas
+    for k in (
+        "script",
+        "script_text",
+        "text",
+        "final_script",
+        "final_text",
+        "narration",
+        "voice_text",
+        "prompt",
+    ):
+        v = obj.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+
+    # 2) text_generation (si existe)
+    tg = obj.get("text_generation")
+    if isinstance(tg, dict):
+        for k in ("text", "script", "output", "result", "final"):
+            v = tg.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+
+    # 3) si hay scenes_v03 viejo, intenta concatenar script_text
+    sv = obj.get("scenes_v03")
+    if isinstance(sv, list) and sv:
+        parts = []
+        for s in sv:
+            if isinstance(s, dict):
+                v = s.get("script_text")
+                if isinstance(v, str) and v.strip():
+                    parts.append(v.strip())
+        if parts:
+            return " ".join(parts).strip()
+
+    return ""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pack-dir", required=True)
@@ -80,36 +118,68 @@ def main() -> int:
     if max_scenes < 1:
         max_scenes = 1
 
-    script_text = (
-        obj.get("script")
-        or obj.get("script_text")
-        or obj.get("text")
-        or ""
-    )
+    script_text = _extract_script_text(obj)
 
     apath = _resolve_audio_path(pack_dir, obj)
     total_ms = _wav_ms(apath) if apath else 0
     if total_ms <= 0:
         total_ms = 1000
 
+    # reconstruye escenas
     scenes_v03 = build_scenes_v03(
         script_text=str(script_text or ""),
         max_scenes=max_scenes,
         total_audio_ms=int(total_ms),
     )
 
+    # determinismo cache
+    stock_cache = obj.get("stock_cache")
+    if not isinstance(stock_cache, dict):
+        stock_cache = {}
+        obj["stock_cache"] = stock_cache
+
+    seed = int(obj.get("seed") or 0)
+    replay_strict = bool(obj.get("replay_strict") or False)
+    tg = obj.get("text_generation")
+    if isinstance(tg, dict) and "replay_strict" in tg:
+        replay_strict = bool(tg.get("replay_strict"))
+
+    # resuelve imagen por escena (para que smoke no falle)
+    for sc in scenes_v03:
+        q = sc.get("image_query") or ""
+        r = resolve_image_for_scene(
+            pack_dir=str(pack_dir),
+            query=q,
+            seed=seed,
+            replay_strict=replay_strict,
+            cache=stock_cache,
+            placeholder_path=None,
+        )
+        sc["assets"]["image"] = r["path"]
+        sc["assets"]["image_meta"] = {
+            "provider": r["provider"],
+            "cache_hit": r["cache_hit"],
+            "cache_key": r["cache_key"],
+            "query": q,
+        }
+
+    # meta
     sb = obj.get("scene_builder_v03") or {}
     if not isinstance(sb, dict):
         sb = {}
     sb["max_scenes"] = int(max_scenes)
     sb["total_audio_ms"] = int(total_ms)
-    sb["note"] = "patched total_audio_ms from wav; rebuilt scenes_v03 from script_text"
+    sb["note"] = "patched total_audio_ms from wav; rebuilt scenes_v03 from script_text (and resolved images)"
     obj["scene_builder_v03"] = sb
 
     obj["scenes_v03"] = scenes_v03
 
+    # legacy: solo si no existe o está vacío
+    if ("scenes" not in obj) or (not isinstance(obj.get("scenes"), list)) or (len(obj.get("scenes") or []) == 0):
+        obj["scenes"] = scenes_v03
+
     manifest_path.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"OK patch_scene_builder_v03: total_ms={total_ms} scenes={len(scenes_v03)} wav={apath}")
+    print(f"OK patch_scene_builder_v03: total_ms={total_ms} scenes={len(scenes_v03)} script_len={len(script_text)} wav={apath}")
     return 0
 
 

@@ -46,3 +46,13 @@ _tmp_*/
 *.txt
 *.png
 config/_tmp_*.json
+# --- local experiments (no versionar) ---
+tools/hf_probe_models.py
+tools/hf_test_infer.py
+tools/patch_hf_image_model.py
+tools/patch_hf_image_model_v2.py
+tools/patch_render_debug.py
+tools/patch_render_debug_v2.py
+tools/patch_render_debug_v3.py
+tools/render_pack_v03.cmd
+tools/render_pack_v03.ps1

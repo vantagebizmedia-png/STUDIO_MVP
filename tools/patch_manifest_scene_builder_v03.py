@@ -36,6 +36,7 @@ def _wav_ms(path: Path) -> int:
 
 
 def _resolve_audio_path(pack_dir: Path, obj: dict) -> Path | None:
+    # 1) intenta desde artifacts del manifest (si existen)
     art = obj.get("artifacts") or {}
     audio_rel = None
     for k in ("audio", "audio_path", "aud", "voice", "narration_audio"):
@@ -52,6 +53,7 @@ def _resolve_audio_path(pack_dir: Path, obj: dict) -> Path | None:
         if p2.exists():
             return p2
 
+    # 2) fallback: WAV más grande
     wavs = list(pack_dir.glob("*.wav"))
     if not wavs:
         wavs = list((pack_dir / "artifacts").glob("*.wav"))
@@ -125,14 +127,14 @@ def main() -> int:
     if total_ms <= 0:
         total_ms = 1000
 
-    # reconstruye escenas
+    # reconstruye escenas SIEMPRE
     scenes_v03 = build_scenes_v03(
         script_text=str(script_text or ""),
         max_scenes=max_scenes,
         total_audio_ms=int(total_ms),
     )
 
-    # determinismo cache
+    # cache determinista
     stock_cache = obj.get("stock_cache")
     if not isinstance(stock_cache, dict):
         stock_cache = {}
@@ -144,7 +146,15 @@ def main() -> int:
     if isinstance(tg, dict) and "replay_strict" in tg:
         replay_strict = bool(tg.get("replay_strict"))
 
-    # resuelve imagen por escena (para que smoke no falle)
+    # WAV master -> audio_clip para TODAS las escenas (hasta implementar recorte real)
+    master_wav_rel = None
+    if apath:
+        try:
+            master_wav_rel = str(Path(apath).resolve().relative_to(pack_dir))
+        except Exception:
+            master_wav_rel = str(Path(apath).resolve())
+
+    # resuelve imagen + setea audio_clip por escena
     for sc in scenes_v03:
         q = sc.get("image_query") or ""
         r = resolve_image_for_scene(
@@ -162,6 +172,8 @@ def main() -> int:
             "cache_key": r["cache_key"],
             "query": q,
         }
+        if master_wav_rel:
+            sc["assets"]["audio_clip"] = master_wav_rel
 
     # meta
     sb = obj.get("scene_builder_v03") or {}
@@ -169,7 +181,7 @@ def main() -> int:
         sb = {}
     sb["max_scenes"] = int(max_scenes)
     sb["total_audio_ms"] = int(total_ms)
-    sb["note"] = "patched total_audio_ms from wav; rebuilt scenes_v03 from script_text (and resolved images)"
+    sb["note"] = "patched total_audio_ms from wav; rebuilt scenes_v03 from script_text (resolved images + audio_clip=master)"
     obj["scene_builder_v03"] = sb
 
     obj["scenes_v03"] = scenes_v03

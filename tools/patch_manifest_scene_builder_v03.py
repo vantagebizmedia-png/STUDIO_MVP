@@ -3,6 +3,8 @@ import json
 import wave
 from pathlib import Path
 
+from studio.scene_builder_v03 import build_scenes_v03
+
 
 def _find_manifest(pack_dir: Path) -> Path:
     cand1 = pack_dir / "manifest_v03.json"
@@ -26,6 +28,7 @@ def _wav_ms(path: Path) -> int:
 
 
 def _resolve_audio_path(pack_dir: Path, obj: dict) -> Path | None:
+    # 1) intenta desde artifacts del manifest (si existen)
     art = obj.get("artifacts") or {}
     audio_rel = None
     for k in ("audio", "audio_path", "aud", "voice", "narration_audio"):
@@ -42,6 +45,7 @@ def _resolve_audio_path(pack_dir: Path, obj: dict) -> Path | None:
         if p2.exists():
             return p2
 
+    # 2) fallback: WAV más grande
     wavs = list(pack_dir.glob("*.wav"))
     if not wavs:
         wavs = list((pack_dir / "artifacts").glob("*.wav"))
@@ -65,25 +69,44 @@ def main() -> int:
     manifest_path = _find_manifest(pack_dir)
     obj = json.loads(manifest_path.read_text(encoding="utf-8"))
 
+    max_scenes = int(args.max_scenes or 1)
+    if max_scenes < 1:
+        max_scenes = 1
+
+    # script_text (fuente para split)
+    script_text = (
+        obj.get("script")
+        or obj.get("script_text")
+        or obj.get("text")
+        or ""
+    )
+
+    # total_audio_ms real desde WAV
     apath = _resolve_audio_path(pack_dir, obj)
     total_ms = _wav_ms(apath) if apath else 0
     if total_ms <= 0:
         total_ms = 1000  # compat
 
-    max_scenes = int(args.max_scenes or 1)
-    if max_scenes < 1:
-        max_scenes = 1
+    # ✅ RECONSTRUIR scenes_v03 SIEMPRE (no confiar en el viejo)
+    scenes_v03 = build_scenes_v03(
+        script_text=str(script_text or ""),
+        max_scenes=max_scenes,
+        total_audio_ms=int(total_ms),
+    )
 
+    # scene_builder_v03 meta
     sb = obj.get("scene_builder_v03") or {}
     if not isinstance(sb, dict):
         sb = {}
-    sb["max_scenes"] = max_scenes
+    sb["max_scenes"] = int(max_scenes)
     sb["total_audio_ms"] = int(total_ms)
-    sb["note"] = "patched total_audio_ms from wav; did NOT modify scenes_v03"
+    sb["note"] = "patched total_audio_ms from wav; rebuilt scenes_v03 from script_text"
     obj["scene_builder_v03"] = sb
 
+    obj["scenes_v03"] = scenes_v03
+
     manifest_path.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"OK patch_scene_builder_v03: total_ms={total_ms} wav={apath}")
+    print(f"OK patch_scene_builder_v03: total_ms={total_ms} scenes={len(scenes_v03)} wav={apath}")
     return 0
 
 

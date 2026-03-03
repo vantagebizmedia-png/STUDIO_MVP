@@ -1,29 +1,60 @@
-# -*- coding: utf-8 -*-
-from __future__ import annotations
-
 import os
 import wave
+import struct
 
-from studio.providers.voice.base_voice import BaseVoiceProvider
 
+class DemoVoiceProvider:
+    """
+    Provider determinista de voz para DEMO/SMOKE:
+    - Escribe un WAV PCM mono 16-bit con SILENCIO.
+    - Duración configurable por env var STUDIO_DEMO_VOICE_S (float).
+      Default: 20.0s.
+    - Sample rate configurable por STUDIO_DEMO_VOICE_SR (int). Default: 22050.
+    """
 
-class DemoVoiceProvider(BaseVoiceProvider):
-    """Provider demo (no API): genera un WAV real (silencio) determinista."""
+    def __init__(self) -> None:
+        pass
 
-    def validate(self) -> None:
-        return
+    def synthesize(self, text: str, out_path: str) -> str:
+        duration_s = 20.0
+        sr = 22050
 
-    def synthesize(self, text: str, output_path: str) -> str:
-        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+        try:
+            v = os.environ.get("STUDIO_DEMO_VOICE_S", "").strip()
+            if v:
+                duration_s = float(v)
+        except Exception:
+            pass
 
-        sr = 44100
-        dur_s = 1.0  # 1 segundo para smoke rápido
-        nframes = int(sr * dur_s)
+        try:
+            v = os.environ.get("STUDIO_DEMO_VOICE_SR", "").strip()
+            if v:
+                sr = int(float(v))
+        except Exception:
+            pass
 
-        with wave.open(output_path, "wb") as wf:
+        if duration_s < 0.2:
+            duration_s = 0.2
+        if sr < 8000:
+            sr = 8000
+
+        nframes = int(round(duration_s * sr))
+        if nframes < 1:
+            nframes = 1
+
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+
+        with wave.open(out_path, "wb") as wf:
             wf.setnchannels(1)
-            wf.setsampwidth(2)  # 16-bit PCM
+            wf.setsampwidth(2)
             wf.setframerate(sr)
-            wf.writeframes(b"\x00\x00" * nframes)
 
-        return output_path
+            chunk = 4096
+            zero = struct.pack("<h", 0)
+            left = nframes
+            while left > 0:
+                take = chunk if left > chunk else left
+                wf.writeframes(zero * take)
+                left -= take
+
+        return out_path

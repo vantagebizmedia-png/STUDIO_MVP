@@ -264,10 +264,8 @@ def _write_fallback_wav(self, path: str, *, duration_s: float = 20.0, sr: int = 
     if nframes < 1:
         nframes = 1
 
-    # Asegura carpeta
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 
-    # PCM 16-bit mono: 2 bytes/frame
     with wave.open(path, "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
@@ -282,7 +280,6 @@ def _write_fallback_wav(self, path: str, *, duration_s: float = 20.0, sr: int = 
             left -= take
 
     return path
-
     def _copy_scene_aliases(self, *, idx: int, script_src: str, image_src: str, audio_src: str) -> dict[str, str]:
         scene_dir = os.path.join(self.work_dir, "artifacts", "scenes", f"scene_{idx:02d}")
         os.makedirs(scene_dir, exist_ok=True)
@@ -697,6 +694,7 @@ def _write_fallback_wav(self, path: str, *, duration_s: float = 20.0, sr: int = 
         self._write_manifest(script_path=script_path, img_path=img, aud_path=aud, scenes=None)
         self._notify("listo", curr, total)
         return img, aud
+
 
 
 

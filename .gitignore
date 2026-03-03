@@ -92,3 +92,5 @@ _v03_*/
 _freeze_*/
 # Allow committed tool scripts
 !tools/smoke_live_to_workspace_v03.ps1
+# Allow committed tool scripts
+!tools/env_workspace.ps1

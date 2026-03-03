@@ -5,57 +5,124 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference="Stop"
-chcp 65001 | Out-Null
+
+Write-Host "== SMOKE v0.3 (live->workspace copier) ==" -ForegroundColor Cyan
 
 $repo = (Resolve-Path ".").Path
 
-if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -lt 3) {
-  $WorkspaceRoot = $env:STUDIO_WORKSPACE
-}
-if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -lt 3) {
-  throw "Falta WorkspaceRoot y env:STUDIO_WORKSPACE no está seteado."
-}
+# 0) WorkspaceRoot obligatorio (y absoluto)
+$WS = $WorkspaceRoot
+if ([string]::IsNullOrWhiteSpace($WS)) { $WS = $env:STUDIO_WORKSPACE }
+if ([string]::IsNullOrWhiteSpace($WS)) { throw "Falta -WorkspaceRoot o env:STUDIO_WORKSPACE" }
+if (-not [IO.Path]::IsPathRooted($WS)) { throw "WorkspaceRoot debe ser absoluto: $WS" }
+$WS = (Resolve-Path $WS).Path
 
-$WS = (Resolve-Path $WorkspaceRoot).Path
-New-Item -ItemType Directory -Force (Join-Path $WS "runs") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $WS "runs"),(Join-Path $WS "tmp"),(Join-Path $WS "cache") | Out-Null
 
-# 1) Ejecuta smoke normal (puede escribir temporalmente dentro del repo)
-$studioSmoke = Join-Path $repo "tools\studio.ps1"
-if (-not (Test-Path $studioSmoke)) { throw "No existe: $studioSmoke" }
+Write-Host ("Repo      : " + $repo)
+Write-Host ("Workspace : " + $WS)
 
-pwsh -NoProfile -ExecutionPolicy Bypass -File $studioSmoke -Mode smoke
+# 1) Ejecuta smoke como PROCESO SEPARADO con OUT/ERR a disco + timeout
+$logsDir = Join-Path $WS "runs\_logs"
+New-Item -ItemType Directory -Force $logsDir | Out-Null
+$ts = Get-Date -Format "yyyyMMdd_HHmmss"
+$smokeOut = Join-Path $logsDir ("smoke_v03_inner_" + $ts + ".out.log")
+$smokeErr = Join-Path $logsDir ("smoke_v03_inner_" + $ts + ".err.log")
+if (Test-Path $smokeOut) { Remove-Item -Force $smokeOut }
+if (Test-Path $smokeErr) { Remove-Item -Force $smokeErr }
 
-# 2) Descubre el LIVE dir real: manifest_v03.json más reciente FUERA de exports/_freeze
-$man = Get-ChildItem -LiteralPath $repo -Recurse -File -Filter manifest_v03.json -ErrorAction SilentlyContinue |
-  Where-Object { $_.FullName -notmatch '\\exports\\|\\_freeze_|\\__pycache__\\|\\.venv\\' } |
-  Sort-Object LastWriteTime -Descending |
-  Select-Object -First 1
-
-if (-not $man) { throw "No encontré manifest_v03.json LIVE dentro del repo luego del smoke." }
-
-$liveRepo = Split-Path $man.FullName -Parent
-if (-not (Test-Path $liveRepo)) { throw "LIVE dir no existe: $liveRepo" }
-
-# 3) Copia a workspace con ruta estable
+# destino que el caller espera
 $dstRoot = Join-Path $WS "runs\smoke_live_latest"
-$dstLive = Join-Path $dstRoot "artifacts"
+$dstArt  = Join-Path $dstRoot "artifacts"
 
-if (Test-Path $dstRoot) { Remove-Item -Recurse -Force $dstRoot }
-New-Item -ItemType Directory -Force $dstLive | Out-Null
+$smokeTimeoutSec = 1800  # 30 min
 
-# IMPORTANTE: usar -Path (NO -LiteralPath) para permitir wildcard
-Copy-Item -Recurse -Force -Path (Join-Path $liveRepo "*") -Destination $dstLive
+try {
+  $env:STUDIO_WORKSPACE = $WS
+  $env:TEMP = (Join-Path $WS "tmp")
+  $env:TMP  = (Join-Path $WS "tmp")
 
-# 4) (Opcional) Limpia outputs del repo (no borra código)
-if ($CleanRepoOutputs) {
-  $patterns = @("_demo_out","_demo_out_legacy","_v03_smoke_cfg","_v03_legacy_run","_v03_*","_freeze_*")
-  foreach ($p in $patterns) {
-    Get-ChildItem -LiteralPath $repo -Directory -Filter $p -ErrorAction SilentlyContinue |
-      ForEach-Object {
-        try { Remove-Item -Recurse -Force -LiteralPath $_.FullName } catch {}
-      }
+  $smokeScript = Join-Path $repo "tools\smoke_v03.ps1"
+  if (-not (Test-Path -LiteralPath $smokeScript)) { throw ("No existe: " + $smokeScript) }
+
+  $p = Start-Process -FilePath "pwsh" -ArgumentList @(
+    "-NoProfile",
+    "-ExecutionPolicy","Bypass",
+    "-File", $smokeScript
+  ) -WorkingDirectory $repo -NoNewWindow -PassThru `
+    -RedirectStandardOutput $smokeOut -RedirectStandardError $smokeErr
+
+  $null = Wait-Process -Id $p.Id -Timeout $smokeTimeoutSec -ErrorAction SilentlyContinue
+  if (-not $p.HasExited) {
+    Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+    throw ("smoke_v03.ps1 TIMEOUT (" + $smokeTimeoutSec + " s). Logs: OUT=" + $smokeOut + " ; ERR=" + $smokeErr)
   }
+  if ($p.ExitCode -ne 0) {
+    throw ("smoke_v03.ps1 falló (ExitCode=" + $p.ExitCode + "). Logs: OUT=" + $smokeOut + " ; ERR=" + $smokeErr)
+  }
+
+  # 2) Fuente REAL de artifacts (confirmado por log): .\_v03_smoke_cfg\artifacts
+  $srcArtifacts = Join-Path $repo "_v03_smoke_cfg\artifacts"
+  if (-not (Test-Path -LiteralPath $srcArtifacts)) {
+    throw ("No existe artifacts esperado: " + $srcArtifacts + ". Revisa logs: OUT=" + $smokeOut + " ; ERR=" + $smokeErr)
+  }
+
+  # 2.1) Evitar el wildcard '*' (si no hay matches, PS lo trata como ruta inexistente)
+  $items = Get-ChildItem -LiteralPath $srcArtifacts -Force -File -ErrorAction Stop
+  if (-not $items -or $items.Count -lt 1) {
+    throw ("Artifacts vacío: " + $srcArtifacts + ". Revisa logs: OUT=" + $smokeOut + " ; ERR=" + $smokeErr)
+  }
+
+  # 3) Copia artifacts al live estable en workspace
+New-Item -ItemType Directory -Force -Path $dstArt | Out-Null
+foreach ($it in $items) {
+  Copy-Item -LiteralPath $it.FullName -Destination $dstArt -Force -ErrorAction Stop
 }
 
-# 5) DEVUELVE el LiveDir por pipeline (para que el caller lo capture)
-Write-Output ("LIVE_WORKSPACE_DIR=" + $dstLive)
+# 3.1) Promover archivos clave al ROOT live (compat con smoke_live_manifest_v03/apply_subtitles/smoke_subtitles)
+$srcManifest = Join-Path $srcArtifacts "manifest_v03.json"
+if (-not (Test-Path -LiteralPath $srcManifest)) {
+  throw ("Falta manifest_v03.json en SRC artifacts: " + $srcArtifacts)
+}
+Copy-Item -LiteralPath $srcManifest -Destination (Join-Path $dstRoot "manifest_v03.json") -Force -ErrorAction Stop
+
+# Imagen principal (1 por escena en smoke actual)
+$srcImg = Get-ChildItem -LiteralPath $srcArtifacts -Filter "image_*.png" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $srcImg) { throw ("Falta image_*.png en SRC artifacts: " + $srcArtifacts) }
+Copy-Item -LiteralPath $srcImg.FullName -Destination (Join-Path $dstRoot $srcImg.Name) -Force -ErrorAction Stop
+
+# Audio principal
+$srcAud = Get-ChildItem -LiteralPath $srcArtifacts -Filter "audio_*.wav" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $srcAud) { throw ("Falta audio_*.wav en SRC artifacts: " + $srcArtifacts) }
+Copy-Item -LiteralPath $srcAud.FullName -Destination (Join-Path $dstRoot $srcAud.Name) -Force -ErrorAction Stop
+
+# (Opcional) Copiar script_*.txt al root live si existe
+$srcScript = Get-ChildItem -LiteralPath $srcArtifacts -Filter "script_*.txt" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($srcScript) {
+  Copy-Item -LiteralPath $srcScript.FullName -Destination (Join-Path $dstRoot $srcScript.Name) -Force -ErrorAction Stop
+}
+
+# 4) Limpieza opcional (NO exports)
+  if ($CleanRepoOutputs) {
+    $candidates = @(
+      (Join-Path $repo "_demo_out"),
+      (Join-Path $repo "_demo_out_legacy"),
+      (Join-Path $repo "_v03_legacy_run"),
+      (Join-Path $repo "_v03_smoke_cfg")
+    )
+    foreach ($p2 in $candidates) {
+      if (Test-Path -LiteralPath $p2) { Remove-Item -LiteralPath $p2 -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+  }
+
+  # OK: el caller debe leer el DIR RAÍZ live (no \artifacts)
+  Write-Output ("LIVE_WORKSPACE_DIR=" + $dstRoot)
+  exit 0
+}
+catch {
+  # Siempre dejamos marcador para diagnóstico, pero fallamos (caller lo verá)
+  Write-Output ("LIVE_WORKSPACE_DIR=" + $dstRoot)
+  throw
+}
+
+

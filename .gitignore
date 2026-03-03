@@ -1,96 +1,18 @@
-# logs / outputs
+# workspace / runs / logs
+STUDIO_WORKSPACE/
+runs/
+tmp/
+cache/
+*_logs/
 *.log
-render_*.log
-release_*.log
 
-# local tooling scratch
-tools/patch_render_debug*.py
-
-# local wrappers (solo local)
-tools/render_pack_v03.cmd
-tools/render_pack_v03.ps1
-
-# pytest cache
-.pytest_cache/
-__pycache__/
-# local run outputs / work dirs
+# outputs generados en repo
 _demo_out/
 _demo_out_legacy/
-_v03_from_config/
 _v03_legacy_run/
 _v03_smoke_cfg/
-workspace/
-_vcs_extract/
-_archive/
 
-# local music assets (si no quieres trackearlos)
-music/
-
-# render debug backups
-tools/render_pack_v03.py.bak_*
-# run folders
-_v03_*/
-_v03_*_smoke/
-_v03_demo_edge_audit_smoke/
-_v03_edge_voice_smoke/
-_v03_hf_edge_smoke/
-_v03_text_live_smoke/
-
-# local backups
-*.bak_*
-config/providers.json.bak_*
-studio/providers/image/hf_image.py.bak_*
-
-# temp tools
-tools/hf_probe_models.py
-tools/hf_test_infer.py
-tools/patch_hf_image_model*.py
-
-# local artifacts
-hf_ok.png
-hf_test.png
-# === LOCAL OUTPUTS / RUNS (NO TRACK) ===
-_live_smoke_*/
-_tmp_*/
-_freeze_*/
-_claude_candidate_*/
-_pixabay_*/
-_scene_provider_routing_smoke*/
-_scan_*.txt
-tmp_*.txt
-tmp_diff_*.txt
-config/_tmp_*.json
-
-# Media outputs
-*.mp4
-*.wav
-*.png
-*.jpg
-*.jpeg
-*.zip
-# Local probes/tests (no track)
-_pixabay_*.json
-_scene_provider_routing_*.json
-_tmp_*.py
-# Smoke outputs (local artifacts)
-_smoke_out/
-# Workspace / exports / logs
-*_WORKSPACE*
-workspace/
-exports/
-*.log
-.codex-home/
-.codex-home/
-# local temp
-.tmp/
-_exports/
-# Local runs/outputs
-_demo_out*/
-_v03_smoke_cfg*/
-_v03_legacy_run*/
-_v03_*/
-_freeze_*/
-# Allow committed tool scripts
-!tools/smoke_live_to_workspace_v03.ps1
-# Allow committed tool scripts
-!tools/env_workspace.ps1
+# python
+__pycache__/
+*.pyc
+.venv/

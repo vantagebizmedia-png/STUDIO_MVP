@@ -1,26 +1,18 @@
 param(
-  # Workspace root (si vacío usa env:STUDIO_WORKSPACE)
   [string]$WorkspaceRoot = "",
-
-  # Pack opcional (exports/pack_v03_...). Si lo pasas, corre finalize full + smoke finalize también.
   [string]$PackDir = "",
-
-  # Scene Builder
   [int]$MaxScenes = 6,
-
-  # Subtitles style
   [string]$SrtName = "captions_v03.srt",
   [int]$FontSize = 52,
   [int]$MarginV  = 120,
   [int]$Outline  = 3,
-
-  # Music (opcional) para finalize pack
   [string]$MusicFile = "",
   [double]$MusicVolume = 0.22,
   [double]$DuckingRatio = 8.0,
+  [switch]$ExpectMusic,
 
-  # Expect music outputs (solo aplica si PackDir)
-  [switch]$ExpectMusic
+  # NUEVO: si está presente, detiene en el primer fallo y sale con ExitCode=1
+  [switch]$FailFast
 )
 
 Set-StrictMode -Version Latest
@@ -34,6 +26,32 @@ function Require-File {
   if (-not (Test-Path -LiteralPath $Path)) { throw "Falta: $Path" }
 }
 
+$script:hadError = $false
+
+function Run-StepPwsh {
+  param(
+    [Parameter(Mandatory=$true)][string]$Title,
+    [Parameter(Mandatory=$true)][string[]]$Args
+  )
+  try {
+    & pwsh @Args
+    if ($LASTEXITCODE -ne 0) {
+      throw ($Title + " falló (ExitCode=" + $LASTEXITCODE + ")")
+    }
+  }
+  catch {
+    $script:hadError = $true
+    Write-Host "Exception:" -ForegroundColor Red
+    Write-Host $Title -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
+
+    if ($FailFast) {
+      Write-Host "FAIL-FAST: deteniendo en el primer error." -ForegroundColor Red
+      exit 1
+    }
+  }
+}
+
 if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -lt 3) {
   $WorkspaceRoot = $env:STUDIO_WORKSPACE
 }
@@ -41,85 +59,112 @@ if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -lt 3) {
   throw "Falta WorkspaceRoot y env:STUDIO_WORKSPACE no está seteado."
 }
 
-# -------------------------
-# Preflight: scripts requeridos
-# -------------------------
 $smToWs       = Join-Path $repo "tools\smoke_live_to_workspace_v03.ps1"
 $smLiveMan    = Join-Path $repo "tools\smoke_live_manifest_v03.ps1"
 $apSubsLive   = Join-Path $repo "tools\apply_subtitles_live_v03.ps1"
 $smSubsLive   = Join-Path $repo "tools\smoke_subtitles_live_v03.ps1"
-
 Require-File $smToWs
 Require-File $smLiveMan
 Require-File $apSubsLive
 Require-File $smSubsLive
 
 $smFinalizeFull = Join-Path $repo "tools\smoke_finalize_full_v03.ps1"
-if ($PackDir -and $PackDir.Trim().Length -ge 3) {
-  Require-File $smFinalizeFull
-}
+if ($PackDir -and $PackDir.Trim().Length -ge 3) { Require-File $smFinalizeFull }
 
 Write-Host "== SMOKE E2E v0.3 ==" -ForegroundColor Cyan
 Write-Host ("Repo      : " + $repo) -ForegroundColor DarkGray
 Write-Host ("Workspace : " + $WorkspaceRoot) -ForegroundColor DarkGray
 Write-Host ("MaxScenes : " + $MaxScenes) -ForegroundColor DarkGray
+Write-Host ("FailFast  : " + [bool]$FailFast) -ForegroundColor DarkGray
 
-# -------------------------
-# 1) LIVE -> workspace stable dir
-# -------------------------
 Write-Host "`n[1/5] LIVE: smoke -> workspace (stable live dir)" -ForegroundColor Yellow
-$outLines = & pwsh -NoProfile -ExecutionPolicy Bypass -File $smToWs -WorkspaceRoot $WorkspaceRoot -CleanRepoOutputs
-$line = ($outLines | Where-Object { $_ -match '^LIVE_WORKSPACE_DIR=' } | Select-Object -Last 1)
-if (-not $line) {
-  throw "No pude leer LIVE_WORKSPACE_DIR desde smoke_live_to_workspace_v03.ps1. Salida=`n$($outLines -join "`n")"
+
+$logsDir = Join-Path $WorkspaceRoot "runs\_logs"
+New-Item -ItemType Directory -Force $logsDir | Out-Null
+$ts     = Get-Date -Format "yyyyMMdd_HHmmss"
+$logOut = Join-Path $logsDir ("smoke_live_to_workspace_" + $ts + ".out.log")
+$logErr = Join-Path $logsDir ("smoke_live_to_workspace_" + $ts + ".err.log")
+if (Test-Path $logOut) { Remove-Item -Force $logOut }
+if (Test-Path $logErr) { Remove-Item -Force $logErr }
+
+$psiArgs = @(
+  "-NoProfile",
+  "-ExecutionPolicy","Bypass",
+  "-File", $smToWs,
+  "-WorkspaceRoot", $WorkspaceRoot,
+  "-CleanRepoOutputs"
+)
+
+$p = Start-Process -FilePath "pwsh" -ArgumentList $psiArgs -NoNewWindow -Wait -PassThru `
+  -RedirectStandardOutput $logOut -RedirectStandardError $logErr
+
+if ($p.ExitCode -ne 0) {
+  throw ("smoke_live_to_workspace_v03.ps1 falló (ExitCode=" + $p.ExitCode + "). Revisa logs: OUT=" + $logOut + " ; ERR=" + $logErr)
 }
-$live = ($line -replace '^LIVE_WORKSPACE_DIR=', '').Trim()
-if (-not (Test-Path $live)) { throw "LIVE_WORKSPACE_DIR no existe: $live" }
 
-# -------------------------
-# 2) LIVE: validar manifest v03
-# -------------------------
-Write-Host "`n[2/5] LIVE: smoke_live_manifest_v03 (live=$live)" -ForegroundColor Yellow
-pwsh -NoProfile -ExecutionPolicy Bypass -File $smLiveMan -LiveDir $live -MaxScenes $MaxScenes
+$hit = Select-String -LiteralPath $logOut -Pattern "^LIVE_WORKSPACE_DIR=" | Select-Object -Last 1
+if (-not $hit) { throw ("No pude leer LIVE_WORKSPACE_DIR. Revisa OUT log: " + $logOut) }
 
-# -------------------------
-# 3) LIVE: aplicar subtítulos (crea video.mp4 base si hace falta)
-# -------------------------
+$live = ($hit.Line -replace "^LIVE_WORKSPACE_DIR=", "").Trim()
+if (-not (Test-Path -LiteralPath $live)) { throw ("LIVE_WORKSPACE_DIR no existe: " + $live) }
+
+Write-Host ("`n[2/5] LIVE: smoke_live_manifest_v03 (live=" + $live + ")") -ForegroundColor Yellow
+Run-StepPwsh -Title "[2/5] smoke_live_manifest_v03" -Args @(
+  "-NoProfile","-ExecutionPolicy","Bypass",
+  "-File",$smLiveMan,
+  "-LiveDir",$live,
+  "-MaxScenes",$MaxScenes
+)
+
 Write-Host "`n[3/5] LIVE: apply_subtitles_live_v03 (burn-in + SRT)" -ForegroundColor Yellow
-pwsh -NoProfile -ExecutionPolicy Bypass -File $apSubsLive `
-  -LiveDir $live `
-  -SrtName $SrtName `
-  -FontSize $FontSize -MarginV $MarginV -Outline $Outline
+Run-StepPwsh -Title "[3/5] apply_subtitles_live_v03" -Args @(
+  "-NoProfile","-ExecutionPolicy","Bypass",
+  "-File",$apSubsLive,
+  "-LiveDir",$live,
+  "-SrtName",$SrtName,
+  "-FontSize",$FontSize,
+  "-MarginV",$MarginV,
+  "-Outline",$Outline
+)
 
-# -------------------------
-# 4) LIVE: smoke subtitles
-# -------------------------
 Write-Host "`n[4/5] LIVE: smoke_subtitles_live_v03" -ForegroundColor Yellow
-pwsh -NoProfile -ExecutionPolicy Bypass -File $smSubsLive -LiveDir $live -MaxScenes $MaxScenes -SrtName $SrtName
+Run-StepPwsh -Title "[4/5] smoke_subtitles_live_v03" -Args @(
+  "-NoProfile","-ExecutionPolicy","Bypass",
+  "-File",$smSubsLive,
+  "-LiveDir",$live,
+  "-MaxScenes",$MaxScenes,
+  "-SrtName",$SrtName
+)
 
-# -------------------------
-# 5) PACK (opcional)
-# -------------------------
 if ($PackDir -and $PackDir.Trim().Length -ge 3) {
   $pack = (Resolve-Path $PackDir).Path
-  Write-Host "`n[5/5] PACK: smoke_finalize_full_v03 (pack=$pack)" -ForegroundColor Yellow
+  Write-Host ("`n[5/5] PACK: smoke_finalize_full_v03 (pack=" + $pack + ")") -ForegroundColor Yellow
+
+  $args = @(
+    "-NoProfile","-ExecutionPolicy","Bypass",
+    "-File",$smFinalizeFull,
+    "-PackDir",$pack,
+    "-MaxScenes",$MaxScenes,
+    "-SrtName",$SrtName,
+    "-FontSize",$FontSize,
+    "-MarginV",$MarginV,
+    "-Outline",$Outline
+  )
 
   if ($MusicFile -and $MusicFile.Trim().Length -gt 0) {
-    pwsh -NoProfile -ExecutionPolicy Bypass -File $smFinalizeFull `
-      -PackDir $pack `
-      -MaxScenes $MaxScenes `
-      -SrtName $SrtName -FontSize $FontSize -MarginV $MarginV -Outline $Outline `
-      -MusicFile $MusicFile -MusicVolume $MusicVolume -DuckingRatio $DuckingRatio `
-      $(if ($ExpectMusic) { "-ExpectMusic" } else { "" })
-  } else {
-    pwsh -NoProfile -ExecutionPolicy Bypass -File $smFinalizeFull `
-      -PackDir $pack `
-      -MaxScenes $MaxScenes `
-      -SrtName $SrtName -FontSize $FontSize -MarginV $MarginV -Outline $Outline `
-      $(if ($ExpectMusic) { "-ExpectMusic" } else { "" })
+    $args += @("-MusicFile",$MusicFile,"-MusicVolume",$MusicVolume,"-DuckingRatio",$DuckingRatio)
   }
+  if ($ExpectMusic) { $args += "-ExpectMusic" }
+
+  Run-StepPwsh -Title "[5/5] smoke_finalize_full_v03" -Args $args
 } else {
   Write-Host "`n[5/5] PACK: (omitido) No pasaste -PackDir" -ForegroundColor DarkYellow
 }
 
+if ($script:hadError) {
+  Write-Host "`nSMOKE FAIL: E2E v0.3 (uno o más pasos fallaron). Revisa output arriba." -ForegroundColor Red
+  exit 1
+}
+
 Write-Host "`nSMOKE OK: E2E v0.3 (LIVE(workspace) + optional PACK)" -ForegroundColor Green
+exit 0

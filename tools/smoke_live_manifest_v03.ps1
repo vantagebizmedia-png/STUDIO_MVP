@@ -27,10 +27,19 @@ if (-not $LiveDir -or $LiveDir.Trim().Length -lt 3) {
 }
 
 $live = (Resolve-Path $LiveDir).Path
-$manifest = Join-Path $live "manifest_v03.json"
-if (-not (Test-Path $manifest)) { throw "Falta manifest_v03.json en LIVE dir: $live" }
 
-$m = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8 | ConvertFrom-Json
+# manifest puede estar en root LIVE o en LIVE\artifacts (compat)
+$manifest = Join-Path $live "manifest_v03.json"
+if (-not (Test-Path -LiteralPath $manifest)) {
+  $altLive = Join-Path $live "artifacts"
+  $altMan  = Join-Path $altLive "manifest_v03.json"
+  if (Test-Path -LiteralPath $altMan) {
+    $live = (Resolve-Path $altLive).Path
+    $manifest = $altMan
+  } else {
+    throw "Falta manifest_v03.json en LIVE dir: $live"
+  }
+}$m = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8 | ConvertFrom-Json
 
 # 2) Validaciones mínimas
 if (-not ($m.PSObject.Properties.Name -contains "scene_builder_v03")) { throw "manifest LIVE no tiene scene_builder_v03" }
@@ -78,3 +87,4 @@ $lastEnd = [int]$sc[$sc.Count-1].end_ms
 if ($lastEnd -le 0) { throw "end_ms final <= 0 en LIVE" }
 
 Write-Host "SMOKE OK: LIVE manifest v03 (scene_builder_v03 + scenes_v03). live=$live scenes=$($sc.Count) total_ms=$total last_end=$lastEnd" -ForegroundColor Green
+

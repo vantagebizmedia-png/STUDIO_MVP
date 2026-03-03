@@ -28,8 +28,20 @@ if (-not $LiveDir -or $LiveDir.Trim().Length -lt 3) {
 }
 
 $live = (Resolve-Path $LiveDir).Path
+
+# manifest puede estar en root LIVE o en LIVE\artifacts (compat)
 $manifest = Join-Path $live "manifest_v03.json"
-if (-not (Test-Path $manifest)) { throw "Falta manifest_v03.json en LIVE: $live" }
+$baseDir = $live
+if (-not (Test-Path -LiteralPath $manifest)) {
+  $altLive = Join-Path $live "artifacts"
+  $altMan  = Join-Path $altLive "manifest_v03.json"
+  if (Test-Path -LiteralPath $altMan) {
+    $baseDir = (Resolve-Path $altLive).Path
+    $manifest = $altMan
+  } else {
+    throw "Falta manifest_v03.json en LIVE: $live"
+  }
+}
 
 # ffmpeg requerido
 $ff = "ffmpeg"
@@ -49,14 +61,12 @@ if (-not $audRel) { throw "manifest.artifacts.audio vacío (LIVE)" }
 $imgRel = $imgRel.Replace("/", "\")
 $audRel = $audRel.Replace("/", "\")
 
-# artifacts paths son relativos al work_dir => join directo
-$imgAbs = (Resolve-Path (Join-Path $live $imgRel)).Path
-$audAbs = (Resolve-Path (Join-Path $live $audRel)).Path
+# artifacts paths son relativos al baseDir (root o artifacts según donde esté el manifest)
+$imgAbs = (Resolve-Path (Join-Path $baseDir $imgRel)).Path
+$audAbs = (Resolve-Path (Join-Path $baseDir $audRel)).Path
 
-if (-not (Test-Path $imgAbs)) { throw "No existe image (LIVE): $imgAbs" }
-if (-not (Test-Path $audAbs)) { throw "No existe audio (LIVE): $audAbs" }
-
-function Get-VideoDurationSec {
+if (-not (Test-Path -LiteralPath $imgAbs)) { throw "No existe image (LIVE): $imgAbs" }
+if (-not (Test-Path -LiteralPath $audAbs)) { throw "No existe audio (LIVE): $audAbs" }function Get-VideoDurationSec {
   param([Parameter(Mandatory=$true)][string]$VideoPath)
   $ffp = "ffprobe"
   if (-not (Get-Command $ffp -ErrorAction SilentlyContinue)) { return -1 }
@@ -110,3 +120,4 @@ $vidOut = Join-Path $live "video_subtitles.mp4"
 if (-not (Test-Path $vidOut)) { throw "No se generó video_subtitles.mp4 en LIVE: $vidOut" }
 
 Write-Host "OK: LIVE subtitles aplicados. live=$live base=$videoIn out=$vidOut" -ForegroundColor Green
+

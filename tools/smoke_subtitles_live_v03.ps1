@@ -21,10 +21,20 @@ if (-not $LiveDir -or $LiveDir.Trim().Length -lt 3) {
 }
 
 $live = (Resolve-Path $LiveDir).Path
-$manifest = Join-Path $live "manifest_v03.json"
-if (-not (Test-Path $manifest)) { throw "Falta manifest_v03.json en LIVE: $live" }
 
-# outputs esperados
+# manifest puede estar en root LIVE o en LIVE\artifacts (compat)
+$manifest = Join-Path $live "manifest_v03.json"
+$baseDir = $live
+if (-not (Test-Path -LiteralPath $manifest)) {
+  $altLive = Join-Path $live "artifacts"
+  $altMan  = Join-Path $altLive "manifest_v03.json"
+  if (Test-Path -LiteralPath $altMan) {
+    $baseDir = (Resolve-Path $altLive).Path
+    $manifest = $altMan
+  } else {
+    throw "Falta manifest_v03.json en LIVE: $live"
+  }
+}# outputs esperados
 $videoBase = Join-Path $live "video.mp4"
 $videoSubs = Join-Path $live "video_subtitles.mp4"
 $srt       = Join-Path $live $SrtName
@@ -75,13 +85,13 @@ for ($i=0; $i -lt $sc.Count; $i++) {
   $imgRel = $s.assets.image
   if (-not $imgRel) { throw "Escena $i sin assets.image (LIVE)" }
   $imgRel = ([string]$imgRel).Replace("/", "\")
-  $imgAbs = Join-Path $live $imgRel
+  $imgAbs = Join-Path $baseDir $imgRel
   if (-not (Test-Path $imgAbs)) { throw "Imagen no existe (LIVE): $imgAbs" }
 
   $acRel = $s.assets.audio_clip
   if (-not $acRel) { throw "Escena $i sin assets.audio_clip (LIVE)" }
   $acRel = ([string]$acRel).Replace("/", "\")
-  $acAbs = Join-Path $live $acRel
+  $acAbs = Join-Path $baseDir $acRel
   if (-not (Test-Path $acAbs)) { throw "Audio clip no existe (LIVE): $acAbs" }
 }
 
@@ -91,3 +101,6 @@ if ($lastEnd -ne $total) {
 }
 
 Write-Host "SMOKE OK: LIVE subtitles v03. live=$live scenes=$($sc.Count) total_ms=$total video_bytes=$vb subs_bytes=$vs srt_bytes=$sb" -ForegroundColor Green
+
+
+

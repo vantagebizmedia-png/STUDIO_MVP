@@ -16,33 +16,69 @@ def _norm_space(s: str) -> str:
 
 def split_script_into_scenes(script_text: str, max_scenes: int) -> List[str]:
     """
-    Split determinista:
-      1) Preferir separadores de párrafo.
+    Split determinista (v03):
+      1) Preferir párrafos/líneas (si existen).
       2) Si no alcanza, dividir por frases.
-      3) Recortar a max_scenes (merge del resto en la última).
+      3) Si aún no alcanza y el texto es suficientemente largo, forzar N escenas por chunking de palabras.
+      4) Recortar a max_scenes (merge del resto en la última).
     """
-    text = _norm_space(script_text)
-    if not text:
-        return [""]
-
-    # 1) Intento por párrafos (si venía con saltos)
-    chunks = [c.strip() for c in re.split(r"\n{2,}", script_text or "") if c.strip()]
-    if len(chunks) <= 1:
-        # 2) fallback por frases
-        parts = re.split(r"(?<=[\.\!\?])\s+", text)
-        chunks = [p.strip() for p in parts if p.strip()]
-
     if max_scenes < 1:
         max_scenes = 1
 
+    raw_text = (script_text or "").strip()
+    text = _norm_space(raw_text)
+    if not text:
+        return [""]
+
+    # 1) Párrafos: doble salto, o múltiples líneas
+    paras = [p.strip() for p in re.split(r"\n{2,}", raw_text) if p.strip()]
+    if len(paras) <= 1:
+        # si venía con varias líneas simples, úsalas como base
+        lines = [ln.strip() for ln in re.split(r"\r?\n", raw_text) if ln.strip()]
+        if len(lines) > 1:
+            paras = lines
+
+    chunks = [_norm_space(p) for p in paras if _norm_space(p)]
+
+    # 2) Frases por puntuación (si aún es 1 bloque)
+    if len(chunks) <= 1:
+        parts = re.split(r"(?<=[\.\!\?])\s+", text)
+        chunks = [_norm_space(p) for p in parts if _norm_space(p)]
+
+    # 3) Forzar N escenas por palabras si no hay separadores útiles
+    #    (solo si el texto es lo bastante largo como para justificarlo)
+    if len(chunks) < max_scenes:
+        words = [w for w in re.split(r"\s+", text) if w]
+        # umbral mínimo para evitar dividir textos cortos sin sentido
+        if len(words) >= 30:
+            # objetivo: hasta max_scenes, con grupos contiguos casi iguales
+            n = min(max_scenes, max(1, int(math.ceil(len(words) / 18.0))))
+            n = max(n, len(chunks))  # no reducir lo ya detectado
+            if n > 1:
+                base = len(words) // n
+                rem = len(words) % n
+                forced = []
+                idx = 0
+                for i in range(n):
+                    take = base + (1 if i < rem else 0)
+                    seg = " ".join(words[idx: idx + take]).strip()
+                    if seg:
+                        forced.append(seg)
+                    idx += take
+                if forced:
+                    chunks = forced
+
+    # Si aún quedó vacío (caso raro), fallback
+    if not chunks:
+        chunks = [text]
+
+    # 4) Recorte/merge determinista a max_scenes
     if len(chunks) <= max_scenes:
         return chunks
 
-    # 3) Merge determinista: primeras max_scenes-1, el resto a la última
     head = chunks[: max_scenes - 1]
     tail = " ".join(chunks[max_scenes - 1 :]).strip()
     return head + [tail]
-
 
 def make_image_query(scene_text: str) -> str:
     """
@@ -142,3 +178,4 @@ def build_scenes_v03(
             }
         )
     return scenes
+

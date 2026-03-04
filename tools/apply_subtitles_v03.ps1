@@ -2,14 +2,6 @@ param(
   [Parameter(Mandatory=$true)][string]$PackDir,
   [string]$SrtName = "captions_v03.srt",
   [int]$FontSize = 52,
-  [int]$MarginV  = 120,
-  [int]$MarginL  = 80,
-  [int]$MarginR  = 80,
-  [int]$Outline  = 3
-)
-][string]$PackDir,
-  [string]$SrtName = "captions_v03.srt",
-  [int]$FontSize = 52,
 [int]$MarginV  = 120,
   [int]$MarginL  = 80,
   [int]$MarginR  = 80,
@@ -83,5 +75,4 @@ if ($lenOut -lt $minBytesVideoSubs) {
 }
 
 Write-Host "OK: Subtitles v03 aplicados. SRT=$srt OUT=$videoOut FontSize=$FontSize MarginV=$MarginV Outline=$Outline isLive=$isLive" -ForegroundColor Green
-
 

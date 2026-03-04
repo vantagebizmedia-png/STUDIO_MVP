@@ -1,9 +1,0 @@
-[
-  {
-    "scene_id": "scene_01",
-    "from_clip_id": "clip_01",
-    "image_prompt_ref": "prompts/scene_01.txt",
-    "image_source_mode": "stock",
-    "stock_query": "productive person working at desk laptop home office vertical portrait"
-  }
-]

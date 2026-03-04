@@ -1,7 +1,19 @@
-# Keep consistent line endings in repo
+# Normalize text files, keep scripts consistent
 * text=auto
 
-# PowerShell scripts: store as LF
+# PowerShell scripts
 *.ps1 text eol=lf
-*.psm1 text eol=lf
-*.psd1 text eol=lf
+
+# Python
+*.py text eol=lf
+
+# JSON/TXT/MD
+*.json text eol=lf
+*.txt  text eol=lf
+*.md   text eol=lf
+
+# Binary
+*.png binary
+*.mp4 binary
+*.wav binary
+*.zip binary

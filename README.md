@@ -1,11 +1,11 @@
-# STUDIO_MVP (v0.3) — Deterministic Video Pipeline (LIVE → Scenes → Subtitles → HANDOFF)
+# STUDIO_MVP (v0.3) — Deterministic Video Pipeline (LIVE -> Scenes -> Subtitles -> HANDOFF)
 
 Este repo contiene un pipeline determinista (replay/seed) para generar videos estilo short/reel a partir de un prompt.
 El objetivo del MVP es mantener un baseline estable con smoke tests end-to-end.
 
 ## Estado actual (mar 2026)
 - ✅ Smoke core v0.3 (tests + demos)
-- ✅ Smoke E2E v0.3: LIVE → workspace → scenes_v03 → subtitles (SRT + burn-in) → handoff_v03 (ZIP + SHA256 + READY)
+- ✅ Smoke E2E v0.3: LIVE -> workspace -> scenes_v03 -> subtitles (SRT + burn-in) -> handoff_v03 (ZIP + SHA256 + READY)
 
 ## Requisitos
 - Windows + PowerShell 7 (`pwsh`)
@@ -20,7 +20,7 @@ Ejecuta unit tests + demos:
 - `tools/smoke_v03.ps1`
 
 ### 2) Smoke E2E (sin handoff)
-Ejecuta LIVE→workspace→scenes→subtítulos:
+Ejecuta LIVE -> workspace -> scenes -> subtítulos:
 - `tools/smoke_e2e_v03.ps1 -WorkspaceRoot $env:STUDIO_WORKSPACE -MaxScenes 6`
 
 ### 3) Smoke E2E (con handoff)
@@ -39,8 +39,8 @@ Outputs esperados en:
 ## Roadmap (STUDIO_MVP)
 Prioridades (manteniendo baseline + smoke determinista):
 
-1) Scene Builder (LIVE → manifest_v03.json con scenes_v03 + assets por escena)
-- Split guion→N escenas
+1) Scene Builder (LIVE -> manifest_v03.json con scenes_v03 + assets por escena)
+- Split guion -> N escenas
 - Segmentación de audio por escena
 - 1 imagen por escena vía Pixabay/stock_query
 

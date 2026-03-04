@@ -1,0 +1,37 @@
+=== MUSIC STRATEGY AUDIT ===
+Generated: 2026-02-26T18:10:19
+
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:166: "music_prompt": "music_prompt.txt",
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:574: def _compact_music_strategy_text(*parts: Any) -> str:
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:581: MUSIC_STRATEGY_RULES = [
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:672: MUSIC_STRATEGY_DEFAULT = {
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:681: def _pick_auto_music_strategy(
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:688: text = _compact_music_strategy_text(
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:696: for rule in MUSIC_STRATEGY_RULES:
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:703: "music_strategy_reason": str(rule.get("reason") or "matched_rule"),
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:708: "music_source_mode": str(MUSIC_STRATEGY_DEFAULT.get("music_source_mode") or "stock"),
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:709: "music_provider_override": str(MUSIC_STRATEGY_DEFAULT.get("music_provider_override") or ""),
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:710: "music_query": str(MUSIC_STRATEGY_DEFAULT.get("music_query") or ""),
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:711: "music_strategy_reason": str(MUSIC_STRATEGY_DEFAULT.get("reason") or "default_background_stock"),
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:712: "music_energy": str(MUSIC_STRATEGY_DEFAULT.get("music_energy") or "medium"),
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1107: music_strategy = _pick_auto_music_strategy(core, subs, target_format, voice_pacing, constraints)
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1128: "[AUTO_MUSIC_STRATEGY]",
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1129: f"source_mode={music_strategy['music_source_mode']}",
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1130: f"provider_override={music_strategy['music_provider_override']}",
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1131: f"music_query={music_strategy['music_query']}",
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1132: f"reason={music_strategy['music_strategy_reason']}",
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1133: f"energy={music_strategy['music_energy']}",
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1153: "music_strategy": music_strategy,
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1165: write_text(os.path.join(pack_dir, "music_prompt.txt"), music_txt)
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1166: write_json(os.path.join(pack_dir, "music_strategy.json"), music_strategy)
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1280: md.append("```text\n" + read_text(os.path.join(pack_dir, "music_prompt.txt")).strip() + "\n```\n")
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1324: write_text(os.path.join(bundle_dir, "music", "music_prompt.txt"), read_text(os.path.join(pack_dir, "music_prompt.txt")))
+C:\Users\vanta\Documents\STUDIO_MVP\app\main.py:1624: filename="music_prompt.txt",
+C:\Users\vanta\Documents\STUDIO_MVP\tools\pick_local_music_from_strategy.ps1:58: $jsonPath = Join-Path $PackDir "music_strategy.json"
+C:\Users\vanta\Documents\STUDIO_MVP\tools\pick_local_music_from_strategy.ps1:66: music_strategy_reason  = [string]$obj.music_strategy_reason
+C:\Users\vanta\Documents\STUDIO_MVP\tools\pick_local_music_from_strategy.ps1:71: $promptPath = Join-Path $PackDir "music_prompt.txt"
+C:\Users\vanta\Documents\STUDIO_MVP\tools\pick_local_music_from_strategy.ps1:73: throw "No existe music_strategy.json ni music_prompt.txt en: $PackDir"
+C:\Users\vanta\Documents\STUDIO_MVP\tools\pick_local_music_from_strategy.ps1:80: if ($lines[$i].Trim() -eq "[AUTO_MUSIC_STRATEGY]") {
+C:\Users\vanta\Documents\STUDIO_MVP\tools\pick_local_music_from_strategy.ps1:87: throw "No encontré [AUTO_MUSIC_STRATEGY] en music_prompt.txt"
+C:\Users\vanta\Documents\STUDIO_MVP\tools\pick_local_music_from_strategy.ps1:105: music_strategy_reason   = [string]$kv["reason"]
+C:\Users\vanta\Documents\STUDIO_MVP\tools\pick_local_music_from_strategy.ps1:191: music_strategy_reason   = $strategy.music_strategy_reason

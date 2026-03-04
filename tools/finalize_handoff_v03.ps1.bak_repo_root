@@ -1,0 +1,26 @@
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$PackDir,
+    [switch]$AutoMusic,
+    [string]$MusicDir = ".\music"
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$py = Resolve-PythonExe -RepoRoot $repo
+
+$repo = (Resolve-Path ".").Path
+
+. "$PSScriptRoot\resolve_python.ps1"
+
+if (!(Test-Path -LiteralPath ".\tools\finalize_handoff_v03.py")) {
+    throw "Falta tools/finalize_handoff_v03.py"
+}
+
+$argsPy = @("tools/finalize_handoff_v03.py", "--pack-dir", $PackDir, "--music-dir", $MusicDir)
+if ($AutoMusic) { $argsPy += "--auto-music" }
+
+& $py @argsPy
+exit $LASTEXITCODE
+

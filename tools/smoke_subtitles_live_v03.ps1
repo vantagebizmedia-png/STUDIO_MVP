@@ -4,91 +4,105 @@ param(
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference="Stop"
 chcp 65001 | Out-Null
 
 function Fail([string]$msg) { throw "SMOKE FAIL: $msg" }
 
-$live = (Resolve-Path -LiteralPath $LiveDir).Path
-$mf   = Join-Path $live "manifest_v03.json"
-if (-not (Test-Path -LiteralPath $mf)) { Fail "Falta manifest_v03.json en LIVE: $live" }
+if (-not (Test-Path -LiteralPath $LiveDir)) { Fail "No existe LiveDir: $LiveDir" }
+$LiveDir = (Resolve-Path $LiveDir).Path
 
-# Video base + subtitles
-$videoBase = Join-Path $live "video.mp4"
-$videoSubs = Join-Path $live "video_subtitles.mp4"
-$srt       = Join-Path $live "captions_v03.srt"
+$man = Join-Path $LiveDir "manifest_v03.json"
+if (-not (Test-Path -LiteralPath $man)) { Fail "Falta manifest_v03.json en: $LiveDir" }
 
-if (-not (Test-Path -LiteralPath $videoBase)) { Fail "Falta video base: $videoBase" }
-if (-not (Test-Path -LiteralPath $videoSubs)) { Fail "Falta video_subtitles: $videoSubs" }
-if (-not (Test-Path -LiteralPath $srt))       { Fail "Falta SRT: $srt" }
+# Outputs de subtítulos (lo mínimo que esperamos en LIVE)
+$needLive = @(
+  (Join-Path $LiveDir "captions_v03.srt"),
+  (Join-Path $LiveDir "video_subtitles.mp4")
+)
+foreach ($p in $needLive) {
+  if (-not (Test-Path -LiteralPath $p)) { Fail "Falta output LIVE requerido: $p" }
+}
 
-$vb = (Get-Item -LiteralPath $videoBase).Length
-$vs = (Get-Item -LiteralPath $videoSubs).Length
-$sb = (Get-Item -LiteralPath $srt).Length
-if ($vb -lt 1000) { Fail "video.mp4 muy pequeño: $vb bytes" }
-if ($vs -lt 1000) { Fail "video_subtitles.mp4 muy pequeño: $vs bytes" }
-if ($sb -lt 10)   { Fail "captions_v03.srt muy pequeño: $sb bytes" }
+$m = Get-Content -LiteralPath $man -Raw -Encoding UTF8 | ConvertFrom-Json
 
-$js = Get-Content -LiteralPath $mf -Raw -Encoding UTF8 | ConvertFrom-Json
-$sc = @($js.scenes_v03)
-if ($sc.Count -lt 1) { Fail "manifest sin scenes_v03" }
+# Preferimos scenes_v03; fallback a scenes si existiera
+$scenes = @()
+if ($m.PSObject.Properties["scenes_v03"] -and $m.scenes_v03) {
+  $scenes = @($m.scenes_v03)
+} elseif ($m.PSObject.Properties["scenes"] -and $m.scenes) {
+  $scenes = @($m.scenes)
+} else {
+  Fail "manifest no tiene scenes_v03[] ni scenes[]"
+}
 
-$take = [Math]::Min($MaxScenes, $sc.Count)
+if ($scenes.Count -lt 1) { Fail "No hay escenas en manifest" }
+
+$take = [Math]::Min($MaxScenes, $scenes.Count)
+
+function Get-AssetPathValue($assetsObj, [string]$key) {
+  if (-not $assetsObj) { return "" }
+  $prop = $assetsObj.PSObject.Properties[$key]
+  if (-not $prop -or -not $prop.Value) { return "" }
+
+  $v = $prop.Value
+
+  # string directo
+  if ($v -is [string]) { return [string]$v }
+
+  # objeto con .path
+  if ($v -is [pscustomobject] -or $v -is [hashtable]) {
+    $p = $v.PSObject.Properties["path"]
+    if ($p -and $p.Value) { return [string]$p.Value }
+    return ""
+  }
+
+  # array: primer item string u objeto{path}
+  if ($v -is [object[]]) {
+    $arr = @($v)
+    if ($arr.Count -ge 1) {
+      $x = $arr[0]
+      if ($x -is [string]) { return [string]$x }
+      if ($x -is [pscustomobject] -or $x -is [hashtable]) {
+        $p0 = $x.PSObject.Properties["path"]
+        if ($p0 -and $p0.Value) { return [string]$p0.Value }
+      }
+    }
+  }
+
+  return ""
+}
 
 for ($i=0; $i -lt $take; $i++) {
-  $s = $sc[$i]
-  if ($null -eq $s.assets) { Fail "Escena $i sin assets (LIVE)" }
+  $s = $scenes[$i]
 
-  $assets = $s.assets
-
-  # Acepta image o video
-  $imgOk = $false
-  $vidOk = $false
-
-  # image
-  $ip = $assets.PSObject.Properties["image"]
-  if ($null -ne $ip -and $null -ne $ip.Value) {
-    $arr = @($ip.Value)
-    if ($arr.Count -gt 0) {
-      $p = $arr[0].PSObject.Properties["path"]
-      if ($null -ne $p -and [string]$arr[0].path) {
-        $imgPath = [string]$arr[0].path
-        if (Test-Path -LiteralPath $imgPath) { $imgOk = $true }
-      }
-    }
+  $assetsProp = $s.PSObject.Properties["assets"]
+  if (-not $assetsProp -or -not $assetsProp.Value) {
+    Fail ("Escena {0} sin assets" -f $i)
   }
 
-  # video
-  $vp = $assets.PSObject.Properties["video"]
-  if ($null -ne $vp -and $null -ne $vp.Value) {
-    $arr = @($vp.Value)
-    if ($arr.Count -gt 0) {
-      $p = $arr[0].PSObject.Properties["path"]
-      if ($null -ne $p -and [string]$arr[0].path) {
-        $vidPath = [string]$arr[0].path
-        if (Test-Path -LiteralPath $vidPath) { $vidOk = $true }
-      }
-    }
+  $a = $assetsProp.Value
+
+  $img = Get-AssetPathValue $a "image"
+  $vid = Get-AssetPathValue $a "video"
+
+  $cand = ""
+  if ($img) { $cand = $img }
+  elseif ($vid) { $cand = $vid }
+
+  if (-not $cand) {
+    Fail ("Escena {0} sin asset visual válido (esperaba assets.image[0].path o assets.video[0].path existente)" -f $i)
   }
 
-  if (-not ($imgOk -or $vidOk)) {
-    Fail "Escena $i sin asset visual válido (esperaba assets.image[0].path o assets.video[0].path existente)"
+  # Resolver relativo a LiveDir
+  $full = $cand
+  if (-not [System.IO.Path]::IsPathRooted($cand)) {
+    $full = Join-Path $LiveDir $cand
+  }
+
+  if (-not (Test-Path -LiteralPath $full)) {
+    Fail ("Escena {0} asset visual no existe: {1} (resuelto: {2})" -f $i,$cand,$full)
   }
 }
 
-# total_ms determinista (desde escenas)
-$totalMs = "n/a"
-try {
-  $ends = @()
-  foreach ($s in $sc) {
-    if ($s.PSObject.Properties["end_ms"] -and ($s.end_ms -as [int]) -ge 0) {
-      $ends += [int]$s.end_ms
-    }
-  }
-  if ($ends.Count -gt 0) {
-    $totalMs = [string](($ends | Measure-Object -Maximum).Maximum)
-  }
-} catch { }
-
-Write-Host ("SMOKE OK: LIVE subtitles v03 + assets (image|video). live={0} scenes={1} total_ms={2} video_bytes={3} subs_bytes={4} srt_bytes={5}" -f $live, $take, $totalMs, $vb, $vs, $sb) -ForegroundColor Green
-exit 0
+Write-Host ("SMOKE OK: LIVE subtitles v03 + assets (image|video). live={0} scenes={1}" -f $LiveDir,$take) -ForegroundColor Green

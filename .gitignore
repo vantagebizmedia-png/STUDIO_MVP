@@ -1,44 +1,39 @@
-# --- workspace / runs (NO repo) ---
+# --- workspace & runs ---
 STUDIO_WORKSPACE/
+**/STUDIO_WORKSPACE/
 runs/
-cache/
-tmp/
-__pycache__/
-*.pyc
+**/runs/
 
-# --- outputs / media ---
+# --- generated handoff outputs ---
 handoff_v03/
+**/handoff_v03/
+*.zip
 *.mp4
 *.wav
-*.png
-*.zip
+*.srt
 
-# --- logs / temporales ---
-*.log
-*_last.log
-render_*last*.log
-release_*.log
-tmp_*.txt
-tmp_*.log
+# --- caches ---
+cache_v03/
+**/cache_v03/
+.cache/
+**/.cache/
 
-# --- backups / editor ---
-*.bak
-*.bk
-*.bk2
-*.bak_*
-*.bk_*
-*.orig
-*~
+# --- local env / secrets ---
+.env
+.env.*
+*secrets*
+*secret*
+*apikey*
+*api_key*
+*token*
 
-# --- local configs (pueden tener keys) ---
-config/*.local.json
-config/providers.local.json
-config/hybrid.local.json
+# --- python junk ---
+__pycache__/
+*.pyc
+*.pyo
 
-# --- scratch dirs ---
-_demo_out/
-_demo_out_legacy/
-_v03_legacy_run/
-_v03_smoke_cfg/
-_scene_provider_routing_smoke/
-_scan_*.txt
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

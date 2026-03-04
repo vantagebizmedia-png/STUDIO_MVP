@@ -1,0 +1,63 @@
+﻿Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function Write-Utf8NoBom([string]$Path, [string]$Text) {
+  $enc = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText((Join-Path $PWD.Path $Path), $Text, $enc)
+}
+
+# 1) Normalizar STUDIO_V03_PROVIDER_SWAPPING.md (mojibake)
+$p = ".\STUDIO_V03_PROVIDER_SWAPPING.md"
+if (!(Test-Path -LiteralPath $p)) { throw ("Falta " + $p) }
+
+$t = Get-Content -LiteralPath $p -Raw -Encoding UTF8
+
+$badEmDash  = -join @([char]0x00E2, [char]0x20AC, [char]0x201D)
+$goodEmDash = [char]0x2014
+
+$bad_a = -join @([char]0x00C3, [char]0x00A1); $good_a = [char]0x00E1
+$bad_e = -join @([char]0x00C3, [char]0x00A9); $good_e = [char]0x00E9
+$bad_i = -join @([char]0x00C3, [char]0x00AD); $good_i = [char]0x00ED
+$bad_o = -join @([char]0x00C3, [char]0x00B3); $good_o = [char]0x00F3
+$bad_u = -join @([char]0x00C3, [char]0x00BA); $good_u = [char]0x00FA
+$bad_n = -join @([char]0x00C3, [char]0x00B1); $good_n = [char]0x00F1
+
+$t2 = $t
+$t2 = $t2.Replace($badEmDash, $goodEmDash)
+$t2 = $t2.Replace($bad_a, $good_a).Replace($bad_e, $good_e).Replace($bad_i, $good_i).Replace($bad_o, $good_o).Replace($bad_u, $good_u).Replace($bad_n, $good_n)
+
+if ($t2 -ne $t) { Write-Utf8NoBom $p $t2 }
+Write-Host "OK: provider_swapping.md normalizado" -ForegroundColor Green
+
+# 2) Insertar Provider Swapping en STUDIO_CORE_STABLE.md si falta (sin usar backticks literales)
+$core = ".\STUDIO_CORE_STABLE.md"
+if (!(Test-Path -LiteralPath $core)) { throw ("Falta " + $core) }
+
+$c = Get-Content -LiteralPath $core -Raw -Encoding UTF8
+
+if ($c -notmatch "Provider Swapping") {
+  $bt = [char]96  # backtick para markdown inline-code
+
+  $lines = @(
+    "",
+    "## Provider Swapping (v0.3)",
+    ("- Config JSON: " + $bt + "config\studio_v03.json" + $bt),
+    "- CLI:",
+    ("  - " + $bt + '$env:STUDIO_ALLOW_LIVE="1"' + $bt),
+    ("  - " + $bt + 'python -m cli.main --v03-config .\config\studio_v03.json --script "hola"' + $bt),
+    ("  - " + $bt + 'Remove-Item Env:STUDIO_ALLOW_LIVE -ErrorAction SilentlyContinue' + $bt),
+    "",
+    ("Docs: " + $bt + "STUDIO_V03_PROVIDER_SWAPPING.md" + $bt),
+    ""
+  )
+
+  $block = ($lines -join "`r`n")
+  Write-Utf8NoBom $core ($c + $block)
+  Write-Host "OK: Provider Swapping agregado a STUDIO_CORE_STABLE.md" -ForegroundColor Green
+} else {
+  Write-Host "SKIP: STUDIO_CORE_STABLE.md ya tenia Provider Swapping" -ForegroundColor Yellow
+}
+
+# 3) Verificacion minima
+Select-String -Path $core -Pattern "Provider Swapping" -SimpleMatch | ForEach-Object { $_.Line }
+(Get-Content $p -TotalCount 1)

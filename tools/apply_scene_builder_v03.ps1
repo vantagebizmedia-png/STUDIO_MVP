@@ -32,6 +32,7 @@ $mRaw = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8
 $m = $mRaw | ConvertFrom-Json
 
 if (-not $m.scenes_v03) { $m | Add-Member -NotePropertyName scenes_v03 -NotePropertyValue @() }
+
 # Fallback determinista: si falta audio_clips, creamos 1 clip 0..20000ms (no rompe smoke)
 if (-not ($m.PSObject.Properties.Name -contains "audio_clips") -or -not $m.audio_clips) {
   $m | Add-Member -Force -NotePropertyName audio_clips -NotePropertyValue @(
@@ -39,6 +40,7 @@ if (-not ($m.PSObject.Properties.Name -contains "audio_clips") -or -not $m.audio
   )
   Write-Host "WARN: manifest sin audio_clips -> fallback determinista clip_001 (0..20000ms)" -ForegroundColor DarkYellow
 }
+
 if (-not $m.artifacts -or -not $m.artifacts.image) { throw "manifest sin artifacts.image (fallback requerido): $manifest" }
 
 function Ensure-Scenes {
@@ -65,18 +67,51 @@ function Ensure-Scenes {
       $end   = [Math]::Min($lastEnd, ($i+1) * $slice)
       if ($i -eq ($N-1)) { $end = $lastEnd }
 
+      # CANON: assets.image = array[{path="..."}]
       $obj = [pscustomobject]@{
-        id = ("scene_{0:000}" -f ($i+1))
+        id       = ("scene_{0:000}" -f ($i+1))
         start_ms = [int]$start
         end_ms   = [int]$end
-        text = ""
-        assets = [pscustomobject]@{ image = "" }
+        text     = ""
+        assets   = [pscustomobject]@{
+          image = @([pscustomobject]@{ path = "" })
+        }
       }
       $sc += $obj
     }
   }
 
   $m.scenes_v03 = $sc
+}
+
+function Get-AssetPathValue($assetsObj, [string]$key) {
+  if (-not $assetsObj) { return "" }
+  $prop = $assetsObj.PSObject.Properties[$key]
+  if (-not $prop -or -not $prop.Value) { return "" }
+
+  $v = $prop.Value
+
+  if ($v -is [string]) { return [string]$v }
+
+  if ($v -is [pscustomobject] -or $v -is [hashtable]) {
+    $p = $v.PSObject.Properties["path"]
+    if ($p -and $p.Value) { return [string]$p.Value }
+    return ""
+  }
+
+  if ($v -is [object[]]) {
+    $arr = @($v)
+    if ($arr.Count -ge 1) {
+      $x = $arr[0]
+      if ($x -is [string]) { return [string]$x }
+      if ($x -is [pscustomobject] -or $x -is [hashtable]) {
+        $p0 = $x.PSObject.Properties["path"]
+        if ($p0 -and $p0.Value) { return [string]$p0.Value }
+      }
+    }
+  }
+
+  return ""
 }
 
 function ScenesHaveValidImages {
@@ -88,13 +123,23 @@ function ScenesHaveValidImages {
 
   for ($i=0; $i -lt $N; $i++) {
     $scene = $sc[$i]
-    if (-not $scene.assets -or -not $scene.assets.image) { return $false }
-    $rel = [string]$scene.assets.image
-    if (-not $rel) { return $false }
-    $rel = $rel.Replace("/", "\")
-    $abs = Join-Path $live $rel
-    if (-not (Test-Path -LiteralPath $abs)) { return $false }
+    if (-not $scene.assets) { return $false }
+
+    $imgRel = Get-AssetPathValue $scene.assets "image"
+    $vidRel = Get-AssetPathValue $scene.assets "video"
+
+    $cand = ""
+    if ($imgRel) { $cand = $imgRel } elseif ($vidRel) { $cand = $vidRel }
+    if (-not $cand) { return $false }
+
+    $full = $cand
+    if (-not [System.IO.Path]::IsPathRooted($cand)) {
+      $full = Join-Path $live ($cand -replace '/', '\')
+    }
+
+    if (-not (Test-Path -LiteralPath $full)) { return $false }
   }
+
   return $true
 }
 
@@ -136,15 +181,24 @@ $assetsDir = Join-Path $live "assets\scenes_v03"
 if (-not (Test-Path -LiteralPath $assetsDir)) { New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null }
 
 $fallbackRel = [string]$m.artifacts.image
-$fallbackRel = $fallbackRel.Replace("/", "\")
-$fallbackAbs = (Resolve-Path (Join-Path $live $fallbackRel)).Path
+$fallbackAbs = (Resolve-Path (Join-Path $live ($fallbackRel -replace '/', '\'))).Path
 
 for ($i=0; $i -lt @($m.scenes_v03).Count; $i++) {
   $scene = $m.scenes_v03[$i]
+
   if (-not $scene.assets) {
-    $scene | Add-Member -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{ image = "" })
+    $scene | Add-Member -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{
+      image = @([pscustomobject]@{ path = "" })
+    })
   }
-  if (-not $scene.assets.image) { $scene.assets.image = "" }
+
+  # Asegura canon array[{path}]
+  $imgCur = $scene.assets.PSObject.Properties["image"]
+  if (-not $imgCur -or -not $imgCur.Value) {
+    $scene.assets | Add-Member -Force -NotePropertyName "image" -NotePropertyValue @([pscustomobject]@{ path = "" })
+  } elseif ($imgCur.Value -is [string]) {
+    $scene.assets.image = @([pscustomobject]@{ path = [string]$imgCur.Value })
+  }
 
   $outName = ("scene_{0:000}.jpg" -f ($i+1))
   $outAbs  = Join-Path $assetsDir $outName
@@ -178,7 +232,7 @@ for ($i=0; $i -lt @($m.scenes_v03).Count; $i++) {
   if ($picked) {
     try {
       pwsh -NoProfile -ExecutionPolicy Bypass -File $dlTool -Url $picked -OutPath $outAbs | Out-Null
-      $scene.assets.image = $outRel
+      $scene.assets.image = @([pscustomobject]@{ path = $outRel })
       $ok = $true
       Write-Host "OK: scene[$i] image=PIXABAY -> $outRel" -ForegroundColor DarkGray
     } catch { $ok = $false }
@@ -186,13 +240,14 @@ for ($i=0; $i -lt @($m.scenes_v03).Count; $i++) {
 
   if (-not $ok) {
     Copy-Item -LiteralPath $fallbackAbs -Destination $outAbs -Force
-    $scene.assets.image = $outRel
+    $scene.assets.image = @([pscustomobject]@{ path = $outRel })
     Write-Host "OK: scene[$i] image=FALLBACK(artifacts.image) -> $outRel" -ForegroundColor DarkGray
   }
 }
 
+# Guardar manifest UTF-8 sin BOM
 $out = $m | ConvertTo-Json -Depth 50
-Set-Content -LiteralPath $manifest -Value $out -Encoding UTF8
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($manifest, $out, $utf8NoBom)
 
 Write-Host ("OK: scene_builder v03 aplicado. scenes={0} live={1} force={2}" -f @($m.scenes_v03).Count, $live, [bool]$Force) -ForegroundColor Green
-

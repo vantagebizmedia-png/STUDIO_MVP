@@ -1,0 +1,233 @@
+param(
+  [string]$Prompt = "NARRACION: Escena 1 demo.\n---\nNARRACION: Escena 2 demo.\n---\nNARRACION: Escena 3 demo.",
+  [string]$BaseConfig = ".\\config\\studio_v03_smoke.json",
+  [ValidateSet("crop","contain")] [string]$Fit = "crop",
+  [int]$MaxScenes = 3,
+  [int]$W = 1080,
+  [int]$H = 1920,
+  [int]$FPS = 30,
+  [string]$MusicDir = ".\\music",
+  [switch]$KeepWorkspace
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+chcp 65001 | Out-Null
+
+$py = Resolve-PythonExe -RepoRoot $repo
+
+$repo = (Resolve-Path ".").Path
+
+. "$PSScriptRoot\resolve_python.ps1"
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Text.UTF8Encoding]::new($false)
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+
+if (!(Test-Path -LiteralPath ".\\run.py")) { throw "Ejecuta desde la raíz del repo (run.py)" }
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$preferredWsRoot = Join-Path $env:USERPROFILE ("STUDIO_WORKSPACE_SMOKE_V03_" + $stamp)
+$fallbackWsRoot = Join-Path $repoRoot (Join-Path "_tmp" ("STUDIO_WORKSPACE_SMOKE_V03_" + $stamp))
+$wsRoot = $preferredWsRoot
+
+function Initialize-SmokeWorkspace([string]$root) {
+  $artifacts = Join-Path $root "artifacts"
+  $workspace = Join-Path $root "workspace"
+  New-Item -ItemType Directory -Force $artifacts, $workspace | Out-Null
+  New-Item -ItemType Directory -Force (Join-Path $workspace "exports") | Out-Null
+  return @{
+    Root = $root
+    Artifacts = $artifacts
+    Workspace = $workspace
+  }
+}
+
+try {
+  $wsInfo = Initialize-SmokeWorkspace $preferredWsRoot
+} catch {
+  Write-Warning "No pude crear workspace en USERPROFILE. Uso fallback local del repo: $fallbackWsRoot"
+  $wsInfo = Initialize-SmokeWorkspace $fallbackWsRoot
+}
+
+$wsRoot = $wsInfo.Root
+$env:STUDIO_WORKSPACE = $wsRoot
+$wsArtifacts = $wsInfo.Artifacts
+$wsWorkspace = $wsInfo.Workspace
+
+Write-Host "STUDIO_WORKSPACE=$wsRoot" -ForegroundColor Cyan
+
+# 1) Config temporal (no ensucia tu config)
+if (!(Test-Path -LiteralPath $BaseConfig)) { throw "No existe BaseConfig: $BaseConfig" }
+$cfg = Get-Content -LiteralPath $BaseConfig -Raw | ConvertFrom-Json
+
+# --- SMOKE_CFG_PATCH_BEGIN ---
+function Set-JsonProp([object]$obj, [string]$name, $value) {
+  if ($null -eq $obj) { return }
+  if ($obj.PSObject.Properties.Name -contains $name) {
+    $obj.$name = $value
+  } else {
+    $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force
+  }
+}
+
+# Aplica en root y también en cfg.pipeline si existe (cubre ambos formatos)
+$targets = @($cfg)
+if ($cfg.PSObject.Properties.Name -contains "pipeline") { $targets += $cfg.pipeline }
+
+foreach ($t in $targets) {
+  Set-JsonProp $t "multiscene" $true
+  Set-JsonProp $t "max_scenes" 6
+  Set-JsonProp $t "scene_split" "dash"
+}
+# --- SMOKE_CFG_PATCH_END ---
+
+$cfg.work_dir = $wsArtifacts
+$cfg.workspace = $wsWorkspace
+# $cfg.multiscene = $true
+# $cfg.max_scenes = $MaxScenes
+# $cfg.scene_split = "dash"
+
+$tmpCfgDir = Join-Path $wsRoot "_tmp"
+New-Item -ItemType Directory -Force -Path $tmpCfgDir | Out-Null
+$tmpCfg = Join-Path $tmpCfgDir ("studio_v03_smoke_cfg_" + $stamp + ".json")
+($cfg | ConvertTo-Json -Depth 50) | Set-Content -Encoding UTF8 -LiteralPath $tmpCfg
+Write-Host "TMP_CONFIG=$tmpCfg" -ForegroundColor DarkGray
+
+# 2) LIVE (v0.3 config) -> genera manifest_v03.json en work_dir
+Write-Host "== LIVE (v0.3 config) ==" -ForegroundColor Cyan
+& $py -m cli.main --v03-config $tmpCfg --script $Prompt
+if ($LASTEXITCODE -ne 0) { throw "LIVE falló (exit=$LASTEXITCODE)" }
+
+$manifest = Join-Path $wsArtifacts "manifest_v03.json"
+if (!(Test-Path -LiteralPath $manifest)) { throw "No existe manifest_v03.json en: $manifest" }
+
+# 3) EXPORT v0.3 -> pack_v03_* (auto out-root basado en workspace del config)
+Write-Host "== EXPORT v0.3 ==" -ForegroundColor Cyan
+$exportOut = & python .\tools\export_v03_pack.py --manifest $manifest
+if ($LASTEXITCODE -ne 0) { throw "export_v03_pack falló (exit=$LASTEXITCODE)" }
+
+$packDir = ($exportOut | Where-Object { $_ -like "PACK_DIR:*" } | Select-Object -Last 1)
+if (!$packDir) { throw "No pude detectar PACK_DIR en output de export" }
+$packDir = $packDir -replace "^PACK_DIR:\s*", ""
+if (!(Test-Path -LiteralPath $packDir)) { throw "PACK_DIR no existe: $packDir" }
+
+Write-Host "PACK_DIR=$packDir" -ForegroundColor Green
+
+# 4) VALIDATE BEFORE RENDER (fail fast)
+Write-Host "== VALIDATE (pre-render) ==" -ForegroundColor Cyan
+& $py .\tools\validate_pack.py --pack-dir $packDir
+if ($LASTEXITCODE -ne 0) { throw "validate_pack (pre-render) falló (exit=$LASTEXITCODE)" }
+
+# 5) RENDER
+Write-Host "== RENDER ==" -ForegroundColor Cyan
+& $py .\tools\render_pack_v03.py --pack-dir $packDir --fit $Fit --w $W --h $H --fps $FPS --loglevel error
+if ($LASTEXITCODE -ne 0) { throw "render_pack_v03 falló (exit=$LASTEXITCODE)" }
+
+$video = Join-Path $packDir "video.mp4"
+if (!(Test-Path -LiteralPath $video)) { throw "No se generó video.mp4 en: $video" }
+
+# 6) FINALIZE MUSIC (produce video_final.mp4)
+Write-Host "== FINALIZE MUSIC ==" -ForegroundColor Cyan
+& powershell -NoProfile -NoLogo -NonInteractive -ExecutionPolicy Bypass -File .\tools\finalize_pack_auto_music.ps1 -PackDir $packDir -MusicDir $MusicDir
+if ($LASTEXITCODE -ne 0) { throw "finalize_pack_auto_music falló (exit=$LASTEXITCODE)" }
+
+$videoFinal = Join-Path $packDir "video_final.mp4"
+if (!(Test-Path -LiteralPath $videoFinal)) { throw "No se generó video_final.mp4 en: $videoFinal" }
+
+# 7) VALIDATE + FIX CHECKSUMS
+# --- SMOKE_SUBS_PATCH_BEGIN ---
+Write-Host "== SUBTITLES (v0.3) =="
+$finalPath = Join-Path $packDir "video_final.mp4"
+
+$srtPath  = Join-Path $packDir "subtitles.srt"
+$subsVid  = Join-Path $packDir "video_final_subs.mp4"
+
+python (Join-Path $repoRoot "tools\make_subtitles_from_pack_v03.py") --pack $packDir --output $srtPath
+python (Join-Path $repoRoot "tools\burn_subtitles.py") --video (Join-Path $packDir "video_final.mp4") --srt $srtPath --output $subsVid
+
+Write-Host "SRT : $srtPath"
+Write-Host "SUBS: $subsVid"
+# --- SMOKE_SUBS_PATCH_END ---
+Write-Host "== VALIDATE + FIX ==" -ForegroundColor Cyan
+& $py .\tools\validate_pack.py --pack-dir $packDir --fix
+if ($LASTEXITCODE -ne 0) { throw "validate_pack --fix falló (exit=$LASTEXITCODE)" }
+
+# 8) ZIP
+Write-Host "== ZIP ==" -ForegroundColor Cyan
+$zipOut = & python .\tools\zip_pack.py --pack-dir $packDir --overwrite
+if ($LASTEXITCODE -ne 0) { throw "zip_pack falló (exit=$LASTEXITCODE)" }
+
+$zipPath = ($zipOut | Where-Object { $_ -like "ZIP:*" } | Select-Object -Last 1)
+if (!$zipPath) { throw "No pude detectar ZIP: en output de zip_pack" }
+$zipPath = $zipPath -replace "^ZIP:\s*", ""
+if (!(Test-Path -LiteralPath $zipPath)) { throw "ZIP no existe: $zipPath" }
+
+# 9) HASHES + HANDOFF
+$videoHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $videoFinal).Hash.ToLower()
+$zipHash   = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLower()
+
+Set-Content -Encoding ASCII -LiteralPath (Join-Path $packDir "video_final.sha256.txt") -Value ("$videoHash  video_final.mp4")
+Set-Content -Encoding ASCII -LiteralPath (Join-Path $packDir "zip.sha256.txt") -Value ("$zipHash  " + (Split-Path $zipPath -Leaf))
+
+$handoff = @()
+$handoff += "HANDOFF_READY"
+$handoff += "DATE_UTC: " + (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+$handoff += "PROMPT: $Prompt"
+$handoff += "PACK_DIR: $packDir"
+$handoff += "VIDEO_MP4: $video"
+$handoff += "VIDEO_FINAL_MP4: $videoFinal"
+$handoff += "ZIP: $zipPath"
+$handoff += "SHA256_VIDEO_FINAL: $videoHash"
+$handoff += "SHA256_ZIP: $zipHash"
+$handoff += ""
+$handoff += "NOTA: video.mp4 NO tiene música; video_final.mp4 SÍ tiene música."
+
+$handoffPath = Join-Path $packDir "HANDOFF_READY.txt"
+$handoff -join "`r`n" | Set-Content -Encoding UTF8 -LiteralPath $handoffPath
+
+Write-Host "";
+Write-Host "SMOKE E2E PASS" -ForegroundColor Green
+Write-Host "PACK:  $packDir"
+Write-Host "FINAL: $videoFinal"
+Write-Host "ZIP:   $zipPath"
+Write-Host "HANDOFF_READY: $handoffPath"
+
+
+# --- SMOKE_OUT_PATCH_BEGIN ---
+# Copia resultados a .\_smoke_out\<run>\ antes de limpiar el workspace temporal
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$outBase  = Join-Path $repoRoot "_smoke_out"
+New-Item -ItemType Directory -Force $outBase | Out-Null
+$outRun   = Join-Path $outBase ("smoke_v03_" + $stamp)
+New-Item -ItemType Directory -Force $outRun | Out-Null
+
+$packCopy = Join-Path $outRun (Split-Path $packDir -Leaf)
+Copy-Item -LiteralPath $packDir -Destination $packCopy -Recurse -Force
+
+$zipCopy  = Join-Path $outRun (Split-Path $zipPath -Leaf)
+Copy-Item -LiteralPath $zipPath -Destination $zipCopy -Force
+
+Set-Content -Encoding UTF8 -LiteralPath (Join-Path $outRun "PACK_PATH.txt") -Value $packCopy
+Set-Content -Encoding UTF8 -LiteralPath (Join-Path $outRun "ZIP_PATH.txt")  -Value $zipCopy
+Set-Content -Encoding UTF8 -LiteralPath (Join-Path $outBase "LAST_SMOKE_OUT.txt") -Value $outRun
+
+Write-Host "SMOKE_OUT=$outRun" -ForegroundColor Cyan
+# --- SMOKE_OUT_PATCH_END ---
+if (-not $KeepWorkspace) {
+  # deja el pack exportado; borra el workspace temporal completo
+  try {
+    Remove-Item -LiteralPath $wsRoot -Recurse -Force -ErrorAction Stop
+    Write-Host "Workspace temporal limpiado: $wsRoot" -ForegroundColor DarkGray
+  } catch {
+    Write-Warning "No pude borrar workspace temporal: $wsRoot"
+  }
+}
+
+
+
+
+
+
+

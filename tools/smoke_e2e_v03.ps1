@@ -6,129 +6,120 @@ param(
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference="Stop"
+chcp 65001 | Out-Null
 
-function StepFail([string]$step, [string]$msg) { throw "SMOKE FAIL: [$step] $msg" }
+$repo = (Resolve-Path ".").Path
+$live = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
 
-function RunPS(
-  [Parameter(Mandatory=$true)][string]$Step,
-  [Parameter(Mandatory=$true)][string]$ScriptPath,
-  [Parameter(Mandatory=$true)][hashtable]$ArgMap
-) {
-  if (-not (Test-Path -LiteralPath $ScriptPath)) { StepFail $Step "No existe script: $ScriptPath" }
-
-  $argList = @()
-  foreach ($k in $ArgMap.Keys) {
-    $v = $ArgMap[$k]
-    if ($v -is [switch] -or $v -is [System.Management.Automation.SwitchParameter]) {
-      if ([bool]$v) { $argList += @("-$k") }
-    } else {
-      $argList += @("-$k", "$v")
-    }
-  }
-
-  Write-Host ""
-  Write-Host ("[{0}] {1}" -f $Step, (Split-Path -Leaf $ScriptPath))
-  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} {1}" -f $ScriptPath, ($argList -join " "))
-
-  & pwsh -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @argList
-  if ($LASTEXITCODE -ne 0) {
-    StepFail $Step ("ExitCode=" + $LASTEXITCODE + " en " + (Split-Path -Leaf $ScriptPath))
-  }
-}
-
-function Get-ScenesV03Count([string]$LiveDir) {
-  try {
-    $mf = Join-Path $LiveDir "manifest_v03.json"
-    if (-not (Test-Path -LiteralPath $mf)) { return 0 }
-    $j = Get-Content -LiteralPath $mf -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($null -eq $j) { return 0 }
-    if ($null -eq $j.scenes_v03) { return 0 }
-    return @($j.scenes_v03).Count
-  } catch { return 0 }
-}
-
-$repo = (Resolve-Path -LiteralPath ".").Path
-$ws   = (Resolve-Path -LiteralPath $WorkspaceRoot).Path
-
-Write-Host "== SMOKE E2E v0.3 =="
+Write-Host "== SMOKE E2E v0.3 ==" -ForegroundColor Cyan
 Write-Host ("Repo      : {0}" -f $repo)
-Write-Host ("Workspace : {0}" -f $ws)
+Write-Host ("Workspace : {0}" -f $WorkspaceRoot)
 Write-Host ("MaxScenes : {0}" -f $MaxScenes)
-Write-Host ("FailFast  : {0}" -f ([bool]$FailFast))
-Write-Host ("DoHandoff : {0}" -f ([bool]$DoHandoff))
+Write-Host ("FailFast  : {0}" -f [bool]$FailFast)
+Write-Host ("DoHandoff : {0}" -f [bool]$DoHandoff)
+Write-Host ""
 
-$smokeLiveToWS   = Join-Path $repo "tools\smoke_live_to_workspace_v03.ps1"
-$applyScenePatch = Join-Path $repo "tools\apply_scene_builder_v03.ps1"
-$smokeLiveMF     = Join-Path $repo "tools\smoke_live_manifest_v03.ps1"
-$applySubsLive   = Join-Path $repo "tools\apply_subtitles_live_v03.ps1"
-$smokeSubsLive   = Join-Path $repo "tools\smoke_subtitles_live_v03.ps1"
-
-$finalizeHandoff = Join-Path $repo "tools\finalize_handoff_v03.ps1"
-$handoffPack     = Join-Path $repo "tools\handoff_pack_v03.ps1"
-
-$errors = @()
-
-try {
-  $env:STUDIO_SMOKE_MAXSCENES = "$MaxScenes"
-  RunPS -Step "1/6" -ScriptPath $smokeLiveToWS -ArgMap @{ WorkspaceRoot = $ws }
-} catch { $errors += $_.Exception.Message; if ($FailFast) { throw } }
-
-$live = Join-Path $ws "runs\smoke_live_latest"
-try {
-  if (-not (Test-Path -LiteralPath $live)) { StepFail "LIVE" "No existe live dir esperado: $live" }
-  Write-Host ""
-  Write-Host ("LIVE dir : {0}" -f $live)
-} catch { $errors += $_.Exception.Message; if ($FailFast) { throw } }
-
-try {
-  $cnt = Get-ScenesV03Count -LiveDir $live
-  if ($cnt -ge $MaxScenes) {
-    Write-Host ""
-    Write-Host ("[2/6] apply_scene_builder_v03.ps1 (SKIP) scenes_v03 ya presentes: {0} >= MaxScenes={1}" -f $cnt, $MaxScenes)
-  } else {
-    RunPS -Step "2/6" -ScriptPath $applyScenePatch -ArgMap @{ PackDir=$live; MaxScenes=$MaxScenes }
+function Run-Step([int]$n, [int]$total, [string]$name, [scriptblock]$action) {
+  Write-Host ("[{0}/{1}] {2}" -f $n,$total,$name) -ForegroundColor Cyan
+  try {
+    & $action
+    if ($LASTEXITCODE -ne 0) { throw "ExitCode=$LASTEXITCODE" }
+  } catch {
+    Write-Host ("SMOKE FAIL: [{0}/{1}] {2} -> {3}" -f $n,$total,$name,$_.Exception.Message) -ForegroundColor Red
+    if ($FailFast) { throw }
+    else { $script:hadFail = $true }
   }
+  Write-Host ""
+}
 
-  RunPS -Step "2b/6" -ScriptPath $smokeLiveMF -ArgMap @{ LiveDir=$live; MaxScenes=$MaxScenes }
-} catch { $errors += $_.Exception.Message; if ($FailFast) { throw } }
+$hadFail = $false
 
-try {
-  RunPS -Step "3/6" -ScriptPath $applySubsLive -ArgMap @{ LiveDir=$live }
-  RunPS -Step "4/6" -ScriptPath $smokeSubsLive -ArgMap @{ LiveDir=$live; MaxScenes=$MaxScenes }
-  RunPS -Step "4b/6" -ScriptPath (Join-Path $repo "tools\smoke_quality_live_v03.ps1") -ArgMap @{ WorkspaceRoot=$WorkspaceRoot }
-} catch { $errors += $_.Exception.Message; if ($FailFast) { throw } }
+# 9 pasos sin handoff, 11 con handoff
+$total = $(if ($DoHandoff) { 11 } else { 9 })
+$step = 1
+
+Run-Step $step $total "smoke_live_to_workspace_v03.ps1" {
+  $tool = Join-Path $repo "tools\smoke_live_to_workspace_v03.ps1"
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -WorkspaceRoot {1}" -f $tool,$WorkspaceRoot) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -WorkspaceRoot $WorkspaceRoot
+}
+$step++
+
+Run-Step $step $total "apply_scene_builder_v03.ps1 (SKIP/OK)" {
+  $tool = Join-Path $repo "tools\apply_scene_builder_v03.ps1"
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -WorkspaceRoot {1} -MaxScenes {2}" -f $tool,$WorkspaceRoot,$MaxScenes) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -WorkspaceRoot $WorkspaceRoot -MaxScenes $MaxScenes
+}
+$step++
+
+# NUEVO: normaliza assets.image/video a canon array[{path=...}]
+Run-Step $step $total "normalize_scene_assets_v03.ps1" {
+  $tool = Join-Path $repo "tools\normalize_scene_assets_v03.ps1"
+  $man  = Join-Path $live "manifest_v03.json"
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -ManifestPath {1}" -f $tool,$man) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -ManifestPath $man
+}
+$step++
+
+Run-Step $step $total "smoke_live_manifest_v03.ps1" {
+  $tool = Join-Path $repo "tools\smoke_live_manifest_v03.ps1"
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1} -MaxScenes {2}" -f $tool,$live,$MaxScenes) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live -MaxScenes $MaxScenes
+}
+$step++
+
+Run-Step $step $total "apply_subtitles_live_v03.ps1" {
+  $tool = Join-Path $repo "tools\apply_subtitles_live_v03.ps1"
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1}" -f $tool,$live) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live
+}
+$step++
+
+Run-Step $step $total "smoke_subtitles_live_v03.ps1" {
+  $tool = Join-Path $repo "tools\smoke_subtitles_live_v03.ps1"
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1} -MaxScenes {2}" -f $tool,$live,$MaxScenes) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live -MaxScenes $MaxScenes
+}
+$step++
+
+Run-Step $step $total "smoke_quality_live_v03.ps1" {
+  $tool = Join-Path $repo "tools\smoke_quality_live_v03.ps1"
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -WorkspaceRoot {1}" -f $tool,$WorkspaceRoot) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -WorkspaceRoot $WorkspaceRoot
+}
+$step++
+
+Run-Step $step $total "ensure_outputs_live_v03.ps1" {
+  $tool = Join-Path $repo "tools\ensure_outputs_live_v03.ps1"
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1}" -f $tool,$live) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live
+}
+$step++
 
 if ($DoHandoff) {
-  try {
-    $handoffOut = Join-Path $live "handoff_v03"
-    RunPS -Step "5/6" -ScriptPath $finalizeHandoff -ArgMap @{ LiveDir=$live; OutDir=$handoffOut }
+  Run-Step $step $total "finalize_handoff_v03.ps1" {
+    $tool = Join-Path $repo "tools\finalize_handoff_v03.ps1"
+    $out  = Join-Path $live "handoff_v03"
+    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1} -OutDir {2}" -f $tool,$live,$out) -ForegroundColor DarkGray
+    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live -OutDir $out
+  }
+  $step++
 
-    $zip = Join-Path $handoffOut "handoff_v03.zip"
-    RunPS -Step "6/6" -ScriptPath $handoffPack -ArgMap @{ InDir=$handoffOut; OutZip=$zip }
-
-    foreach ($f in @("HASHES_SHA256.txt","HANDOFF_READY.txt","handoff_v03.zip")) {
-      $pp = Join-Path $handoffOut $f
-      if (-not (Test-Path -LiteralPath $pp)) { StepFail "6/6" "Falta: $pp" }
-    }
-
-    Write-Host ("SMOKE OK: HANDOFF v03 listo en {0}" -f $handoffOut)
-  } catch { $errors += $_.Exception.Message; if ($FailFast) { throw } }
-} else {
-  Write-Host ""
-  Write-Host "[5/6] HANDOFF: omitido (no pasaste -DoHandoff)"
+  Run-Step $step $total "handoff_pack_v03.ps1" {
+    $tool = Join-Path $repo "tools\handoff_pack_v03.ps1"
+    $in   = Join-Path $live "handoff_v03"
+    $zip  = Join-Path $in "handoff_v03.zip"
+    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -InDir {1} -OutZip {2}" -f $tool,$in,$zip) -ForegroundColor DarkGray
+    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -InDir $in -OutZip $zip
+  }
 }
 
-if ($errors.Count -gt 0) {
+if ($hadFail) { throw "SMOKE FAIL: E2E v0.3 (uno o más pasos fallaron)." }
+
+if ($DoHandoff) {
+  Write-Host ("SMOKE OK: HANDOFF v03 listo en {0}" -f (Join-Path $live "handoff_v03")) -ForegroundColor Green
   Write-Host ""
-  Write-Host "SMOKE FAIL: E2E v0.3 (uno o más pasos fallaron). Revisa:"
-  foreach ($e in $errors) { Write-Host (" - {0}" -f $e) }
-  exit 1
 }
 
-Write-Host ""
-Write-Host "SMOKE OK: E2E v0.3 (LIVE(workspace) + scene_builder + subtitles + optional handoff)"
-exit 0
-
-
-
+Write-Host "SMOKE OK: E2E v0.3 (LIVE(workspace) + scene_builder + subtitles + optional handoff)" -ForegroundColor Green

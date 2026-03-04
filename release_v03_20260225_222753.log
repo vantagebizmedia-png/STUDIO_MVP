@@ -1,0 +1,16 @@
+OK v0.3 config
+image: C:\Users\vanta\Documents\STUDIO_MVP\_v03_smoke_cfg\artifacts\image_6c715f5c.png
+audio: C:\Users\vanta\Documents\STUDIO_MVP\_v03_smoke_cfg\artifacts\audio_6c715f5c.wav
+config: C:\Users\vanta\Documents\STUDIO_MVP\config\studio_v03_smoke.json
+OK: pack exportado
+PACK_DIR: C:\Users\vanta\Documents\STUDIO_MVP\_v03_smoke_cfg\workspace\exports\pack_v03_6c715f5c
+OK: checksums agregados a pack.json
+
+RESULT: OK
+OK: zip creado
+ZIP: C:\Users\vanta\Documents\STUDIO_MVP\_v03_smoke_cfg\workspace\exports\pack_v03_6c715f5c_20260226_032753.zip
+BYTES: 1566
+
+OK: release bundle completo
+MANIFEST: C:\Users\vanta\Documents\STUDIO_MVP\_v03_smoke_cfg\artifacts\manifest_v03.json
+PACK_DIR: C:\Users\vanta\Documents\STUDIO_MVP\_v03_smoke_cfg\workspace\exports\pack_v03_6c715f5c

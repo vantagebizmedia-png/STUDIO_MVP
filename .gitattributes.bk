@@ -1,0 +1,7 @@
+# Keep consistent line endings in repo
+* text=auto
+
+# PowerShell scripts: store as LF
+*.ps1 text eol=lf
+*.psm1 text eol=lf
+*.psd1 text eol=lf

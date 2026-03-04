@@ -3,6 +3,9 @@
 Este directorio es una distribución "clean" del pipeline v0.3 para terceros.
 Incluye herramientas, configs y tests necesarios para validar el baseline determinista.
 
+## Estado actual (mar 2026)
+- ✅ Smoke core v0.3 (tests + demos)
+- ✅ Smoke E2E v0.3: LIVE -> workspace -> scenes_v03 -> subtitles (SRT + burn-in) -> handoff_v03 (ZIP + SHA256 + READY)
 ## Quickstart (Smoke)
 Desde la raíz del repo (o dentro del pack, ajustando rutas):
 
@@ -31,3 +34,4 @@ Ver:
 
 ## Licencia
 Ver `VCS_DATA_PACK_THIRDPARTY_CLEAN/LICENSE`.
+

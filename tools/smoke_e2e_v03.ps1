@@ -130,3 +130,5 @@ Write-Host ""
 Write-Host "SMOKE OK: E2E v0.3 (LIVE(workspace) + scene_builder + subtitles + optional handoff)"
 exit 0
 
+
+

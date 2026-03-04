@@ -1,122 +1,70 @@
-﻿# STUDIO_MVP  Render + Final + Release (determinista)
+# STUDIO_MVP (v0.3) — Deterministic Video Pipeline (LIVE → Scenes → Subtitles → HANDOFF)
 
-STUDIO_MVP es un MVP en Windows (PowerShell + Python + FFmpeg) para renderizar videos cortos desde un `content_pack`, y exportar un release listo para terceros.
+Este repo contiene un pipeline determinista (replay/seed) para generar videos estilo short/reel a partir de un prompt.
+El objetivo del MVP es mantener un baseline estable con smoke tests end-to-end.
+
+## Estado actual (mar 2026)
+- ✅ Smoke core v0.3 (tests + demos)
+- ✅ Smoke E2E v0.3: LIVE → workspace → scenes_v03 → subtitles (SRT + burn-in) → handoff_v03 (ZIP + SHA256 + READY)
 
 ## Requisitos
-- Windows 10/11
-- PowerShell 7 (pwsh)
-- Python 3.10+ (recomendado 3.11)
-- FFmpeg + ffprobe en PATH (`ffmpeg -version` debe funcionar)
+- Windows + PowerShell 7 (`pwsh`)
+- Python instalado (se usa el python en PATH)
+- FFmpeg accesible en PATH (para render/subtítulos)
 
-## Estructura recomendada (simple y clara)
-- STUDIO_MVP (este repo)
-  - tools\
-  - workspace\
-    - output\
-    - release\
-  - models\
-- STUDIO_WORKSPACE (workspace externo donde viven los runs)
-  - runs\
-    - <RUN_ID>\content_pack\
+## Quickstart (Smoke)
+Desde la raíz del repo:
 
-Nota: el `PackDir` siempre es la carpeta `...\runs\<RUN_ID>\content_pack`.
+### 1) Smoke Core
+Ejecuta unit tests + demos:
+- `tools/smoke_v03.ps1`
 
-## Outputs importantes
-Durante el flujo se generan archivos en:
-- `workspace\output\`
-  - `video_FINAL_CINE_MUSIC_DYNAMIC_<PRESET>.mp4`
-  - `video_FINAL_CINE_MUSIC_DYNAMIC_<PRESET>_PRO.mp4`
-  - `video_FINAL_CINE_MUSIC_DYNAMIC_<PRESET>_PRO_EDIT.mp4` (si activas Edit)
-- Release final:
-  - `workspace\release\STUDIO_RELEASE_<RUN>_<PRESET>_<TIMESTAMP>\`
-  - ZIP equivalente en la misma carpeta
-- Alias en el release:
-  - `release\...\video\video_latest.mp4` (prioridad: PRO_EDIT > PRO > EDIT > no-FAST)
+### 2) Smoke E2E (sin handoff)
+Ejecuta LIVE→workspace→scenes→subtítulos:
+- `tools/smoke_e2e_v03.ps1 -WorkspaceRoot $env:STUDIO_WORKSPACE -MaxScenes 6`
 
-## Comando 1-click (recomendado)
-Ejemplo (Preset B, CINE, música fixed, ducking dynamic, PostPro + Denoise + Edit final):
+### 3) Smoke E2E (con handoff)
+Genera entrega final con hashes y marker de listo:
+- `tools/smoke_e2e_v03.ps1 -WorkspaceRoot $env:STUDIO_WORKSPACE -MaxScenes 6 -DoHandoff`
 
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\final.ps1 `
-  -PackDir "C:\RUTA\A\STUDIO_WORKSPACE\runs\<RUN_ID>\content_pack" `
-  -MaxScenes 4 -Preset B `
-  -Mode CINE -MusicMode fixed -DuckingMode dynamic `
-  -PostPro -PostProDenoise `
-  -Edit -EditTrimEndSec 0.15 -EditFadeOutSec 0.12 -EditGainDb 1.5
+Outputs esperados en:
+`$env:STUDIO_WORKSPACE\runs\smoke_live_latest\handoff_v03\`
+- `video.mp4` (sin música)
+- `video_music_auto.mp4`
+- `video_final.mp4`
+- `handoff_v03.zip`
+- `HASHES_SHA256.txt`
+- `HANDOFF_READY.txt`
 
-Esto produce como salida principal:
-- `workspace\output\video_FINAL_CINE_MUSIC_DYNAMIC_B_PRO_EDIT.mp4` (si Edit está ON)
+## Roadmap (STUDIO_MVP)
+Prioridades (manteniendo baseline + smoke determinista):
 
-## Exportar release (carpeta + ZIP)
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\export_release.ps1 `
-  -PackDir "C:\RUTA\A\STUDIO_WORKSPACE\runs\<RUN_ID>\content_pack" `
-  -Preset B
+1) Scene Builder (LIVE → manifest_v03.json con scenes_v03 + assets por escena)
+- Split guion→N escenas
+- Segmentación de audio por escena
+- 1 imagen por escena vía Pixabay/stock_query
 
-El release incluye:
-- CINE, PRO, PRO_EDIT (si existe), FAST y `video_latest.mp4` dentro de `release\...\video\`
+2) Subtítulos integrados
+- Generación SRT + burn-in (safe margins / outline / tamaño controlado)
 
-## Denoise (audio)
-- PostPro soporta:
-  - `afftdn` (simple, rápido)
-  - `arnndn` con modelo local (RNNoise)
+3) Calidad LIVE
+- Guion más estructurado
+- Imágenes más relevantes
+- Evitar overflow de texto
 
-Modelo RNNoise recomendado (bd.rnnn):
-- `models\rnnoise\bd.rnnn`
+4) Música automática (3 salidas)
+- `video.mp4` (sin música)
+- `video_music_auto.mp4`
+- `video_final.mp4`
 
-## Principio clave (determinista)
-- Se prioriza reproducibilidad: mismos inputs/config  mismo output (hasta donde FFmpeg/hardware lo permita).
-- Los cambios se hacen por parches explícitos (sin auto-mutación del sistema).
+5) Finalize/Handoff
+- ZIP final + hashes + `HANDOFF_READY.txt`
+- Normalizar handoff para integraciones
 
-## Workspace externo obligatorio
+## Notas de ingeniería
+- Determinismo: el sistema debe ser reproducible (replay strict) y no auto-mutar.
+- Cualquier cambio se valida con smoke tests para evitar regresiones.
+- `.gitattributes` fuerza line endings consistentes (LF) en textos del repo.
 
-Este proyecto **NO** debe guardar runs/output/cache dentro del repo.
-Debes usar un workspace externo vía `STUDIO_WORKSPACE`.
-
-### Setup (Windows / PowerShell)
-
-```powershell
-$ws = "$env:USERPROFILE\Documents\STUDIO_WORKSPACE"
-[Environment]::SetEnvironmentVariable("STUDIO_WORKSPACE", $ws, "User")
-$env:STUDIO_WORKSPACE = $ws
-```
-
-### Uso (entrypoint único)
-
-```powershell
-.\studio.ps1 doctor
-.\studio.ps1 new   -Prompt "disciplina diaria" -- --seed 123 --max_scenes 6 --fit crop --music
-.\studio.ps1 final -RunId latest -Mode CINE -Preset B -MusicMode off
-```
-
-## Modos de ejecucion: SMOKE (offline) vs LIVE (A1111)
-
-### SMOKE v0.3 (offline, determinista, no requiere A1111)
-> Usalo para verificar que el repo esta VERDE y que el pipeline no se rompio.
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\smoke_v03.ps1
-```
-
-### LIVE v0.3 (A1111 real por API, mejor calidad)
-> Requiere Automatic1111 corriendo con --api y confirmacion de LIVE.
-
-1) Arranca A1111 (en otra ventana):
-- C:\stable-diffusion-webui\webui-user.bat --api
-
-2) Verifica conexion y (opcional) selecciona modelo:
-```powershell
-.\tools\a1111_ping.ps1
-.\tools\a1111_models.ps1
-.\tools\a1111_set_model.ps1 -Checkpoint "NOMBRE_DEL_MODELO"
-```
-
-3) Ejecuta el pipeline LIVE:
-```powershell
-$env:STUDIO_ALLOW_LIVE = "1"
-python -m cli.main --v03-config .\config\studio_v03_live_a1111.json --script "hola live"
-```
-
-Para volver a modo seguro:
-```powershell
-Remove-Item Env:STUDIO_ALLOW_LIVE -ErrorAction SilentlyContinue
-```
-
+## Licencia
+Ver `LICENSE`.

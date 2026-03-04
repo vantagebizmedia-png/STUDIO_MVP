@@ -25,6 +25,21 @@ SHA256SUMS.txt
 *.key
 *.pem
 
-# backups
-**/*.bk*
-**/*.bak
+# backups (ALL)
+*.bak
+*.bk
+*.bk*
+*.bak_*
+*.bk_*
+
+# logs / tmp scratch
+*.log
+*_last.log
+*_debug_*.log
+release_*.log
+tmp_*.txt
+_scan_*.txt
+_scene_provider_routing_smoke/
+
+# misc
+_zip_check/

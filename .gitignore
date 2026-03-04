@@ -1,58 +1,40 @@
-# workspace / runs
-STUDIO_WORKSPACE/
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# --- OS / IDE ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- local secrets (NUNCA a git) ---
+config/*.local.json
+config/providers.local.json
+config/hybrid.local.json
+
+# --- outputs / caches / workspace ---
 runs/
 **/runs/
-_logs/
-**/_logs/
-
-# artifacts / outputs
-**/artifacts/
-**/*.mp4
-**/*.wav
-**/*.png
-**/*.srt
-**/*.zip
-HANDOFF_READY.txt
-SHA256SUMS.txt
-
-# caches
-**/.cache/
-**/__pycache__/
-**/*.pyc
-
-# secrets / env
-.env
-*.key
-*.pem
-
-# backups (ALL)
-*.bak
-*.bk
-*.bk*
-*.bak_*
-*.bk_*
-
-# logs / tmp scratch
-*.log
-*_last.log
-*_debug_*.log
-release_*.log
-tmp_*.txt
-_scan_*.txt
-_scene_provider_routing_smoke/
-
-# misc
-_zip_check/
-# --- local secrets ---
-config/*.local.json
-
-# --- workspace/runs/cache ---
-**/runs/
+workspace/
+**/workspace/
 **/_hybrid_cache/
 **/handoff_*/
 **/*.mp4
 **/*.wav
 **/*.srt
+**/*.zip
+**/HASHES_SHA256.txt
+**/HANDOFF_READY.txt
+
+# --- demo / legacy runs (no versionar) ---
+_demo_out/
+_demo_out_legacy/
+_v03_legacy_run/
 
 # --- thirdparty clean pack (no se versiona en core) ---
 VCS_DATA_PACK_THIRDPARTY_CLEAN/

@@ -38,7 +38,7 @@ Outputs esperados en:
 
 ## Roadmap (STUDIO_MVP)
 
-## Roadmap Status (mar 2026)
+### Roadmap Status (mar 2026)
 - ✅ Scene Builder (LIVE -> manifest_v03.json con scenes_v03 + assets por escena)
 - ✅ Subtítulos integrados (SRT + burn-in)
 - ✅ Música automática (3 salidas: video.mp4 / video_music_auto.mp4 / video_final.mp4)
@@ -76,4 +76,5 @@ Prioridades (manteniendo baseline + smoke determinista):
 
 ## Licencia
 Ver `LICENSE`.
+
 

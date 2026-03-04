@@ -38,3 +38,26 @@ _v03_legacy_run/
 
 # --- thirdparty clean pack (no se versiona en core) ---
 VCS_DATA_PACK_THIRDPARTY_CLEAN/
+
+# --- local scratch / backups / logs (no versionar) ---
+*.bak
+*.bk
+*.bk2
+*.orig
+*.tmp
+tmp_*.txt
+tmp_*.log
+*_last.log
+*_debug_*.log
+*_debug.log
+*_v03_*.log
+release_*.log
+render_*.log
+_scan_*.txt
+_scene_provider_routing_smoke/
+_v03_smoke_cfg/
+
+# --- misc local ---
+.gitattributes.bk
+.gitignore.bk
+.gitignore.bk2

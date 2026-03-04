@@ -1,0 +1,60 @@
+param(
+  [string]$ScriptText = "mi prueba live",
+  [string]$Model = "black-forest-labs/FLUX.1-schnell",
+  [int]$W = 540,
+  [int]$H = 960,
+  [int]$FPS = 15,
+  [ValidateSet("crop","contain")]
+  [string]$Fit = "crop"
+)
+
+$ErrorActionPreference="Stop"
+chcp 65001 | Out-Null
+
+if (-not $env:HF_TOKEN -or $env:HF_TOKEN -notmatch "^hf_.{10,}") {
+  throw "HF_TOKEN no parece real en esta sesión. Setea `$env:HF_TOKEN=`"hf_...`""
+}
+
+$V03Config = ".\config\studio_v03_hf_edge_smoke.json"
+$prov = ".\config\providers.json"
+$bak  = "$prov.bak_" + (Get-Date -Format "yyyyMMdd_HHmmss")
+Copy-Item $prov $bak -Force
+
+# escribir config v03 como JSON válido
+$cfgObj = [ordered]@{
+  work_dir  = "_v03_hf_edge_smoke/artifacts";
+  workspace = "_v03_hf_edge_smoke/workspace";
+  voice = [ordered]@{ provider="edge_voice"; config=@{} };
+  image = [ordered]@{ provider="hf_image";  config=@{ model=$Model } };
+  text  = [ordered]@{ provider="openai_text"; config=@{} }
+}
+New-Item -ItemType Directory -Force .\config | Out-Null
+($cfgObj | ConvertTo-Json -Depth 20) | Set-Content -Encoding UTF8 $V03Config
+
+try {
+  # REPLAY texto + DRY para image/voice en providers.json (evita OpenAI image/tts)
+  $j = Get-Content $prov -Raw -Encoding UTF8 | ConvertFrom-Json
+  $j.text.mode  = "REPLAY"
+  $j.image.mode = "DRY"
+  $j.voice.mode = "DRY"
+  ($j | ConvertTo-Json -Depth 50) | Set-Content -Encoding UTF8 $prov
+
+  $out = python .\tools\release_pack_v03.py --v03-config $V03Config --script $ScriptText --overwrite 2>&1
+  $out | Out-Host
+
+  $packLine = ($out | Select-String -Pattern "^PACK_DIR:\s*" | Select-Object -Last 1).Line
+  if (-not $packLine) { throw "No encontré PACK_DIR en output" }
+  $packDir = ($packLine -replace "^PACK_DIR:\s*","").Trim()
+  Write-Host "PACK_DIR => $packDir" -ForegroundColor Green
+
+  $manLine = ($out | Select-String -Pattern "^MANIFEST:\s*" | Select-Object -Last 1).Line
+  if (-not $manLine) { throw "No encontré MANIFEST en output" }
+  $manPath = ($manLine -replace "^MANIFEST:\s*","").Trim()
+
+  python .\tools\manifest_audit_inject.py $manPath $prov "REPLAY"
+  python .\tools\render_pack_v03.py --pack-dir "$packDir" --w $W --h $H --fps $FPS --fit $Fit --keep-tmp
+}
+finally {
+  Copy-Item $bak $prov -Force
+  Write-Host "OK: providers.json revertido." -ForegroundColor Cyan
+}

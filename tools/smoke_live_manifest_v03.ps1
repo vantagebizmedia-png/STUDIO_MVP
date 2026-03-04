@@ -1,90 +1,79 @@
 param(
-  # LIVE artifacts dir (por defecto _v03_smoke_cfg\artifacts)
-  [string]$LiveDir = "",
+  [Parameter(Mandatory=$true)][string]$LiveDir,
   [int]$MaxScenes = 6
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference="Stop"
-chcp 65001 | Out-Null
+$ErrorActionPreference = "Stop"
 
-$repo = (Resolve-Path ".").Path
+function Fail([string]$msg) {
+  throw "SMOKE FAIL: $msg"
+}
 
-# 1) Descubre LiveDir si no lo pasas
-if (-not $LiveDir -or $LiveDir.Trim().Length -lt 3) {
-  $cand = Join-Path $repo "_v03_smoke_cfg\artifacts"
-  if (Test-Path $cand) {
-    $LiveDir = $cand
-  } else {
-    # fallback: busca manifest_v03.json más reciente fuera de exports/_freeze
-    $man = Get-ChildItem -LiteralPath $repo -Recurse -File -Filter manifest_v03.json |
-      Where-Object { $_.FullName -notmatch '\\exports\\|\\_freeze_|\\__pycache__\\|\\.venv\\' } |
-      Sort-Object LastWriteTime -Descending |
-      Select-Object -First 1
-    if (-not $man) { throw "No encontré manifest_v03.json LIVE dentro del repo." }
-    $LiveDir = Split-Path $man.FullName -Parent
+$live = (Resolve-Path -LiteralPath $LiveDir).Path
+$mfPath = Join-Path $live "manifest_v03.json"
+if (-not (Test-Path -LiteralPath $mfPath)) { Fail "No existe manifest_v03.json en LIVE: $live" }
+
+$mf = Get-Content -LiteralPath $mfPath -Raw | ConvertFrom-Json
+if (-not $mf.scenes_v03) { Fail "manifest_v03.json no tiene scenes_v03" }
+
+$scenes = @($mf.scenes_v03)
+$scCount = $scenes.Count
+if ($scCount -lt 1) { Fail "scenes_v03 vacío" }
+if ($scCount -gt $MaxScenes) { Fail "scenes_v03=$scCount supera MaxScenes=$MaxScenes" }
+
+# --- total_ms (compat): prefer top-level total_audio_ms, fallback a scene_builder_v03.total_audio_ms ---
+$total = $null
+if ($mf.PSObject.Properties.Name -contains "total_audio_ms") {
+  $total = [int]$mf.total_audio_ms
+} elseif ($mf.scene_builder_v03 -and ($mf.scene_builder_v03.PSObject.Properties.Name -contains "total_audio_ms")) {
+  $total = [int]$mf.scene_builder_v03.total_audio_ms
+} else {
+  Fail "No existe total_audio_ms ni scene_builder_v03.total_audio_ms"
+}
+
+if ($total -le 0) { Fail "total_audio_ms inválido: $total" }
+
+# --- Check coherencia de timings ---
+$lastEnd = 0
+for ($i=0; $i -lt $scCount; $i++) {
+  $s = $scenes[$i]
+  $st = [int]($s.start_ms)
+  $en = [int]($s.end_ms)
+
+  if ($st -lt 0 -or $en -lt 0) { Fail "timing negativo en escena i=${i}: ${st}..${en}" }
+  if ($en -lt $st) { Fail "end_ms < start_ms en escena i=${i}: ${st}..${en}" }
+  if ($st -lt $lastEnd) { Fail "start_ms no monótono en escena i=${i}: prevEnd=$lastEnd start=${st}" }
+
+  $lastEnd = $en
+}
+
+if ($lastEnd -ne $total) { Fail "last_end=$lastEnd != total_audio_ms=$total" }
+
+# --- Check audio clips por escena ---
+$artDir = Join-Path $live "artifacts"
+if (-not (Test-Path -LiteralPath $artDir)) { Fail "No existe artifacts/ en LIVE: $live" }
+
+for ($i=1; $i -le $scCount; $i++) {
+  $s = $scenes[$i-1]
+  $clip = $null
+  if ($s.assets -and $s.assets.audio_clip) { $clip = [string]$s.assets.audio_clip }
+  if (-not $clip) { Fail "Falta assets.audio_clip en escena index=$($s.index)" }
+
+  $expected = ("artifacts/audio_s{0:d2}.wav" -f $i)
+  if ($clip -ne $expected) {
+    Fail "audio_clip inesperado en escena ${i}: '$clip' != '$expected'"
+  }
+
+  $clipAbs = Join-Path $live $clip
+  if (-not (Test-Path -LiteralPath $clipAbs)) {
+    Fail "No existe clip: $clipAbs"
+  }
+
+  $len = (Get-Item -LiteralPath $clipAbs).Length
+  if ($len -lt 1000) {
+    Fail "Clip demasiado pequeño ($len bytes): $clipAbs"
   }
 }
 
-$live = (Resolve-Path $LiveDir).Path
-
-# manifest puede estar en root LIVE o en LIVE\artifacts (compat)
-$manifest = Join-Path $live "manifest_v03.json"
-if (-not (Test-Path -LiteralPath $manifest)) {
-  $altLive = Join-Path $live "artifacts"
-  $altMan  = Join-Path $altLive "manifest_v03.json"
-  if (Test-Path -LiteralPath $altMan) {
-    $live = (Resolve-Path $altLive).Path
-    $manifest = $altMan
-  } else {
-    throw "Falta manifest_v03.json en LIVE dir: $live"
-  }
-}$m = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8 | ConvertFrom-Json
-
-# 2) Validaciones mínimas
-if (-not ($m.PSObject.Properties.Name -contains "scene_builder_v03")) { throw "manifest LIVE no tiene scene_builder_v03" }
-if (-not ($m.PSObject.Properties.Name -contains "scenes_v03")) { throw "manifest LIVE no tiene scenes_v03[]" }
-
-$sc = @($m.scenes_v03)
-if ($sc.Count -lt 1) { throw "scenes_v03[] vacío en LIVE" }
-if ($sc.Count -gt $MaxScenes) { throw "scenes_v03.Count > MaxScenes en LIVE (Count=$($sc.Count) MaxScenes=$MaxScenes)" }
-
-$total = 0
-try { $total = [int]($m.scene_builder_v03.total_audio_ms) } catch { $total = 0 }
-if ($total -le 0) { throw "scene_builder_v03.total_audio_ms <= 0 en LIVE" }
-
-# 3) paths existen (image + audio_clip) y timestamps monotónicos
-$prevEnd = -1
-for ($i=0; $i -lt $sc.Count; $i++) {
-  $s = $sc[$i]
-
-  foreach ($p in @("start_ms","end_ms","duration_ms","assets")) {
-    if (-not ($s.PSObject.Properties.Name -contains $p)) { throw "scenes_v03[$i] sin $p (LIVE)" }
-  }
-
-  $start = [int]$s.start_ms
-  $end   = [int]$s.end_ms
-
-  if ($start -lt 0) { throw "start_ms < 0 en escena $i (LIVE)" }
-  if ($end -le $start) { throw "end_ms <= start_ms en escena $i (LIVE) (start=$start end=$end)" }
-  if ($start -lt $prevEnd) { throw "timestamps no monotónicos en escena $i (LIVE) prevEnd=$prevEnd start=$start" }
-  $prevEnd = $end
-
-  $imgRel = $s.assets.image
-  if (-not $imgRel) { throw "Escena $i sin assets.image (LIVE)" }
-  $imgRel = ([string]$imgRel).Replace("/", "\")
-  $imgPath = Join-Path $live $imgRel
-  if (-not (Test-Path $imgPath)) { throw "Imagen no existe (LIVE): $imgPath" }
-
-  $acRel = $s.assets.audio_clip
-  if (-not $acRel) { throw "Escena $i sin assets.audio_clip (LIVE)" }
-  $acRel = ([string]$acRel).Replace("/", "\")
-  $acPath = Join-Path $live $acRel
-  if (-not (Test-Path $acPath)) { throw "Audio clip no existe (LIVE): $acPath" }
-}
-
-$lastEnd = [int]$sc[$sc.Count-1].end_ms
-if ($lastEnd -le 0) { throw "end_ms final <= 0 en LIVE" }
-
-Write-Host "SMOKE OK: LIVE manifest v03 (scene_builder_v03 + scenes_v03). live=$live scenes=$($sc.Count) total_ms=$total last_end=$lastEnd" -ForegroundColor Green
-
+Write-Host ("SMOKE OK: LIVE manifest v03 (scenes_v03 + audio_clips). live={0} scenes={1} total_ms={2} last_end={3}" -f $live,$scCount,$total,$lastEnd)

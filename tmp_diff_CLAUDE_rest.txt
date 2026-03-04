@@ -1,0 +1,369 @@
+
+==== DIFF: app\providers\image_provider.py ====
+diff --git "a/.\\app\\providers\\image_provider.py" "b/.\\_claude_candidate_20260226_211356\\app\\providers\\image_provider.py"
+index 9c4e01b..b766892 100644
+--- "a/.\\app\\providers\\image_provider.py"
++++ "b/.\\_claude_candidate_20260226_211356\\app\\providers\\image_provider.py"
+@@ -9,6 +9,7 @@
+ 
+ import os
+ import re
++import io
+ import json
+ import time
+ import hashlib
+@@ -18,6 +19,15 @@ import urllib.error
+ import urllib.parse
+ from typing import Any, Dict, Optional, Tuple
+ 
++# FIX: Importar Pillow a nivel de m├│dulo para fallo temprano con mensaje claro
++try:
++    from PIL import Image, ImageDraw
++except ImportError as _pil_err:
++    raise ImportError(
++        "Pillow no est├í instalado. Ejecuta: pip install Pillow>=9.0.0\n"
++        f"(Error original: {_pil_err})"
++    ) from _pil_err
++
+ 
+ # Importar utilidades compartidas (evita duplicaci├│n con voice_provider)
+ from app.providers._utils import (
+@@ -179,16 +189,20 @@ class ProviderImage:
+             views = int(hit.get("views") or 0)
+ 
+             ratio = (w / h) if w > 0 and h > 0 else 1.0
+-            ratio_penalty = abs(ratio - target_ratio)
+-
+-            size_score = w * h
+-            popularity_score = downloads * 5 + likes * 20 + views
+-
+-            score = (
+-                size_score
+-                + popularity_score
+-                - int(ratio_penalty * 10_000_000)
+-            )
++            ratio_penalty = abs(ratio - target_ratio)  # 0.0 = perfecto
++
++            # FIX: Normalizar componentes en escala comparable (0ΓÇô100)
++            # ratio_score: 1.0 cuando es perfecto, 0.0 cuando difiere en ΓëÑ1.0 de ratio
++            ratio_score = max(0.0, 1.0 - ratio_penalty / 1.0) * 100.0
++            # popularidad: normalizada (caps en valores razonables para no explotar)
++            popularity_score = min(downloads / 5000.0, 1.0) * 50.0 + \
++                               min(likes / 500.0, 1.0) * 30.0 + \
++                               min(views / 50000.0, 1.0) * 20.0
++            # tama├▒o: bonus si es HD (>= 720px) - max 20 puntos
++            size_bonus = 20.0 if (w >= 720 and h >= 1080) else (10.0 if w >= 480 else 0.0)
++
++            # ratio tiene el mayor peso (50%), popularidad (35%), tama├▒o (15%)
++            score = ratio_score * 0.5 + popularity_score * 0.35 + size_bonus * 0.15
+             scored.append((score, int(hit.get("id", 0) or 0), hit))
+ 
+         if not scored:
+@@ -203,7 +217,15 @@ class ProviderImage:
+             raise RuntimeError(f"Falta {self.api_key_env} para provider pixabay_stock")
+ 
+         stock_query = str(params.get("stock_query", "") or "").strip()
+-        query = stock_query or str(prompt or "").strip()
++        # FIX: si no hay stock_query expl├¡cito, usar el prompt pero eliminando
++        # el prefijo de render que no sirve como query de b├║squeda en Pixabay
++        _raw_prompt = str(prompt or "").strip()
++        _RENDER_PREFIX = "Imagen vertical 9:16, alta calidad, lista para reel."
++        if _raw_prompt.startswith(_RENDER_PREFIX):
++            _raw_prompt = _raw_prompt[len(_RENDER_PREFIX):].strip().lstrip("\n").strip()
++        # Limitar longitud a 100 chars para API Pixabay
++        _raw_prompt = _raw_prompt[:100].strip()
++        query = stock_query or _raw_prompt
+         if not query:
+             raise RuntimeError("Pixabay requiere query no vac├¡a")
+ 
+@@ -301,9 +323,6 @@ class ProviderImage:
+         return img_bytes, meta
+ 
+     def _normalize_image_bytes_to_png(self, img_bytes: bytes) -> bytes:
+-        import io
+-        from PIL import Image
+-
+         try:
+             src = Image.open(io.BytesIO(img_bytes))
+             if src.mode not in ("RGB", "RGBA"):
+@@ -321,9 +340,6 @@ class ProviderImage:
+ 
+     def _placeholder_png(self) -> bytes:
+         # Placeholder robusto 9:16 (siempre v├ílido para MoviePy/Pillow)
+-        import io
+-        from PIL import Image, ImageDraw
+-
+         w, h = 720, 1280
+         img = Image.new('RGB', (w, h), (0, 0, 0))
+         d = ImageDraw.Draw(img)
+
+==== DIFF: app\video_pipeline.py ====
+diff --git "a/.\\app\\video_pipeline.py" "b/.\\_claude_candidate_20260226_211356\\app\\video_pipeline.py"
+index f613f30..71cf5c4 100644
+--- "a/.\\app\\video_pipeline.py"
++++ "b/.\\_claude_candidate_20260226_211356\\app\\video_pipeline.py"
+@@ -348,9 +348,18 @@ def main() -> None:
+         cfg_obj.setdefault("image", {})
+         cfg_obj["image"]["active_provider"] = provider_name
+ 
+-        tmp_cfg_path = os.path.join(dirs["render_dir"], f"_providers_image_{provider_name}.json")
++        # FIX: escribir en tempfile del sistema, no en render_dir (evita incluirse en ZIP exportado)
++        import tempfile
++        tmp_fd, tmp_cfg_path = tempfile.mkstemp(suffix=f"_providers_image_{provider_name}.json", prefix="studio_")
++        os.close(tmp_fd)
+         _write_json(tmp_cfg_path, cfg_obj)
+-        return ProviderImage(config_path=tmp_cfg_path)
++        prov = ProviderImage(config_path=tmp_cfg_path)
++        # Limpiar inmediatamente ΓÇö el provider ya ley├│ la config en __init__
++        try:
++            os.unlink(tmp_cfg_path)
++        except OSError:
++            pass
++        return prov
+ 
+     image_provider_cache: Dict[str, ProviderImage] = {
+         default_img.active_provider: default_img
+
+==== DIFF: requirements.txt ====
+diff --git "a/.\\requirements.txt" "b/.\\_claude_candidate_20260226_211356\\requirements.txt"
+index e41b94d..f668ee6 100644
+--- "a/.\\requirements.txt"
++++ "b/.\\_claude_candidate_20260226_211356\\requirements.txt"
+@@ -1,8 +1,21 @@
+-∩╗┐# STUDIO v0.2
+-# tkinter is included with Python on Windows.
++# STUDIO MVP v0.3 requirements
++# tkinter viene incluido con Python en Windows (no pip)
+ 
+-# Video render (slideshow + audio)
++# ΓöÇΓöÇ Video render ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ moviepy==1.0.3
+ imageio-ffmpeg==0.6.0
+ 
+-edge-tts
++# ΓöÇΓöÇ Voz (Edge TTS ΓÇö gratis, sin API key) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++edge-tts>=6.1.0
++
++# ΓöÇΓöÇ Procesamiento de imagen ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++# Requerido por ProviderImage: placeholder PNG, normalizaci├│n, Pixabay
++Pillow>=9.0.0
++
++# ΓöÇΓöÇ HTTP / descarga (stdlib en Python 3.x, pero por claridad) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++# urllib est├í en stdlib ΓÇö no hay pip install necesario
++# requests es OPCIONAL (si en el futuro se migra desde urllib):
++# requests>=2.28.0
++
++# ΓöÇΓöÇ Dev / testing ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++pytest>=7.0.0
+
+==== DIFF: tools\where_workspaces.ps1 ====
+diff --git "a/.\\tools\\where_workspaces.ps1" "b/.\\_claude_candidate_20260226_211356\\tools\\where_workspaces.ps1"
+index 8a8bf15..53e74d9 100644
+--- "a/.\\tools\\where_workspaces.ps1"
++++ "b/.\\_claude_candidate_20260226_211356\\tools\\where_workspaces.ps1"
+@@ -30,8 +30,12 @@ if (Test-Path -LiteralPath ".\config\studio_v03.json") {
+   } catch { }
+ }
+ 
+-# 3) workspace externo que t├║ mencionas
+-$extWs = "C:\Users\vanta\Documents\STUDIO_WORKSPACE"
++# 3) workspace externo ΓÇö desde ENV o fallback al perfil del usuario actual
++$extWs = if ($env:STUDIO_WORKSPACE) {
++    $env:STUDIO_WORKSPACE
++} else {
++    Join-Path $env:USERPROFILE "Documents\STUDIO_WORKSPACE"
++}
+ 
+ $items = @(
+   @{Name="repo workspace"; Path=$repoWs},
+
+==== NUEVO EN CLAUDE: app\music_strategy.py ====
+HASH: 6A57BE3A837547CE532B3E4DEE22E0C53EA8AAA4D7CCD321C0C1CEBBD5EE474E
+
+# -*- coding: utf-8 -*-
+"""
+app/music_strategy.py — Fuente única de verdad para la estrategia musical.
+
+Antes, la lógica de _pick_auto_music_strategy() estaba DUPLICADA en:
+  - app/main.py          (7 reglas, incluye stock/pixabay)
+  - tools/export_v03_pack.py (3 reglas, solo local — BUG)
+
+Ahora ambos importan desde aquí. Una sola fuente, cero duplicación.
+
+Uso:
+    from app.music_strategy import pick_auto_music_strategy
+    strategy = pick_auto_music_strategy("disciplina diaria", ["hábitos", "rutina"])
+"""
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, List
+
+# ---------------------------------------------------------------------------
+# Normalización de texto
+# ---------------------------------------------------------------------------
+
+def compact_text(*parts: Any) -> str:
+    """Une partes, pasa a minúsculas, colapsa espacios."""
+    raw = " ".join(str(p or "") for p in parts)
+    raw = raw.replace("\r", " ").replace("\n", " ").lower()
+    return re.sub(r"\s+", " ", raw).strip()
+
+
+# ---------------------------------------------------------------------------
+# Reglas (orden importa: primera coincidencia gana)
+# ---------------------------------------------------------------------------
+
+MUSIC_STRATEGY_RULES: List[Dict[str, Any]] = [
+    {
+        "reason": "fantasy_cinematic_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "epic cinematic trailer background music fantasy sci fi",
+        "music_energy": "high",
+        "keywords": [
+            "dragon", "dragón", "monster", "monstruo", "alien", "robot",
+            "cyberpunk", "sci-fi", "scifi", "futurista", "futuristic",
+            "galax", "space", "spaceship", "nave espacial", "magic", "magia",
+            "mágic", "surreal", "abstract", "abstracto", "fantasy", "fantasia",
+            "fantasía", "myth", "mitologico", "mitológico", "apocalipsis",
+            "postapocalipt", "steampunk", "neon", "neón", "dream", "sueño",
+            "sueños", "portal", "demon", "demonio", "creature", "criatura",
+            "épico", "epic", "trailer",
+        ],
+    },
+    {
+        "reason": "wellness_calm_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "calm ambient meditation relaxing background music",
+        "music_energy": "low",
+        "keywords": [
+            "ejercicio", "exercise", "meditacion", "meditación", "meditation",
+            "lectura", "reading", "respirar", "breathing", "calma", "calm",
+            "caminar", "walking", "salud", "health", "relax", "relaxing",
+            "mindfulness", "yoga", "bienestar", "wellness", "sueño", "dormir",
+        ],
+    },
+    {
+        "reason": "kitchen_lifestyle_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "light upbeat cooking lifestyle background music",
+        "music_energy": "medium",
+        "keywords": [
+            "cocina", "kitchen", "cooking", "cook", "meal", "comida",
+            "preparando", "preparing food", "receta", "recipe", "chef",
+            "ingredientes", "ingredients",
+        ],
+    },
+    {
+        "reason": "phone_social_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "modern social media upbeat background music",
+        "music_energy": "medium",
+        "keywords": [
+            "telefono", "teléfono", "phone", "smartphone", "redes sociales",
+            "social media", "scroll", "notificaciones", "notifications",
+            "instagram", "tiktok", "youtube", "viral",
+        ],
+    },
+    {
+        "reason": "organization_workspace_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "clean corporate minimal background music workspace",
+        "music_energy": "medium",
+        "keywords": [
+            "organizar", "organizado", "organized", "organize",
+            "limpieza", "cleanup", "declutter", "desorden", "workspace",
+            "setup", "desk setup", "minimalismo", "minimalist",
+        ],
+    },
+    {
+        "reason": "finance_business_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "business corporate motivational background music",
+        "music_energy": "medium",
+        "keywords": [
+            "dinero", "money", "finanzas", "finance", "budget", "presupuesto",
+            "ahorro", "saving", "negocio", "business", "emprend", "inversión",
+            "inversion", "investment", "startup", "ventas", "sales",
+        ],
+    },
+    {
+        "reason": "productivity_office_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "motivational corporate productivity background music upbeat",
+        "music_energy": "medium_high",
+        "keywords": [
+            "disciplina", "discipline", "productividad", "productivity",
+            "trabajo", "trabajar", "working", "work", "oficina", "office",
+            "escritorio", "desk", "laptop", "home office", "rutina", "routine",
+            "hábito", "habito", "habit", "pomodoro", "enfoque", "focus",
+            "concentración", "concentracion", "study", "estudio", "meta",
+            "goal", "objetivo",
+        ],
+    },
+    {
+        "reason": "education_explainer_detected",
+        "music_source_mode": "stock",
+        "music_provider_override": "pixabay_music",
+        "music_query": "clean modern documentary explainer background music",
+        "music_energy": "medium",
+        "keywords": [
+            "aprender", "learn", "learning", "tutorial", "explicación",
+            "explicacion", "cómo", "como", "guía", "guia", "consejo", "tip",
+            "truco", "hack", "secreto", "secret", "historia", "history",
+            "datos", "data", "ciencia", "science", "educacion", "educación",
+        ],
+    },
+]
+
+MUSIC_STRATEGY_DEFAULT: Dict[str, str] = {
+    "reason": "default_background_stock",
+    "music_source_mode": "stock",
+    "music_provider_override": "pixabay_music",
+    "music_query": "background music inspirational soft corporate",
+    "music_energy": "medium",
+}
+
+
+# ---------------------------------------------------------------------------
+# API pública
+# ---------------------------------------------------------------------------
+
+def pick_auto_music_strategy(*text_parts: Any) -> Dict[str, str]:
+    """
+    Elige la estrategia musical automáticamente según el contenido del texto.
+
+    Acepta cualquier número de partes de texto (topic, subtopics, format, etc.)
+    que se unirán y normalizarán antes de aplicar las reglas.
+
+    Retorna dict con claves:
+        music_source_mode, music_provider_override, music_query,
+        music_strategy_reason, music_energy
+    """
+    text = compact_text(*text_parts)
+
+    for rule in MUSIC_STRATEGY_RULES:
+        keywords: List[str] = list(rule.get("keywords") or [])
+        if any(k in text for k in keywords):
+            return {
+                "music_source_mode": str(rule.get("music_source_mode") or "stock"),
+                "music_provider_override": str(rule.get("music_provider_override") or ""),
+                "music_query": str(rule.get("music_query") or ""),
+                "music_strategy_reason": str(rule.get("reason") or "matched_rule"),
+                "music_energy": str(rule.get("music_energy") or "medium"),
+            }
+
+    return {
+        "music_source_mode": str(MUSIC_STRATEGY_DEFAULT.get("music_source_mode") or "stock"),
+        "music_provider_override": str(MUSIC_STRATEGY_DEFAULT.get("music_provider_override") or ""),
+        "music_query": str(MUSIC_STRATEGY_DEFAULT.get("music_query") or ""),
+        "music_strategy_reason": str(MUSIC_STRATEGY_DEFAULT.get("reason") or "default_background_stock"),
+        "music_energy": str(MUSIC_STRATEGY_DEFAULT.get("music_energy") or "medium"),
+    }

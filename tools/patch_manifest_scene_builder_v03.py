@@ -12,6 +12,7 @@ if str(_REPO) not in sys.path:
 
 from studio.scene_builder_v03 import build_scenes_v03
 from studio.stock_query_pixabay_v03 import resolve_image_for_scene
+from studio.audio_clip_v03 import clip_wav_segment, safe_copy_master_as_clip
 
 
 def _find_manifest(pack_dir: Path) -> Path:
@@ -146,15 +147,35 @@ def main() -> int:
     if isinstance(tg, dict) and "replay_strict" in tg:
         replay_strict = bool(tg.get("replay_strict"))
 
-    # WAV master -> audio_clip para TODAS las escenas (hasta implementar recorte real)
+    # WAV master (abs) + rel (debug/compat)
+    master_wav_abs = apath.resolve() if apath else None
     master_wav_rel = None
-    if apath:
+    if master_wav_abs:
         try:
-            master_wav_rel = str(Path(apath).resolve().relative_to(pack_dir))
+            master_wav_rel = str(master_wav_abs.relative_to(pack_dir))
         except Exception:
-            master_wav_rel = str(Path(apath).resolve())
+            master_wav_rel = str(master_wav_abs)
 
-    # resuelve imagen + setea audio_clip por escena
+    # --- RECORTE REAL por escena: artifacts/audio_sXX.wav ---
+    # (si falla recorte por cualquier razón, fallback determinista: copiar master)
+    if master_wav_abs:
+        art_dir = (pack_dir / "artifacts")
+        art_dir.mkdir(parents=True, exist_ok=True)
+
+        for i, sc in enumerate(scenes_v03, start=1):
+            st = int(sc.get("start_ms") or 0)
+            en = int(sc.get("end_ms") or 0)
+            out_rel = f"artifacts/audio_s{i:02d}.wav"
+            out_abs = (pack_dir / out_rel).resolve()
+            try:
+                clip_wav_segment(str(master_wav_abs), str(out_abs), st, en)
+            except Exception:
+                safe_copy_master_as_clip(str(master_wav_abs), str(out_abs))
+
+            # setea audio_clip a ESTE clip
+            sc["assets"]["audio_clip"] = out_rel
+
+    # resuelve imagen por escena (mantiene comportamiento previo)
     for sc in scenes_v03:
         q = sc.get("image_query") or ""
         r = resolve_image_for_scene(
@@ -172,7 +193,9 @@ def main() -> int:
             "cache_key": r["cache_key"],
             "query": q,
         }
-        if master_wav_rel:
+
+        # compat: si por alguna razón no hubo master_wav_abs, deja master como audio_clip (placeholder)
+        if (not master_wav_abs) and master_wav_rel:
             sc["assets"]["audio_clip"] = master_wav_rel
 
     # meta
@@ -181,7 +204,7 @@ def main() -> int:
         sb = {}
     sb["max_scenes"] = int(max_scenes)
     sb["total_audio_ms"] = int(total_ms)
-    sb["note"] = "patched total_audio_ms from wav; rebuilt scenes_v03 from script_text (resolved images + audio_clip=master)"
+    sb["note"] = "patched total_audio_ms from wav; rebuilt scenes_v03 from script_text (resolved images + audio_clip=per-scene clips when master wav exists)"
     obj["scene_builder_v03"] = sb
 
     obj["scenes_v03"] = scenes_v03

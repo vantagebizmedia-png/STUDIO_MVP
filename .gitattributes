@@ -1,31 +1,38 @@
-# Normaliza texto a LF en el repo
+# ============================================================
+# STUDIO_MVP - .gitattributes (deterministic baseline)
+# ============================================================
+
+# Default: normalize text to LF in repo
 * text=auto eol=lf
 
-# Scripts
+# PowerShell scripts
 *.ps1 text eol=lf
 *.psm1 text eol=lf
-*.cmd text eol=crlf
-*.bat text eol=crlf
+*.psd1 text eol=lf
 
-# Configs
+# Python / JSON / MD / TXT / YAML
+*.py  text eol=lf
 *.json text eol=lf
-*.md   text eol=lf
-*.txt  text eol=lf
-*.yml  text eol=lf
+*.md  text eol=lf
+*.txt text eol=lf
+*.yml text eol=lf
 *.yaml text eol=lf
 
-# Binarios (no tocar)
-*.png binary
-*.jpg binary
-*.jpeg binary
-*.webp binary
-*.gif binary
-*.mp4 binary
-*.wav binary
-*.zip binary
-*.7z  binary
-*.rar binary
-*.exe binary
-*.dll binary
-*.pdb binary
-*.rnnn binary
+# Batch / Cmd (si existen)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets
+*.png  -text
+*.jpg  -text
+*.jpeg -text
+*.gif  -text
+*.webp -text
+*.mp4  -text
+*.wav  -text
+*.mp3  -text
+*.zip  -text
+
+# Fonts
+*.ttf  -text
+*.otf  -text

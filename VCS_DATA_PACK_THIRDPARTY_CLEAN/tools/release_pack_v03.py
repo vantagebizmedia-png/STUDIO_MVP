@@ -37,13 +37,13 @@ def read_json(p: Path) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser()
     ap.add_argument("--python-exe", default="", help="Python exe para subprocess (default: sys.executable)")
     ap.add_argument("--v03-config", required=True)
     ap.add_argument("--script", default="hola live")
     ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args()
-
+
     python_exe = (args.python_exe or sys.executable)
     cfg = Path(args.v03_config).resolve()
     if not cfg.exists():

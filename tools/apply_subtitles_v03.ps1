@@ -2,7 +2,9 @@ param(
   [Parameter(Mandatory=$true)][string]$PackDir,
   [string]$SrtName = "captions_v03.srt",
   [int]$FontSize = 52,
-  [int]$MarginV  = 120,
+[int]$MarginV  = 120,
+  [int]$MarginL  = 80,
+  [int]$MarginR  = 80,
   [int]$Outline  = 3
 )
 
@@ -51,7 +53,7 @@ $absSrtEsc = $absSrt.Replace("\", "/").Replace(":", "\:")
 # ASS force_style (determinista)
 # Alignment=2 bottom-center
 # WrapStyle=2 smart
-$style = "Alignment=2,MarginV=$MarginV,Fontsize=$FontSize,Outline=$Outline,Shadow=0,WrapStyle=2,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000"
+$style = "Alignment=2,MarginV=$MarginV,MarginL=$MarginL,MarginR=$MarginR,Fontsize=$FontSize,Outline=$Outline,Shadow=0,WrapStyle=2,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000"
 $vf = "subtitles='$absSrtEsc':force_style='$style'"
 
 $ff = "ffmpeg"
@@ -73,3 +75,4 @@ if ($lenOut -lt $minBytesVideoSubs) {
 }
 
 Write-Host "OK: Subtitles v03 aplicados. SRT=$srt OUT=$videoOut FontSize=$FontSize MarginV=$MarginV Outline=$Outline isLive=$isLive" -ForegroundColor Green
+

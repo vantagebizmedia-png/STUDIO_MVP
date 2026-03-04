@@ -1,5 +1,6 @@
 param(
-  [Parameter(Mandatory=$true)][string]$WorkspaceRoot,
+  [Parameter(Mandatory=$false)][string]$WorkspaceRoot,
+  [Parameter(Mandatory=$false)][string]$PackDir,
   [int]$MaxScenes = 6,
   [int]$Seed = 123,
   [switch]$Force
@@ -10,6 +11,15 @@ $ErrorActionPreference="Stop"
 chcp 65001 | Out-Null
 
 $repo = (Resolve-Path ".").Path
+
+# Compat: si te pasaron -PackDir (live dir), derivamos WorkspaceRoot
+if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -eq 0) {
+  if (-not $PackDir -or $PackDir.Trim().Length -eq 0) { throw "Falta -WorkspaceRoot o -PackDir" }
+  $PackDir = (Resolve-Path $PackDir).Path
+
+  # Si PackDir apunta a ...\runs\smoke_live_latest, subimos 2 niveles al WorkspaceRoot
+  $WorkspaceRoot = (Resolve-Path (Join-Path $PackDir "..\..")).Path
+}
 
 # Live dir (estable)
 $live = Join-Path $WorkspaceRoot "runs\smoke_live_latest"

@@ -96,6 +96,7 @@ try {
 try {
   RunPS -Step "3/6" -ScriptPath $applySubsLive -ArgMap @{ LiveDir=$live }
   RunPS -Step "4/6" -ScriptPath $smokeSubsLive -ArgMap @{ LiveDir=$live; MaxScenes=$MaxScenes }
+  RunPS -Step "4b/6" -ScriptPath (Join-Path $repo "tools\smoke_quality_live_v03.ps1") -ArgMap @{ WorkspaceRoot=$WorkspaceRoot }
 } catch { $errors += $_.Exception.Message; if ($FailFast) { throw } }
 
 if ($DoHandoff) {
@@ -128,3 +129,4 @@ if ($errors.Count -gt 0) {
 Write-Host ""
 Write-Host "SMOKE OK: E2E v0.3 (LIVE(workspace) + scene_builder + subtitles + optional handoff)"
 exit 0
+

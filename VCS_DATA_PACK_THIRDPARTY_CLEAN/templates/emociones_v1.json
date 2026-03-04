@@ -1,0 +1,14 @@
+﻿{
+  "version": "v1",
+  "emociones": [
+    {"id": "amor", "familia": "amor/belleza"},
+    {"id": "risa", "familia": "humor"},
+    {"id": "tristeza", "familia": "dolor"},
+    {"id": "ira", "familia": "conflicto"},
+    {"id": "heroismo", "familia": "valentía"},
+    {"id": "miedo", "familia": "terror"},
+    {"id": "asco", "familia": "rechazo"},
+    {"id": "sorpresa", "familia": "asombro"},
+    {"id": "paz", "familia": "tranquilidad"}
+  ]
+}

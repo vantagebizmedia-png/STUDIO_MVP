@@ -1,0 +1,7 @@
+{
+  "name": "VCS_DATA_PACK_THIRDPARTY_CLEAN",
+  "version": "v03",
+  "clean": true,
+  "note": "Clean thirdparty pack: no projects/topics/themes. Structure only.",
+  "created_at": "2026-03-03 20:56:30"
+}

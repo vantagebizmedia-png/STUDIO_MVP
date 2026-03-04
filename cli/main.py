@@ -1,31 +1,26 @@
 # -*- coding: utf-8 -*-
-"""CLI v0.3
+"""CLI v0.3 (core)
 
-def apply_pipe_knobs(pipeline, pipe_cfg: dict) -> None:
-    try:
-        if not isinstance(pipe_cfg, dict):
-            return
-        if "multiscene" in pipe_cfg:
-            setattr(pipeline, "multiscene", bool(pipe_cfg.get("multiscene", False)))
-        if "max_scenes" in pipe_cfg:
-            setattr(pipeline, "max_scenes", int(pipe_cfg.get("max_scenes", 1) or 1))
-        if "scene_split" in pipe_cfg:
-            setattr(pipeline, "scene_split", str(pipe_cfg.get("scene_split", "auto") or "auto"))
-    except Exception:
-        pass
 Modos:
 - --demo                 : demo interno (sin API)
 - --legacy-demo          : legacy usando config DEMO DRY (seguro)
 - --legacy               : legacy usando tu config real, PERO por defecto forzamos DRY (seguro)
-    * --providers-json X : ruta a providers.json (si no, intenta detectar config/providers.json)
-    * --force-mode DRY|REPLAY|LIVE : por defecto DRY (LIVE solo si lo pides explícito)
-    * --workspace PATH   : fija STUDIO_WORKSPACE
+
+Knobs Multi-Scene (deterministas):
+- --multiscene           : activa Scene Builder (split de guion -> N escenas)
+- --max-scenes N         : número máximo de escenas (>=1)
+- --scene-split MODE     : 'auto' (default) u otros modos soportados por studio.scene_builder
+
+Notas:
+- LIVE está bloqueado por defecto. Para permitirlo: set STUDIO_ALLOW_LIVE=1
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+from typing import Any
+
 
 # --- LIVE guard (súper fuerte) ---
 def _enforce_live_guard(force_mode: str) -> None:
@@ -34,6 +29,20 @@ def _enforce_live_guard(force_mode: str) -> None:
         if os.environ.get("STUDIO_ALLOW_LIVE", "") != "1":
             raise SystemExit("LIVE bloqueado. Setea STUDIO_ALLOW_LIVE=1 para permitir LIVE.")
 # --- end guard ---
+
+
+def apply_pipe_knobs(pipeline: Any, *, multiscene: bool, max_scenes: int, scene_split: str) -> None:
+    """Aplica knobs sin romper compat (best-effort)."""
+    try:
+        if multiscene:
+            setattr(pipeline, "multiscene", True)
+        if int(max_scenes or 1) < 1:
+            max_scenes = 1
+        setattr(pipeline, "max_scenes", int(max_scenes or 1))
+        if scene_split:
+            setattr(pipeline, "scene_split", str(scene_split or "auto"))
+    except Exception:
+        return
 
 
 from studio.builders import (
@@ -47,9 +56,9 @@ from studio.builders import (
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="studio", description="STUDIO v0.3 (core stable)")
     g = p.add_mutually_exclusive_group(required=False)
-    g.add_argument("--demo", action="store_true", help="Genera 1 imagen+audio demo en ./_demo_out")
-    g.add_argument("--legacy-demo", action="store_true", help="Usa legacy con providers_demo.json (DRY seguro)")
-    g.add_argument("--legacy", action="store_true", help="Usa legacy con tu providers.json (forzando DRY por defecto)")
+    g.add_argument("--demo", action="store_true", help="Genera demo (sin API)")
+    g.add_argument("--legacy-demo", action="store_true", help="Legacy con providers_demo.json (DRY seguro)")
+    g.add_argument("--legacy", action="store_true", help="Legacy con tu providers.json (forzando DRY por defecto)")
 
     p.add_argument("--script", default="demo", help="Texto base")
     p.add_argument("--work-dir", default="", help="Dir de salida (si vacío, usa defaults por modo)")
@@ -60,14 +69,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     p.add_argument("--v03-config", default="", help="Ruta a config v0.3 JSON (provider swapping nativo)")
 
+    # --- Multi-Scene knobs (P1) ---
+    p.add_argument("--multiscene", action="store_true", help="Activa split a escenas + assets por escena")
+    p.add_argument("--max-scenes", dest="max_scenes", type=int, default=1, help="Máximo de escenas (>=1)")
+    p.add_argument("--scene-split", dest="scene_split", default="auto", help="Modo split (default: auto)")
+    # ------------------------------
+
     return p
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
+    # 1) v03 config-based pipeline
     if args.v03_config:
         from studio.builders import build_pipeline_from_v03_config
 
         pipe = build_pipeline_from_v03_config(args.v03_config)
+        apply_pipe_knobs(pipe, multiscene=bool(args.multiscene), max_scenes=int(args.max_scenes), scene_split=str(args.scene_split))
         img, aud = pipe.run(args.script)
 
         print("OK v0.3 config")
@@ -76,15 +95,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"config: {os.path.abspath(args.v03_config)}")
         return 0
 
+    # 2) demo
     if args.demo:
         work = os.path.abspath(args.work_dir or "_demo_out")
         pipe = build_pipeline(mode="demo", work_dir=work)
+        apply_pipe_knobs(pipe, multiscene=bool(args.multiscene), max_scenes=int(args.max_scenes), scene_split=str(args.scene_split))
         img, aud = pipe.run(args.script)
         print("OK demo")
         print(f"image: {img}")
         print(f"audio: {aud}")
         return 0
 
+    # 3) legacy-demo (DRY)
     if args.legacy_demo:
         root = os.path.abspath("_demo_out_legacy")
         ws = os.path.abspath(args.workspace or os.path.join(root, "workspace"))
@@ -94,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
 
         work = os.path.abspath(args.work_dir or os.path.join(root, "artifacts"))
         pipe = build_pipeline(mode="legacy", work_dir=work, providers_json=cfg, workspace=ws)
+        apply_pipe_knobs(pipe, multiscene=bool(args.multiscene), max_scenes=int(args.max_scenes), scene_split=str(args.scene_split))
         img, aud = pipe.run(args.script)
         print("OK legacy-demo (DRY)")
         print(f"image: {img}")
@@ -102,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"providers_demo.json: {cfg}")
         return 0
 
+    # 4) legacy (tu config real)
     if args.legacy:
         root = os.path.abspath("_v03_legacy_run")
         os.makedirs(root, exist_ok=True)
@@ -119,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
         force_mode_copy(src, forced, args.force_mode)
 
         pipe = build_pipeline(mode="legacy", work_dir=work, providers_json=forced, workspace=ws)
+        apply_pipe_knobs(pipe, multiscene=bool(args.multiscene), max_scenes=int(args.max_scenes), scene_split=str(args.scene_split))
         img, aud = pipe.run(args.script)
         print(f"OK legacy (force-mode={args.force_mode})")
         print(f"image: {img}")
@@ -134,4 +159,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

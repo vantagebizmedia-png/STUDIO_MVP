@@ -1,0 +1,9 @@
+﻿NARRATIVA BASE (VCS)
+Universo: techno-místico, realista y oscuro.
+Tema recurrente: evidencia, trazabilidad, identidad, auditable.
+Protagonista: un operador que intenta demostrar que su sistema produce valor real.
+Reglas del mundo:
+- Nada se “cree” si no hay evidencia.
+- Todo output debe poder verificarse con hash y logs.
+Tono: directo, cinematográfico, con tensión, sin humor.
+Formato de contenido: micro-episodios para redes (25-45s) + una imagen clave.

@@ -1,0 +1,20 @@
+{
+  "work_dir": "_v03_smoke_cfg/artifacts",
+  "workspace": "_v03_smoke_cfg/workspace",
+  "voice": {
+    "provider": "demo_voice",
+    "config": {}
+  },
+  "image": {
+    "provider": "demo_image",
+    "config": {}
+  },
+  "text": {
+    "provider": "demo_text"
+  },
+  "pipe": {
+    "multiscene": true,
+    "max_scenes": 6,
+    "scene_split": "auto"
+  }
+}

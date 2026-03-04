@@ -1,0 +1,11 @@
+﻿{
+  "version": "v1",
+  "subgeneros": [
+    {"id": "microcuento", "formato": "breve"},
+    {"id": "storytime", "formato": "oral"},
+    {"id": "cronica", "formato": "realista"},
+    {"id": "diario", "formato": "intimo"},
+    {"id": "reflexivo", "formato": "existencial"},
+    {"id": "poetico", "formato": "emocional"}
+  ]
+}

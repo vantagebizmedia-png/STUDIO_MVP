@@ -1,0 +1,22 @@
+{
+  "_comment": "Config STUDIO v0.3 — HuggingFace FLUX + Edge TTS (gratis, sin A1111)",
+  "_requires": "HF_TOKEN=<tu_token_de_huggingface> en variables de entorno",
+  "work_dir": "_hf_run/artifacts",
+  "voice": {
+    "provider": "edge_voice",
+    "config": {
+      "voice": "es-ES-AlvaroNeural",
+      "rate": "+5%",
+      "volume": "+0%",
+      "sample_rate": 24000
+    }
+  },
+  "image": {
+    "provider": "hf_image",
+    "config": {
+      "model": "black-forest-labs/FLUX.1-schnell",
+      "provider": "hf-inference",
+      "token_env": "HF_TOKEN"
+    }
+  }
+}

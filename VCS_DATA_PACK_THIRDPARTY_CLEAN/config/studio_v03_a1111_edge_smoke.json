@@ -1,0 +1,7 @@
+{
+  "work_dir": "_v03_a1111_edge_smoke/artifacts",
+  "workspace": "_v03_a1111_edge_smoke/workspace",
+  "voice": { "provider": "edge_voice", "config": {} },
+  "image": { "provider": "a1111_image", "config": {} },
+  "text":  { "provider": "openai_text", "config": {} }
+}

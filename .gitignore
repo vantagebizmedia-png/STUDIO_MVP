@@ -1,63 +1,44 @@
-# --- Python ---
+# --- workspace / runs (NO repo) ---
+STUDIO_WORKSPACE/
+runs/
+cache/
+tmp/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.venv/
-venv/
 
-# --- OS / IDE ---
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
+# --- outputs / media ---
+handoff_v03/
+*.mp4
+*.wav
+*.png
+*.zip
 
-# --- local secrets (NUNCA a git) ---
+# --- logs / temporales ---
+*.log
+*_last.log
+render_*last*.log
+release_*.log
+tmp_*.txt
+tmp_*.log
+
+# --- backups / editor ---
+*.bak
+*.bk
+*.bk2
+*.bak_*
+*.bk_*
+*.orig
+*~
+
+# --- local configs (pueden tener keys) ---
 config/*.local.json
 config/providers.local.json
 config/hybrid.local.json
 
-# --- outputs / caches / workspace ---
-runs/
-**/runs/
-workspace/
-**/workspace/
-**/_hybrid_cache/
-**/handoff_*/
-**/*.mp4
-**/*.wav
-**/*.srt
-**/*.zip
-**/HASHES_SHA256.txt
-**/HANDOFF_READY.txt
-
-# --- demo / legacy runs (no versionar) ---
+# --- scratch dirs ---
 _demo_out/
 _demo_out_legacy/
 _v03_legacy_run/
-
-# --- thirdparty clean pack (no se versiona en core) ---
-VCS_DATA_PACK_THIRDPARTY_CLEAN/
-
-# --- local scratch / backups / logs (no versionar) ---
-*.bak
-*.bk
-*.bk2
-*.orig
-*.tmp
-tmp_*.txt
-tmp_*.log
-*_last.log
-*_debug_*.log
-*_debug.log
-*_v03_*.log
-release_*.log
-render_*.log
-_scan_*.txt
-_scene_provider_routing_smoke/
 _v03_smoke_cfg/
-
-# --- misc local ---
-.gitattributes.bk
-.gitignore.bk
-.gitignore.bk2
+_scene_provider_routing_smoke/
+_scan_*.txt

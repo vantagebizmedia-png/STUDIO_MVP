@@ -1,19 +1,31 @@
-# Normalize text files, keep scripts consistent
-* text=auto
+# Normaliza texto a LF en el repo
+* text=auto eol=lf
 
-# PowerShell scripts
+# Scripts
 *.ps1 text eol=lf
+*.psm1 text eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
 
-# Python
-*.py text eol=lf
-
-# JSON/TXT/MD
+# Configs
 *.json text eol=lf
-*.txt  text eol=lf
 *.md   text eol=lf
+*.txt  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
 
-# Binary
+# Binarios (no tocar)
 *.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
 *.mp4 binary
 *.wav binary
 *.zip binary
+*.7z  binary
+*.rar binary
+*.exe binary
+*.dll binary
+*.pdb binary
+*.rnnn binary

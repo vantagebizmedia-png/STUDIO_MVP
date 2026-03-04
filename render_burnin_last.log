@@ -1,4 +1,0 @@
-  File "C:\Users\vanta\Documents\STUDIO_MVP\tools\render_pack_v03.py", line 205
-    def main() -> int:
-    ^^^
-SyntaxError: invalid syntax

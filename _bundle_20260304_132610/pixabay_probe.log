@@ -1,5 +1,0 @@
-Exception: C:\Users\vanta\Documents\STUDIO_MVP\tools\stock_query_pixabay_v03.ps1:13
-Line |
-  13 |    throw "Falta PIXABAY_API_KEY en el environment."
-     |    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     | Falta PIXABAY_API_KEY en el environment.

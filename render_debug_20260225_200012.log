@@ -1,4 +1,0 @@
-  File "C:\Users\vanta\Documents\STUDIO_MVP\tools\render_pack_v03.py", line 150
-    from __future__ import annotations
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-SyntaxError: from __future__ imports must occur at the beginning of the file

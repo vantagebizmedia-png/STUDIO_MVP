@@ -20,6 +20,7 @@ Ejecuta unit tests + demos:
 - `tools/smoke_v03.ps1`
 
 ### 2) Smoke E2E (sin handoff)
+Incluye quality gate: assets por escena + CPS de captions (smoke_quality_live_v03).
 Ejecuta LIVE -> workspace -> scenes -> subtítulos:
 - `tools/smoke_e2e_v03.ps1 -WorkspaceRoot $env:STUDIO_WORKSPACE -MaxScenes 6`
 
@@ -76,5 +77,6 @@ Prioridades (manteniendo baseline + smoke determinista):
 
 ## Licencia
 Ver `LICENSE`.
+
 
 

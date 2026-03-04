@@ -13,6 +13,7 @@ Desde la raíz del repo (o dentro del pack, ajustando rutas):
 - `VCS_DATA_PACK_THIRDPARTY_CLEAN/tools/smoke_v03.ps1`
 
 ### 2) Smoke E2E (con handoff)
+Incluye quality gate: assets por escena + CPS de captions (smoke_quality_live_v03).
 - `VCS_DATA_PACK_THIRDPARTY_CLEAN/tools/smoke_e2e_v03.ps1 -WorkspaceRoot $env:STUDIO_WORKSPACE -MaxScenes 6 -DoHandoff`
 
 ## Handoff (salida esperada)
@@ -34,4 +35,5 @@ Ver:
 
 ## Licencia
 Ver `VCS_DATA_PACK_THIRDPARTY_CLEAN/LICENSE`.
+
 

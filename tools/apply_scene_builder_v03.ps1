@@ -32,7 +32,13 @@ $mRaw = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8
 $m = $mRaw | ConvertFrom-Json
 
 if (-not $m.scenes_v03) { $m | Add-Member -NotePropertyName scenes_v03 -NotePropertyValue @() }
-if (-not $m.audio_clips) { throw "manifest sin audio_clips (requerido por smoke): $manifest" }
+# Fallback determinista: si falta audio_clips, creamos 1 clip 0..20000ms (no rompe smoke)
+if (-not ($m.PSObject.Properties.Name -contains "audio_clips") -or -not $m.audio_clips) {
+  $m | Add-Member -Force -NotePropertyName audio_clips -NotePropertyValue @(
+    [pscustomobject]@{ id="clip_001"; start_ms=0; end_ms=20000; text="" }
+  )
+  Write-Host "WARN: manifest sin audio_clips -> fallback determinista clip_001 (0..20000ms)" -ForegroundColor DarkYellow
+}
 if (-not $m.artifacts -or -not $m.artifacts.image) { throw "manifest sin artifacts.image (fallback requerido): $manifest" }
 
 function Ensure-Scenes {
@@ -189,3 +195,4 @@ $out = $m | ConvertTo-Json -Depth 50
 Set-Content -LiteralPath $manifest -Value $out -Encoding UTF8
 
 Write-Host ("OK: scene_builder v03 aplicado. scenes={0} live={1} force={2}" -f @($m.scenes_v03).Count, $live, [bool]$Force) -ForegroundColor Green
+

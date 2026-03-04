@@ -1,0 +1,9 @@
+{
+  "hybrid_v1": {
+    "enabled": true,
+    "provider": "pixabay",
+    "query_mode": "image_query",
+    "fallback": "keep_image",
+    "cache": true
+  }
+}

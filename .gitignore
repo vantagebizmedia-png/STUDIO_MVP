@@ -43,3 +43,16 @@ _scene_provider_routing_smoke/
 
 # misc
 _zip_check/
+# --- local secrets ---
+config/*.local.json
+
+# --- workspace/runs/cache ---
+**/runs/
+**/_hybrid_cache/
+**/handoff_*/
+**/*.mp4
+**/*.wav
+**/*.srt
+
+# --- thirdparty clean pack (no se versiona en core) ---
+VCS_DATA_PACK_THIRDPARTY_CLEAN/

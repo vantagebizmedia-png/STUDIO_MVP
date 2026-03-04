@@ -90,6 +90,30 @@ function Get-FirstImageRef {
   return $null
 }
 
+# --- SRT Layout checks (chars/lines) ---
+$measure = Join-Path $PSScriptRoot "measure_srt_v03.ps1"
+if (Test-Path -LiteralPath $measure) {
+  $metricsJson = pwsh -NoProfile -ExecutionPolicy Bypass -File $measure -SrtPath $srt
+  $metrics = $metricsJson | ConvertFrom-Json
+
+  $maxCharsLine  = [int]$metrics.max_chars_line
+  $maxLinesBlock = [int]$metrics.max_lines_block
+
+  $maxAllowedChars = 42
+  $maxAllowedLines = 2
+
+  if ($maxCharsLine -gt $maxAllowedChars) {
+    throw "SRT layout fail: max_chars_line=$maxCharsLine (max=$maxAllowedChars)"
+  }
+  if ($maxLinesBlock -gt $maxAllowedLines) {
+    throw "SRT layout fail: max_lines_block=$maxLinesBlock (max=$maxAllowedLines)"
+  }
+
+  Write-Host "OK: SRT layout maxChars=$maxCharsLine maxLines=$maxLinesBlock" -ForegroundColor DarkGray
+} else {
+  Write-Host "SRT layout check: skip (no measure_srt_v03.ps1)" -ForegroundColor DarkGray
+}
+# --- fin SRT Layout checks ---
 # --- Manifest checks ---
 $mRaw = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8
 $m = $mRaw | ConvertFrom-Json
@@ -152,3 +176,4 @@ foreach ($line in $lines) {
 Flush-Block
 
 Write-Host ("OK: smoke quality passed (SRT={0}) scenes={1}" -f (Split-Path -Leaf $srt), $m.scenes_v03.Count) -ForegroundColor Green
+

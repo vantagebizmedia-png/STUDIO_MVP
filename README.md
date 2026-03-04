@@ -37,6 +37,14 @@ Outputs esperados en:
 - `HANDOFF_READY.txt`
 
 ## Roadmap (STUDIO_MVP)
+
+## Roadmap Status (mar 2026)
+- ✅ Scene Builder (LIVE -> manifest_v03.json con scenes_v03 + assets por escena)
+- ✅ Subtítulos integrados (SRT + burn-in)
+- ✅ Música automática (3 salidas: video.mp4 / video_music_auto.mp4 / video_final.mp4)
+- ✅ Finalize/Handoff (ZIP final + hashes + HANDOFF_READY.txt)
+- ⏳ Calidad LIVE (guion más estructurado, imágenes más relevantes, evitar overflow de texto)
+- ⏳ Estética/Layout (safe margins, auto tamaño texto, fit contain/crop)
 Prioridades (manteniendo baseline + smoke determinista):
 
 1) Scene Builder (LIVE -> manifest_v03.json con scenes_v03 + assets por escena)
@@ -68,3 +76,4 @@ Prioridades (manteniendo baseline + smoke determinista):
 
 ## Licencia
 Ver `LICENSE`.
+

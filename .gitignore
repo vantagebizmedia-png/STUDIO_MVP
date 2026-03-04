@@ -1,22 +1,54 @@
+# ============================================================
+# STUDIO_MVP - Gitignore (private repo, deterministic baseline)
+# ============================================================
+
 # --- workspace & runs ---
 STUDIO_WORKSPACE/
 **/STUDIO_WORKSPACE/
 runs/
 **/runs/
 
-# --- generated handoff outputs ---
+# --- generated outputs / handoff / media ---
 handoff_v03/
 **/handoff_v03/
 *.zip
 *.mp4
 *.wav
 *.srt
+*.png
+*.jpg
+*.jpeg
 
 # --- caches ---
 cache_v03/
 **/cache_v03/
 .cache/
 **/.cache/
+**/workspace/cache/
+**/artifacts/cache/
+
+# --- bundles / demos / scans / legacy runs (no deben versionarse) ---
+_bundle_*/
+_demo_out*/
+_demo_out_legacy*/
+_v03_legacy_run*/
+_v03_smoke_cfg*/
+_scene_provider_routing_smoke*/
+_scan_*.txt
+
+# --- logs / temp ---
+*.log
+*.tmp
+render_last.log
+render_burnin_last.log
+
+# --- backups / scratch ---
+*.bak
+*.bak_*
+*.bk
+*.bk_*
+*.orig
+*.old
 
 # --- local env / secrets ---
 .env
@@ -26,6 +58,8 @@ cache_v03/
 *apikey*
 *api_key*
 *token*
+config/*.local.json
+config/*local*.json
 
 # --- python junk ---
 __pycache__/

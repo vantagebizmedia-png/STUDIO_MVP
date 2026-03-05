@@ -96,26 +96,27 @@ Run-Step $step $total "ensure_outputs_live_v03.ps1" {
   pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live
 }
 $step++
-
 if ($DoHandoff) {
   Run-Step $step $total "finalize_handoff_v03.ps1" {
     $tool = Join-Path $repo "tools\finalize_handoff_v03.ps1"
-    $out  = Join-Path $live "handoff_v03"
-    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1} -f $tool,$live,$out) -ForegroundColor DarkGray
-    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live
+    if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
+
+    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1}" -f $tool,$live) -ForegroundColor DarkGray
+    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live | Out-Null
   }
   $step++
 
   Run-Step $step $total "handoff_pack_v03.ps1" {
     $tool = Join-Path $repo "tools\handoff_pack_v03.ps1"
+    if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
+
     $in   = Join-Path $live "handoff_v03"
     $zip  = Join-Path $in "handoff_v03.zip"
     Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -InDir {1} -OutZip {2}" -f $tool,$in,$zip) -ForegroundColor DarkGray
-    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -InDir $in -OutZip $zip
+    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -InDir $in -OutZip $zip | Out-Null
   }
-}
-
-if ($hadFail) { throw "SMOKE FAIL: E2E v0.3 (uno o más pasos fallaron)." }
+  $step++
+}if ($hadFail) { throw "SMOKE FAIL: E2E v0.3 (uno o más pasos fallaron)." }
 
 if ($DoHandoff) {
   Write-Host ("SMOKE OK: HANDOFF v03 listo en {0}" -f (Join-Path $live "handoff_v03")) -ForegroundColor Green

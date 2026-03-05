@@ -61,18 +61,20 @@ $videoLegacy = Join-Path $live $OutVideoLegacyName
 
 function Get-AutofitParamNames([string]$scriptPath) {
   if (-not (Test-Path -LiteralPath $scriptPath)) { return @() }
-  $t = Get-Content -LiteralPath $scriptPath -Raw -Encoding UTF8
-  $t = $t -replace "`r`n","`n"
 
-  # extrae bloque param(...) de forma simple
-  $m = [regex]::Match($t, '(?is)^\s*param\s*\((?<body>.*?)\)\s*', [System.Text.RegularExpressions.RegexOptions]::Multiline)
-  if (-not $m.Success) { return @() }
+  $tokens = $null
+  $errors = $null
+  $ast = [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$errors)
 
-  $body = $m.Groups["body"].Value
+  if ($null -ne $errors -and $errors.Count -gt 0) { return @() }
+  if ($null -eq $ast -or $null -eq $ast.ParamBlock) { return @() }
+
   $names = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
-
-  foreach ($mm in [regex]::Matches($body, '(?m)\$(?<n>[A-Za-z_]\w*)')) {
-    $null = $names.Add($mm.Groups["n"].Value)
+  foreach ($p in $ast.ParamBlock.Parameters) {
+    if ($null -ne $p -and $null -ne $p.Name) {
+      $n = $p.Name.VariablePath.UserPath
+      if ($n) { $null = $names.Add($n) }
+    }
   }
   return @($names)
 }
@@ -130,7 +132,8 @@ if ($UseAutofit -and (Test-Path -LiteralPath $autofit)) {
   $pOut = Pick-FirstPresent $outVideoCandidates $pnames
 
   if (-not $pSrt -or -not $pIn -or -not $pOut) {
-    Write-Host ("WARN: autofit existe pero no pude inferir params (SRT/In/Out). Detectados: {0}" -f ($pnames -join ", ")) -ForegroundColor DarkYellow
+    $det = if ($pnames.Count -gt 0) { ($pnames -join ", ") } else { "<none>" }
+    Write-Host ("WARN: autofit existe pero no pude inferir params (SRT/In/Out). Detectados: {0}" -f $det) -ForegroundColor DarkYellow
   } else {
     $args = @("-NoProfile","-ExecutionPolicy","Bypass","-File",$autofit)
 
@@ -147,7 +150,6 @@ if ($UseAutofit -and (Test-Path -LiteralPath $autofit)) {
     if ($pnames -contains "MarginV")     { $args += @("-MarginV", "$MarginV") }
     if ($pnames -contains "Alignment")   { $args += @("-Alignment", "$Alignment") }
 
-    # Ejecuta y valida con exit code + archivo nuevo
     & pwsh @args | Out-Null
     $code = $LASTEXITCODE
 

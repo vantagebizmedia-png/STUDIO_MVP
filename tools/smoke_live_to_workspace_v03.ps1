@@ -110,7 +110,9 @@ $sceneRoot = Join-Path $dstArt "scenes"
 New-Item -ItemType Directory -Force -Path $sceneRoot | Out-Null
 
 $scenes = @()
+$audioClips = @()
 $cur = 0
+
 for ($i=1; $i -le $max; $i++) {
   $dur = $seg + ($(if ($i -le $rem) { 1 } else { 0 }))
   $st = $cur
@@ -127,6 +129,14 @@ for ($i=1; $i -le $max; $i++) {
   $imgAbs = Join-Path $sd "image.png"
   Copy-Item -LiteralPath $baseImgAbs -Destination $imgAbs -Force
 
+  $audioClips += [pscustomobject]@{
+    id       = ("clip_{0:d3}" -f $i)
+    start_ms = $st
+    end_ms   = $en
+    text     = ""
+    path     = $clipRel
+  }
+
   $scenes += [pscustomobject]@{
     index    = $i
     start_ms = $st
@@ -142,11 +152,11 @@ for ($i=1; $i -le $max; $i++) {
 # artifacts.* para apply_subtitles_live_v03.ps1 (relativos al root LIVE)
 $mfOut = [pscustomobject]@{
   version = "v03"
-  total_audio_ms = $totalMs
   artifacts = [pscustomobject]@{
     image = $img0.Name
     audio = $aud0.Name
   }
+  audio_clips = $audioClips
   scene_builder_v03 = [pscustomobject]@{
     total_audio_ms = $totalMs
     note = "normalized_by_smoke_live_to_workspace_v03"

@@ -101,8 +101,8 @@ if ($DoHandoff) {
   Run-Step $step $total "finalize_handoff_v03.ps1" {
     $tool = Join-Path $repo "tools\finalize_handoff_v03.ps1"
     $out  = Join-Path $live "handoff_v03"
-    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1} -OutDir {2}" -f $tool,$live,$out) -ForegroundColor DarkGray
-    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live -OutDir $out
+    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1} -f $tool,$live,$out) -ForegroundColor DarkGray
+    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live
   }
   $step++
 

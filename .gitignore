@@ -71,3 +71,8 @@ __pycache__/
 Thumbs.db
 .vscode/
 .idea/
+_codex/
+captions_v03.srt
+captions_v03*.srt
+video_subtitles.mp4
+video_subs.mp4

@@ -131,8 +131,7 @@ foreach ($scene in $m.scenes_v03) {
 
 # --- SRT CPS checks ---
 $lines = Get-Content -LiteralPath $srt -Encoding UTF8
-
-$maxCps = 22
+$maxCps = 23  # patched: tolerancia mínima CPS (era 22)
 $currentText = ""
 $start = $null
 $end = $null

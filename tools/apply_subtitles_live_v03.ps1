@@ -13,6 +13,12 @@ param(
   # Compat nombre viejo:
   [string]$OutVideoLegacyName = "video_subs.mp4",
 
+  # NUEVO: poblar scenes_v03.text desde script_*.txt (determinista)
+  [switch]$PopulateFromScriptFiles,
+
+  # NUEVO: permitir placeholder (para no romper smoke)
+  [switch]$AllowPlaceholderText,
+
   # baseline style
   [int]$FontSize = 18,
   [int]$Outline = 2,
@@ -26,6 +32,10 @@ $ErrorActionPreference="Stop"
 chcp 65001 | Out-Null
 
 $repo = (Resolve-Path ".").Path
+
+# Defaults (compat): en smoke queremos robustez determinista
+if (-not $PSBoundParameters.ContainsKey("PopulateFromScriptFiles")) { $PopulateFromScriptFiles = $true }
+if (-not $PSBoundParameters.ContainsKey("AllowPlaceholderText"))    { $AllowPlaceholderText    = $true }
 
 # Resolver LIVE dir
 if (-not $LiveDir -or $LiveDir.Trim().Length -eq 0) {
@@ -44,8 +54,10 @@ if (-not (Test-Path -LiteralPath $man)) { throw "Falta manifest: $man" }
 $videoIn = Join-Path $live "video.mp4"
 if (-not (Test-Path -LiteralPath $videoIn)) { throw "Falta video.mp4 en LIVE: $videoIn" }
 
-$makeSrt = Join-Path $repo "tools\make_srt_from_scenes_v03.ps1"
-$burnIn  = Join-Path $repo "tools\burn_in_srt_v03.ps1"
+$makeSrt  = Join-Path $repo "tools\make_srt_from_scenes_v03.ps1"
+$burnIn   = Join-Path $repo "tools\burn_in_srt_v03.ps1"
+$popScene = Join-Path $repo "tools\populate_scene_text_from_scriptfiles_v03.ps1"
+
 if (-not (Test-Path -LiteralPath $makeSrt)) { throw "Falta tool: $makeSrt" }
 if (-not (Test-Path -LiteralPath $burnIn))  { throw "Falta tool: $burnIn" }
 
@@ -53,11 +65,32 @@ $srtOut      = Join-Path $live $SrtName
 $videoOut    = Join-Path $live $OutVideoName
 $videoLegacy = Join-Path $live $OutVideoLegacyName
 
-# 1) Genera SRT desde scenes_v03 (permitiendo placeholder para no romper smoke)
-pwsh -NoProfile -ExecutionPolicy Bypass -File $makeSrt `
-  -ManifestPath $man `
-  -OutSrtPath $srtOut `
-  -AllowPlaceholderText | Out-Null
+# 0) (Opcional) Poblar texto real por escena desde script_*.txt (determinista)
+if ($PopulateFromScriptFiles) {
+  if (Test-Path -LiteralPath $popScene) {
+    try {
+      pwsh -NoProfile -ExecutionPolicy Bypass -File $popScene `
+        -LiveDir $live | Out-Null
+      Write-Host "OK: populate_scene_text_from_scriptfiles_v03 aplicado" -ForegroundColor DarkGray
+    } catch {
+      Write-Host ("WARN: populate_scene_text_from_scriptfiles_v03 falló (se continúa): {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+    }
+  } else {
+    Write-Host "WARN: tool no existe, se omite populate_scene_text_from_scriptfiles_v03.ps1" -ForegroundColor DarkYellow
+  }
+}
+
+# 1) Genera SRT desde scenes_v03
+if ($AllowPlaceholderText) {
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $makeSrt `
+    -ManifestPath $man `
+    -OutSrtPath $srtOut `
+    -AllowPlaceholderText | Out-Null
+} else {
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $makeSrt `
+    -ManifestPath $man `
+    -OutSrtPath $srtOut | Out-Null
+}
 
 if (-not (Test-Path -LiteralPath $srtOut)) { throw "No se generó SRT: $srtOut" }
 $lenSrt = (Get-Item -LiteralPath $srtOut).Length

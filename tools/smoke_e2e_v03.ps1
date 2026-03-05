@@ -45,12 +45,11 @@ function Run-Step([int]$n, [int]$totalN, [string]$name, [scriptblock]$action) {
 }
 
 $step = 1
-
-# [0/11] providers.json guard-rail (wiring check)
+# [0/12] providers.json guard-rail (wiring check)
 if (-not $SkipProviderCheck) {
   $check = Join-Path $PSScriptRoot "check_providers_cfg_v03.ps1"
   if (Test-Path -LiteralPath $check) {
-    Write-Host "[0/11] check_providers_cfg_v03.ps1" -ForegroundColor DarkGray
+    Write-Host "[0/12] check_providers_cfg_v03.ps1" -ForegroundColor DarkGray
     & pwsh -NoProfile -ExecutionPolicy Bypass -File $check
   } else {
     Write-Host "WARN: falta tools/check_providers_cfg_v03.ps1 (skip)" -ForegroundColor Yellow

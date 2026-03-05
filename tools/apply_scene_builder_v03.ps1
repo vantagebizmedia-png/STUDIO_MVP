@@ -250,4 +250,39 @@ $out = $m | ConvertTo-Json -Depth 50
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($manifest, $out, $utf8NoBom)
 
+# --- v0.3: enrich stock_query por escena (determinista) ---
+try {
+  $enricher = Join-Path $repo "tools\enrich_scene_queries_v03.ps1"
+  if (Test-Path -LiteralPath $enricher) {
+
+    $manifestGuess = $null
+
+    # Caso smoke/live estándar
+    if ($WorkspaceRoot -and $WorkspaceRoot.Trim().Length -gt 0) {
+      $mg = Join-Path $WorkspaceRoot "runs\smoke_live_latest\manifest_v03.json"
+      if (Test-Path -LiteralPath $mg) { $manifestGuess = $mg }
+    }
+
+    # Caso PackDir (si existe en este script)
+    if (-not $manifestGuess -and (Get-Variable -Name PackDir -ErrorAction SilentlyContinue)) {
+      if ($PackDir -and (Test-Path -LiteralPath $PackDir)) {
+        $mg2 = Join-Path $PackDir "manifest_v03.json"
+        if (Test-Path -LiteralPath $mg2) { $manifestGuess = $mg2 }
+      }
+    }
+
+    if ($manifestGuess -and (Test-Path -LiteralPath $manifestGuess)) {
+      pwsh -NoProfile -ExecutionPolicy Bypass -File $enricher -ManifestPath $manifestGuess -Seed $Seed | Out-Null
+      Write-Host "OK: enrich_scene_queries_v03 aplicado (manifest=$manifestGuess)" -ForegroundColor DarkGray
+    } else {
+      Write-Host "WARN: no encontré manifest_v03.json para enriquecer queries" -ForegroundColor Yellow
+    }
+
+  } else {
+    Write-Host "WARN: faltan tool enrich_scene_queries_v03.ps1 (skip)" -ForegroundColor Yellow
+  }
+} catch {
+  Write-Host ("WARN: enrich_scene_queries_v03 falló (skip): {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+}
+# --- fin enrich ---
 Write-Host ("OK: scene_builder v03 aplicado. scenes={0} live={1} force={2}" -f @($m.scenes_v03).Count, $live, [bool]$Force) -ForegroundColor Green

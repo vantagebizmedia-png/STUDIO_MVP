@@ -18,7 +18,7 @@ $repo = (Resolve-Path ".").Path
 $liveDir = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
 
 # Total steps
-  $totalN = 1 + 8 + (([int]$DoHandoff) * 3)
+  $totalN = 1 + 8 + (([int]$DoHandoff.IsPresent) * 3)
 if ($DoHandoff) { $total = 11 }
 
 Write-Host "== SMOKE E2E v0.3 ==" -ForegroundColor Green

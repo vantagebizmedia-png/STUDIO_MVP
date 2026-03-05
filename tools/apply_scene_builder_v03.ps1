@@ -39,14 +39,46 @@ $m = $mRaw | ConvertFrom-Json
 
 if (-not $m.scenes_v03) { $m | Add-Member -NotePropertyName scenes_v03 -NotePropertyValue @() }
 
-# Fallback determinista: si falta audio_clips, creamos 1 clip 0..20000ms (no rompe smoke)
-if (-not ($m.PSObject.Properties.Name -contains "audio_clips") -or -not $m.audio_clips) {
-  $m | Add-Member -Force -NotePropertyName audio_clips -NotePropertyValue @(
-    [pscustomobject]@{ id="clip_001"; start_ms=0; end_ms=20000; text="" }
-  )
-  Write-Host "WARN: manifest sin audio_clips -> fallback determinista clip_001 (0..20000ms)" -ForegroundColor DarkYellow
+# --- audio_clips: asegurar + normalizar (determinista, StrictMode-safe) ---
+$AudioClipsChanged = $false
+$AudioClipsCreatedFallback = $false
+
+function Normalize-AudioClipsToArray {
+  param($Value)
+
+  if ($null -eq $Value) { return @() }
+
+  if (($Value -is [System.Collections.IEnumerable]) -and -not ($Value -is [string])) {
+    return @($Value)
+  }
+
+  return @($Value)
 }
 
+$hasProp = ($m.PSObject.Properties.Name -contains "audio_clips")
+$ac = $null
+if ($hasProp) { $ac = $m.audio_clips }
+
+$acArr = Normalize-AudioClipsToArray -Value $ac
+
+if (-not $hasProp -or $null -eq $ac -or $acArr.Count -eq 0) {
+  $acArr = @([pscustomobject]@{ id="clip_001"; start_ms=0; end_ms=20000; text="" })
+  $AudioClipsChanged = $true
+  $AudioClipsCreatedFallback = $true
+} else {
+  if (-not (($ac -is [System.Collections.IEnumerable]) -and -not ($ac -is [string]))) {
+    $AudioClipsChanged = $true
+  }
+}
+
+$m | Add-Member -Force -NotePropertyName audio_clips -NotePropertyValue $acArr
+
+if ($AudioClipsCreatedFallback) {
+  Write-Host "WARN: manifest sin audio_clips -> fallback determinista clip_001 (0..20000ms)" -ForegroundColor DarkYellow
+} elseif ($AudioClipsChanged) {
+  Write-Host "OK: audio_clips normalizado a array (sin cambiar contenido)" -ForegroundColor DarkGray
+}
+# --- fin audio_clips ---
 if (-not $m.artifacts -or -not $m.artifacts.image) { throw "manifest sin artifacts.image (fallback requerido): $manifest" }
 
 function Ensure-Scenes {
@@ -150,13 +182,21 @@ function ScenesHaveValidImages {
 }
 
 # Si no Force y ya está todo OK (scenes + images), hacemos skip limpio
+# PERO: si este script normalizó/creó audio_clips, guardamos el manifest 1 vez antes de salir.
 if (-not $Force) {
   if (ScenesHaveValidImages -N $MaxScenes) {
+
+    if ($AudioClipsChanged) {
+      $out = $m | ConvertTo-Json -Depth 50
+      $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+      [System.IO.File]::WriteAllText($manifest, $out, $utf8NoBom)
+      Write-Host "OK: manifest actualizado (solo audio_clips) antes de SKIP" -ForegroundColor DarkGray
+    }
+
     Write-Host "SKIP: scene_builder v03 (ya hay scenes+images válidos). scenes=$(@($m.scenes_v03).Count) MaxScenes=$MaxScenes" -ForegroundColor DarkGray
     exit 0
   }
 }
-
 Ensure-Scenes -N $MaxScenes
 
 # Texto por escena (determinista simple)

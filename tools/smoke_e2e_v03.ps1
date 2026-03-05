@@ -3,7 +3,10 @@ param(
   [int]$MaxScenes = 6,
   [int]$Seed = 123,
   [switch]$DoHandoff,
-  [switch]$FailFast
+  [switch]$FailFast,
+  # v0.3+: modo rápido determinista (no red)
+  # Afecta SOLO el PRE-HANDOFF refresh (usa fallback + no enrich)
+  [switch]$Fast
 )
 
 Set-StrictMode -Version Latest

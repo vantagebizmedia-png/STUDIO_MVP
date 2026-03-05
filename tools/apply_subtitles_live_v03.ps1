@@ -85,11 +85,11 @@ if ($AllowPlaceholderText) {
   pwsh -NoProfile -ExecutionPolicy Bypass -File $makeSrt `
     -ManifestPath $man `
     -OutSrtPath $srtOut `
-    -AllowPlaceholderText | Out-Null
+    -AllowPlaceholderText 2>$null | Out-Null
 } else {
   pwsh -NoProfile -ExecutionPolicy Bypass -File $makeSrt `
     -ManifestPath $man `
-    -OutSrtPath $srtOut | Out-Null
+    -OutSrtPath $srtOut 2>$null | Out-Null
 }
 
 if (-not (Test-Path -LiteralPath $srtOut)) { throw "No se generó SRT: $srtOut" }

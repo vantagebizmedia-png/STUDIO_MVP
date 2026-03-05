@@ -41,7 +41,8 @@
         "type",
         "url",
         "model"
-      ]
+      ],
+      "enabled": true
     },
     "openai_images": {
       "type": "http_json",
@@ -65,7 +66,9 @@
         "type",
         "url",
         "model"
-      ]
+      ],
+      "enabled": false,
+      "note": "reserved/not wired yet"
     },
     "openai_tts": {
       "type": "http_binary",
@@ -87,7 +90,9 @@
         "type",
         "url",
         "model"
-      ]
+      ],
+      "enabled": false,
+      "note": "reserved/not wired yet"
     },
     "pixabay_image": {
       "type": "pixabay_stock",
@@ -104,7 +109,8 @@
         "image_type",
         "orientation",
         "per_page"
-      ]
+      ],
+      "enabled": true
     }
   },
   "image": {

@@ -61,16 +61,33 @@ $scenes = @($manifest.scenes_v03)
 $N = $scenes.Count
 if ($N -le 0) { throw "scenes_v03 vacío" }
 
+# audio_clips (robusto): nunca accedas directo a $manifest.audio_clips en StrictMode
 $clips = @()
-if (Has-Prop $manifest "audio_clips" -and $manifest.audio_clips) { $clips = @($manifest.audio_clips) }
 
-# timeline base (si hay 1 clip)
+$clipsRaw = Get-Prop $manifest "audio_clips" $null
+
+if ($null -ne $clipsRaw) {
+  if ($clipsRaw -is [System.Collections.IDictionary]) {
+    $clips = @($clipsRaw.Values)
+  }
+  elseif ($clipsRaw -is [System.Array]) {
+    $clips = @($clipsRaw)
+  }
+  else {
+    $clips = @($clipsRaw)
+  }
+}
+
+# timeline base (si hay 1 clip). Si no hay, usa total_audio_ms determinista.
 $baseStart = 0
-$baseEnd   = 20000
+$totalMs = [int](Get-Prop $manifest "total_audio_ms" 20000)
+if ($totalMs -lt 20000) { $totalMs = 20000 }
+$baseEnd = $totalMs
+
 if ($clips.Count -ge 1) {
   $baseStart = [int](Get-Prop $clips[0] "start_ms" 0)
-  $baseEnd   = [int](Get-Prop $clips[0] "end_ms" 20000)
-  if ($baseEnd -le $baseStart) { $baseEnd = $baseStart + 20000 }
+  $baseEnd   = [int](Get-Prop $clips[0] "end_ms" $totalMs)
+  if ($baseEnd -le $baseStart) { $baseEnd = $baseStart + $totalMs }
 }
 
 $outLines = New-Object System.Collections.Generic.List[string]

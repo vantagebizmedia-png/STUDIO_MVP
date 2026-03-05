@@ -155,7 +155,7 @@ if ($UseAutofit -and (Test-Path -LiteralPath $autofit)) {
 
     if (($code -eq 0) -and (Test-Path -LiteralPath $videoOut)) {
       $didAutofit = $true
-      Write-Host ("OK: autofit aplicado (params: In={0} Srt={1} Out={2})" -f $pIn,$pSrt,$pOut) -ForegroundColor DarkGray
+      Write-Host ("OK: autofit aplicado (exit={0}) (params: In={1} Srt={2} Out={3})" -f $code,$pIn,$pSrt,$pOut) -ForegroundColor DarkGray
     } else {
       Write-Host ("WARN: autofit falló (exit={0}). Se usa burn_in clásico." -f $code) -ForegroundColor DarkYellow
       $didAutofit = $false
@@ -176,6 +176,12 @@ if (-not (Test-Path -LiteralPath $videoOut)) { throw "No se generó video_subtit
 
 # 3) Compat: también escribe legacy
 Copy-Item -LiteralPath $videoOut -Destination $videoLegacy -Force
+
+if ($didAutofit) {
+  Write-Host "OK: pipeline_subtitles = autofit" -ForegroundColor DarkGray
+} else {
+  Write-Host "OK: pipeline_subtitles = burn_in" -ForegroundColor DarkGray
+}
 
 $len = (Get-Item -LiteralPath $videoOut).Length
 Write-Host "OK: subtitles live -> $videoOut ($len bytes)" -ForegroundColor Green

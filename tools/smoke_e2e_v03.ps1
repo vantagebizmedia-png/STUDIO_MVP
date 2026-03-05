@@ -146,7 +146,8 @@ if ($DoHandoff) {
     pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -InDir $in -OutZip $zip | Out-Null
   }
   $step++
-}if ($hadFail) { throw "SMOKE FAIL: E2E v0.3 (uno o más pasos fallaron)." }
+}
+if ($hadFail) { throw "SMOKE FAIL: E2E v0.3 (uno o más pasos fallaron)." }
 
 if ($DoHandoff) {
   Write-Host ("SMOKE OK: HANDOFF v03 listo en {0}" -f (Join-Path $live "handoff_v03")) -ForegroundColor Green

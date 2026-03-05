@@ -1,18 +1,21 @@
 param(
   [Parameter(Mandatory=$true)][string]$WorkspaceRoot,
   [int]$MaxScenes = 6,
-  [switch]$FailFast,
-  [switch]$DoHandoff
+  [int]$Seed = 123,
+  [switch]$DoHandoff,
+  [switch]$FailFast
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference="Stop"
-chcp 65001 | Out-Null
+$ErrorActionPreference = "Stop"
 
 $repo = (Resolve-Path ".").Path
-$live = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
+$liveDir = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
 
-Write-Host "== SMOKE E2E v0.3 ==" -ForegroundColor Cyan
+$total = 8
+if ($DoHandoff) { $total = 11 }
+
+Write-Host "== SMOKE E2E v0.3 ==" -ForegroundColor Green
 Write-Host ("Repo      : {0}" -f $repo)
 Write-Host ("Workspace : {0}" -f $WorkspaceRoot)
 Write-Host ("MaxScenes : {0}" -f $MaxScenes)
@@ -20,138 +23,134 @@ Write-Host ("FailFast  : {0}" -f [bool]$FailFast)
 Write-Host ("DoHandoff : {0}" -f [bool]$DoHandoff)
 Write-Host ""
 
-function Run-Step([int]$n, [int]$total, [string]$name, [scriptblock]$action) {
-  Write-Host ("[{0}/{1}] {2}" -f $n,$total,$name) -ForegroundColor Cyan
+$hadFail = $false
+
+function Run-Step([int]$n, [int]$totalN, [string]$name, [scriptblock]$action) {
+  Write-Host ("[{0}/{1}] {2}" -f $n, $totalN, $name) -ForegroundColor Cyan
   try {
     & $action
-    if ($LASTEXITCODE -ne 0) { throw "ExitCode=$LASTEXITCODE" }
   } catch {
-    Write-Host ("SMOKE FAIL: [{0}/{1}] {2} -> {3}" -f $n,$total,$name,$_.Exception.Message) -ForegroundColor Red
+    $script:hadFail = $true
+    Write-Host ("SMOKE FAIL: [{0}/{1}] {2} -> {3}" -f $n, $totalN, $name, $_.Exception.Message) -ForegroundColor Red
     if ($FailFast) { throw }
-    else { $script:hadFail = $true }
   }
   Write-Host ""
 }
 
-$hadFail = $false
-
-# 9 pasos sin handoff, 11 con handoff
-$total = $(if ($DoHandoff) { 11 } else { 9 })
 $step = 1
 
 Run-Step $step $total "smoke_live_to_workspace_v03.ps1" {
   $tool = Join-Path $repo "tools\smoke_live_to_workspace_v03.ps1"
-  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -WorkspaceRoot {1}" -f $tool,$WorkspaceRoot) -ForegroundColor DarkGray
+  if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -WorkspaceRoot {1}" -f $tool, $WorkspaceRoot) -ForegroundColor DarkGray
   pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -WorkspaceRoot $WorkspaceRoot
 }
 $step++
 
 Run-Step $step $total "apply_scene_builder_v03.ps1 (SKIP/OK)" {
   $tool = Join-Path $repo "tools\apply_scene_builder_v03.ps1"
-  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -WorkspaceRoot {1} -MaxScenes {2}" -f $tool,$WorkspaceRoot,$MaxScenes) -ForegroundColor DarkGray
-  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -WorkspaceRoot $WorkspaceRoot -MaxScenes $MaxScenes
+  if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
+
+  $sbArgs = @(
+    "-WorkspaceRoot", $WorkspaceRoot,
+    "-MaxScenes", $MaxScenes,
+    "-Seed", $Seed
+  )
+
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} {1}" -f $tool, ($sbArgs -join " ")) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool @sbArgs
 }
 $step++
 
-# NUEVO: normaliza assets.image/video a canon array[{path=...}]
 Run-Step $step $total "normalize_scene_assets_v03.ps1" {
   $tool = Join-Path $repo "tools\normalize_scene_assets_v03.ps1"
-  $man  = Join-Path $live "manifest_v03.json"
-  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -ManifestPath {1}" -f $tool,$man) -ForegroundColor DarkGray
-  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -ManifestPath $man
+  if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
+  $manifest = Join-Path $liveDir "manifest_v03.json"
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -ManifestPath {1}" -f $tool, $manifest) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -ManifestPath $manifest
 }
 $step++
 
 Run-Step $step $total "smoke_live_manifest_v03.ps1" {
   $tool = Join-Path $repo "tools\smoke_live_manifest_v03.ps1"
-  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1} -MaxScenes {2}" -f $tool,$live,$MaxScenes) -ForegroundColor DarkGray
-  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live -MaxScenes $MaxScenes
+  if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1} -MaxScenes {2}" -f $tool, $liveDir, $MaxScenes) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $liveDir -MaxScenes $MaxScenes
 }
 $step++
 
 Run-Step $step $total "apply_subtitles_live_v03.ps1" {
   $tool = Join-Path $repo "tools\apply_subtitles_live_v03.ps1"
-  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1}" -f $tool,$live) -ForegroundColor DarkGray
-  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live
+  if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1}" -f $tool, $liveDir) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $liveDir
 }
 $step++
 
 Run-Step $step $total "smoke_subtitles_live_v03.ps1" {
   $tool = Join-Path $repo "tools\smoke_subtitles_live_v03.ps1"
-  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1} -MaxScenes {2}" -f $tool,$live,$MaxScenes) -ForegroundColor DarkGray
-  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live -MaxScenes $MaxScenes
+  if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1} -MaxScenes {2}" -f $tool, $liveDir, $MaxScenes) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $liveDir -MaxScenes $MaxScenes
 }
 $step++
 
 Run-Step $step $total "smoke_quality_live_v03.ps1" {
   $tool = Join-Path $repo "tools\smoke_quality_live_v03.ps1"
-  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -WorkspaceRoot {1}" -f $tool,$WorkspaceRoot) -ForegroundColor DarkGray
+  if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -WorkspaceRoot {1}" -f $tool, $WorkspaceRoot) -ForegroundColor DarkGray
   pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -WorkspaceRoot $WorkspaceRoot
 }
 $step++
 
 Run-Step $step $total "ensure_outputs_live_v03.ps1" {
   $tool = Join-Path $repo "tools\ensure_outputs_live_v03.ps1"
-  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1}" -f $tool,$live) -ForegroundColor DarkGray
-  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live
+  if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
+  Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1}" -f $tool, $liveDir) -ForegroundColor DarkGray
+  pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $liveDir
 }
 $step++
+
 if ($DoHandoff) {
+
   Run-Step $step $total "pre_handoff_refresh_scene_builder_v03.ps1" {
-    # Este step está dentro de: if ($DoHandoff) { ... }  (pero igual lo dejamos defensivo)
-    if (-not $DoHandoff) {
-      Write-Host "SKIP: pre_handoff_refresh (DoHandoff=False)" -ForegroundColor DarkGray
-      return
-    }
-  
-    $toolSb = Join-Path $repo "tools\apply_scene_builder_v03.ps1"
-    $sbArgs = @(
-      "-WorkspaceRoot", $WorkspaceRoot,
-      "-MaxScenes", $MaxScenes,
-      "-Seed", 123,
-      "-Force"
-    )
-  
-    Write-Host "[PRE-HANDOFF] refresh apply_scene_builder_v03.ps1 (-Force)" -ForegroundColor DarkGray
-    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} {1}" -f $toolSb, ($sbArgs -join " ")) -ForegroundColor DarkGray
-    pwsh -NoProfile -ExecutionPolicy Bypass -File $toolSb @sbArgs
-  }$toolSb = Join-Path $repo "tools\apply_scene_builder_v03.ps1"
+    $tool = Join-Path $repo "tools\apply_scene_builder_v03.ps1"
+    if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
+
     $sbArgs = @(
       "-WorkspaceRoot", $WorkspaceRoot,
       "-MaxScenes", $MaxScenes,
       "-Seed", $Seed,
       "-Force"
     )
-  
+
     Write-Host "[PRE-HANDOFF] refresh apply_scene_builder_v03.ps1 (-Force)" -ForegroundColor DarkGray
-    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} {1}" -f $toolSb, ($sbArgs -join " ")) -ForegroundColor DarkGray
-    pwsh -NoProfile -ExecutionPolicy Bypass -File $toolSb @sbArgs
+    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} {1}" -f $tool, ($sbArgs -join " ")) -ForegroundColor DarkGray
+    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool @sbArgs
   }
-    Run-Step $step $total "finalize_handoff_v03.ps1" {
+  $step++
+
+  Run-Step $step $total "finalize_handoff_v03.ps1" {
     $tool = Join-Path $repo "tools\finalize_handoff_v03.ps1"
     if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
-
-    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1}" -f $tool,$live) -ForegroundColor DarkGray
-    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $live | Out-Null
+    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -LiveDir {1}" -f $tool, $liveDir) -ForegroundColor DarkGray
+    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -LiveDir $liveDir
   }
   $step++
 
   Run-Step $step $total "handoff_pack_v03.ps1" {
     $tool = Join-Path $repo "tools\handoff_pack_v03.ps1"
     if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
-
-    $in   = Join-Path $live "handoff_v03"
-    $zip  = Join-Path $in "handoff_v03.zip"
-    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -InDir {1} -OutZip {2}" -f $tool,$in,$zip) -ForegroundColor DarkGray
-    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -InDir $in -OutZip $zip | Out-Null
+    $inDir  = Join-Path $liveDir "handoff_v03"
+    $outZip = Join-Path $inDir "handoff_v03.zip"
+    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -InDir {1} -OutZip {2}" -f $tool, $inDir, $outZip) -ForegroundColor DarkGray
+    pwsh -NoProfile -ExecutionPolicy Bypass -File $tool -InDir $inDir -OutZip $outZip
   }
   $step++
 }
-if ($hadFail) { throw "SMOKE FAIL: E2E v0.3 (uno o más pasos fallaron)." }
 
-if ($DoHandoff) {
-  Write-Host ("SMOKE OK: HANDOFF v03 listo en {0}" -f (Join-Path $live "handoff_v03")) -ForegroundColor Green
-  Write-Host ""
+if ($hadFail) {
+  throw "SMOKE FAIL: E2E v0.3 (uno o más pasos fallaron)."
 }
 
 Write-Host "SMOKE OK: E2E v0.3 (LIVE(workspace) + scene_builder + subtitles + optional handoff)" -ForegroundColor Green

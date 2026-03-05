@@ -8,6 +8,7 @@ param(
   # v0.3+: modo rápido determinista (no red)
   # Afecta SOLO el PRE-HANDOFF refresh (usa fallback + no enrich)
   [switch]$Fast
+  [switch]$SkipProviderCheck,
 )
 
 Set-StrictMode -Version Latest
@@ -45,7 +46,31 @@ function Run-Step([int]$n, [int]$totalN, [string]$name, [scriptblock]$action) {
 
 $step = 1
 
+# [0/11] providers.json guard-rail (wiring check)
+if (-not $SkipProviderCheck) {
+  $check = Join-Path $PSScriptRoot "check_providers_cfg_v03.ps1"
+  if (Test-Path -LiteralPath $check) {
+    Write-Host "[0/11] check_providers_cfg_v03.ps1" -ForegroundColor DarkGray
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $check
+  } else {
+    Write-Host "WARN: falta tools/check_providers_cfg_v03.ps1 (skip)" -ForegroundColor Yellow
+  }
+} else {
+  Write-Host "SKIP: provider check (-SkipProviderCheck)" -ForegroundColor DarkGray
+}
 Run-Step $step $total "smoke_live_to_workspace_v03.ps1" {
+# [0/11] providers.json guard-rail (wiring check)
+if (-not $SkipProviderCheck) {
+  $check = Join-Path $PSScriptRoot "check_providers_cfg_v03.ps1"
+  if (Test-Path -LiteralPath $check) {
+    Write-Host "[0/11] check_providers_cfg_v03.ps1" -ForegroundColor DarkGray
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $check
+  } else {
+    Write-Host "WARN: falta tools/check_providers_cfg_v03.ps1 (skip)" -ForegroundColor Yellow
+  }
+} else {
+  Write-Host "SKIP: provider check (-SkipProviderCheck)" -ForegroundColor DarkGray
+}
   $tool = Join-Path $repo "tools\smoke_live_to_workspace_v03.ps1"
   if (-not (Test-Path -LiteralPath $tool)) { throw "Falta tool: $tool" }
   Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} -WorkspaceRoot {1}" -f $tool, $WorkspaceRoot) -ForegroundColor DarkGray

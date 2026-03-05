@@ -84,8 +84,41 @@ $STOP = @(
   "the","and","with","without","for","from","this","that","these","those","your","you","are","was","were","has","have"
 ) | ForEach-Object { $_.ToLowerInvariant() } | Select-Object -Unique
 
+$ABSTRACT = @(
+  "exito","progreso","motivacion","disciplina","cambio","mejora","proceso","resultado","objetivo","meta",
+  "crecimiento","avance","aprendizaje","habito","habitos","rutina","constancia","enfoque","claridad",
+  "energia","bienestar","balance","equilibrio","productividad","mentalidad","mindset","vision","valor",
+  "idea","ideas","estrategia","estrategias","sistema","sistemas","metodo","metodos","plan","planes",
+  "decision","decisiones","prioridad","prioridades","proposito","intencion","intenciones","accion","acciones"
+) | ForEach-Object { $_.ToLowerInvariant() } | Select-Object -Unique
+
+$VISUAL = @(
+  "persona","personas","hombre","mujer","mujeres","niño","niña","familia","pareja","amigos","equipo","reunion",
+  "oficina","escritorio","computadora","laptop","teclado","pantalla","telefono","movil","celular","libro","cuaderno",
+  "lapiz","cafe","cocina","comida","agua","botella","casa","hogar","habitacion","cama","sofa","mesa","silla",
+  "ventana","puerta","calle","ciudad","parque","auto","coche","bicicleta","gym","gimnasio","pesas","correr",
+  "caminar","manos","mano","rostro","cara","ojos","sonrisa","trabajo","estudio","escuela","clase","doctor",
+  "hospital","dinero","billetes","monedas","banco","tarjeta","compra","mercado","playa","montaña","naturaleza",
+  "arbol","bosque","atardecer","amanecer","noche","lluvia","sol","viaje","maleta","aeropuerto",
+  "person","people","man","woman","family","team","office","desk","computer","laptop","phone","book","kitchen",
+  "home","room","street","city","park","car","bike","gym","hands","face","smile","work","study","school",
+  "money","bank","beach","mountain","nature","tree","forest","sunset","sunrise","travel","airport"
+) | ForEach-Object { $_.ToLowerInvariant() } | Select-Object -Unique
+
+function Get-KeywordScore([string]$word, [int]$count) {
+  $score = [double]$count
+
+  if ($VISUAL -contains $word)   { $score += 3.0 }
+  if ($ABSTRACT -contains $word) { $score -= 2.5 }
+
+  if ($word.Length -ge 5 -and $word.Length -le 12) { $score += 0.35 }
+  if ($word.Length -gt 16) { $score -= 0.50 }
+
+  return $score
+}
+
 function DeriveKeywords([string]$text, [int]$Top, [int]$SceneSeed) {
-  $tokens = @((Tokenize $text) | Where-Object { $STOP -notcontains $_ })
+  $tokens = @((Tokenize $text) | Where-Object { ($STOP -notcontains $_) -and ($_.Length -ge 3) })
   if ($tokens.Count -eq 0) { return @() }
 
   $counts = @{}
@@ -97,18 +130,21 @@ function DeriveKeywords([string]$text, [int]$Top, [int]$SceneSeed) {
     [pscustomobject]@{
       w = $k
       c = [int]$counts[$k]
+      s = [double](Get-KeywordScore -word $k -count ([int]$counts[$k]))
       h = Sha256Hex("$SceneSeed|$k")
     }
   }
 
   return @(
     $items |
-      Sort-Object @{ Expression = "c"; Descending = $true }, @{ Expression = "h"; Descending = $false } |
+      Sort-Object `
+        @{ Expression = "s"; Descending = $true }, `
+        @{ Expression = "c"; Descending = $true }, `
+        @{ Expression = "h"; Descending = $false } |
       Select-Object -First $Top |
       ForEach-Object { $_.w }
   )
 }
-
 function Get-SceneText([object]$scene) {
   foreach ($k in @("script_text", "image_query", "text", "caption", "narration")) {
     $v = Get-PropValue $scene $k

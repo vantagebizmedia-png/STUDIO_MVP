@@ -4,6 +4,7 @@ param(
   [int]$Seed = 123,
   [switch]$DoHandoff,
   [switch]$FailFast,
+
   # v0.3+: modo rápido determinista (no red)
   # Afecta SOLO el PRE-HANDOFF refresh (usa fallback + no enrich)
   [switch]$Fast
@@ -15,6 +16,7 @@ $ErrorActionPreference = "Stop"
 $repo = (Resolve-Path ".").Path
 $liveDir = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
 
+# Total steps
 $total = 8
 if ($DoHandoff) { $total = 11 }
 
@@ -24,6 +26,7 @@ Write-Host ("Workspace : {0}" -f $WorkspaceRoot)
 Write-Host ("MaxScenes : {0}" -f $MaxScenes)
 Write-Host ("FailFast  : {0}" -f [bool]$FailFast)
 Write-Host ("DoHandoff : {0}" -f [bool]$DoHandoff)
+Write-Host ("Fast      : {0}" -f [bool]$Fast)
 Write-Host ""
 
 $hadFail = $false
@@ -127,7 +130,13 @@ if ($DoHandoff) {
       "-Force"
     )
 
-    Write-Host "[PRE-HANDOFF] refresh apply_scene_builder_v03.ps1 (-Force)" -ForegroundColor DarkGray
+    if ($Fast) {
+      $sbArgs += @("-SkipPixabay", "-SkipEnrich")
+      Write-Host "[PRE-HANDOFF] FAST refresh (SkipPixabay + SkipEnrich)" -ForegroundColor DarkGray
+    } else {
+      Write-Host "[PRE-HANDOFF] refresh apply_scene_builder_v03.ps1 (-Force)" -ForegroundColor DarkGray
+    }
+
     Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} {1}" -f $tool, ($sbArgs -join " ")) -ForegroundColor DarkGray
     pwsh -NoProfile -ExecutionPolicy Bypass -File $tool @sbArgs
   }

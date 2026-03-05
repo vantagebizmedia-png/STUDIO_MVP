@@ -311,7 +311,7 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 # --- v0.3: enrich stock_query por escena (determinista) ---
 if (-not $SkipEnrich) {
   try {
-    $enricher = Join-Path $repo "tools\enrich_scene_queries_v03.ps1"
+    $enricher = Join-Path $repo "tools\enrich_scenes_queries_v03.ps1"
     if (Test-Path -LiteralPath $enricher) {
 
       $manifestGuess = $null
@@ -331,20 +331,30 @@ if (-not $SkipEnrich) {
       }
 
       if ($manifestGuess -and (Test-Path -LiteralPath $manifestGuess)) {
-        pwsh -NoProfile -ExecutionPolicy Bypass -File $enricher -ManifestPath $manifestGuess -Seed $Seed | Out-Null
-        Write-Host "OK: enrich_scene_queries_v03 aplicado (manifest=$manifestGuess)" -ForegroundColor DarkGray
+        if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -eq 0) {
+          throw "WorkspaceRoot vacío: no se puede ejecutar enrich_scenes_queries_v03.ps1"
+        }
+
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $enricher -WorkspaceRoot $WorkspaceRoot -Seed $Seed | Out-Null
+        $enrichExit = $LASTEXITCODE
+
+        if ($enrichExit -ne 0) {
+          throw "enrich_scenes_queries_v03.ps1 devolvió exit code $enrichExit"
+        }
+
+        Write-Host "OK: enrich_scenes_queries_v03 aplicado (workspace=$WorkspaceRoot manifest=$manifestGuess)" -ForegroundColor DarkGray
       } else {
         Write-Host "WARN: no encontré manifest_v03.json para enriquecer queries" -ForegroundColor Yellow
       }
 
     } else {
-      Write-Host "WARN: faltan tool enrich_scene_queries_v03.ps1 (skip)" -ForegroundColor Yellow
+      Write-Host "WARN: falta tool enrich_scenes_queries_v03.ps1 (skip)" -ForegroundColor Yellow
     }
   } catch {
-    Write-Host ("WARN: enrich_scene_queries_v03 falló (skip): {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+    Write-Host ("WARN: enrich_scenes_queries_v03 falló (skip): {0}" -f $_.Exception.Message) -ForegroundColor Yellow
   }
 } else {
-  Write-Host "SKIP: enrich_scene_queries_v03 (SkipEnrich=True)" -ForegroundColor DarkGray
+  Write-Host "SKIP: enrich_scenes_queries_v03 (SkipEnrich=True)" -ForegroundColor DarkGray
 }
 # --- fin enrich ---
 

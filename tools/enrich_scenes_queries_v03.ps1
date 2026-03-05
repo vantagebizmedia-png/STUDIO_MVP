@@ -120,23 +120,78 @@ function Get-SceneText([object]$scene) {
   return ""
 }
 
-function BuildQuery([string]$topic, [string]$imageQuery, [string[]]$kws, [int]$SceneIndex) {
-  $parts = @()
-  foreach ($part in @($topic, $imageQuery, ($kws -join " "))) {
-    if ($part -and $part.Trim()) { $parts += $part.Trim() }
-  }
+function Normalize-QueryText([string]$text, [int]$MaxLen = 90) {
+  if (-not $text) { return "" }
 
-  $base = ($parts -join " ").Trim()
-  if (-not $base -or $base.Length -lt 3) {
-    $base = "stock background scene {0:000}" -f ($SceneIndex + 1)
-    if ($topic -and $topic.Trim()) {
-      $base = ("{0} {1}" -f $topic.Trim(), $base).Trim()
+  $t = $text.Trim().ToLowerInvariant()
+  $t = [regex]::Replace($t, '[^\p{L}\p{Nd}\s\-]', ' ')
+  $t = [regex]::Replace($t, '\s+', ' ').Trim()
+
+  if ($t.Length -gt $MaxLen) {
+    $t = $t.Substring(0, $MaxLen).Trim()
+  }
+  return $t
+}
+
+function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$sceneText, [string[]]$kws, [int]$SceneIndex) {
+  $topicN = Normalize-QueryText $topic 48
+  $imgqN  = Normalize-QueryText $imageQuery 64
+  $textN  = Normalize-QueryText $sceneText 64
+
+  $kwArr = @()
+  foreach ($k in @($kws)) {
+    $kn = Normalize-QueryText $k 24
+    if ($kn -and $kn.Length -ge 3) { $kwArr += $kn }
+  }
+  $kwArr = @($kwArr | Select-Object -Unique)
+  $kwTop2 = @($kwArr | Select-Object -First 2)
+  $kwTop4 = @($kwArr | Select-Object -First 4)
+
+  $candidates = @()
+
+  if ($imgqN) {
+    $candidates += (Normalize-QueryText ("$imgqN photo") 90)
+    if ($topicN) {
+      $candidates += (Normalize-QueryText ("$topicN $imgqN photo") 90)
     }
   }
 
-  $q = [regex]::Replace(($base + " photo").Trim(), "\s+", " ")
-  if ($q.Length -gt 90) { $q = $q.Substring(0, 90).Trim() }
-  return $q
+  if ($textN) {
+    $candidates += (Normalize-QueryText ("$textN photo") 90)
+    if ($topicN) {
+      $candidates += (Normalize-QueryText ("$topicN $textN photo") 90)
+    }
+  }
+
+  if ($kwTop4.Count -gt 0) {
+    $kwText = ($kwTop4 -join " ")
+    $candidates += (Normalize-QueryText ("$kwText photo") 90)
+    if ($topicN) {
+      $candidates += (Normalize-QueryText ("$topicN $kwText photo") 90)
+    }
+  }
+
+  if ($topicN -and $kwTop2.Count -gt 0) {
+    $candidates += (Normalize-QueryText ("$topicN $($kwTop2 -join ' ') photo") 90)
+  }
+
+  if ($topicN) {
+    $candidates += (Normalize-QueryText ("$topicN photo") 90)
+  }
+
+  if ($candidates.Count -eq 0) {
+    $fallback = ("stock background scene {0:000} photo" -f ($SceneIndex + 1))
+    if ($topicN) {
+      $fallback = "$topicN $fallback"
+    }
+    $candidates += (Normalize-QueryText $fallback 90)
+  }
+
+  return @(
+    $candidates |
+      Where-Object { $_ -and $_.Trim().Length -ge 3 } |
+      Select-Object -Unique
+  )
 }
 
 function Resolve-Manifest([string]$Root) {
@@ -239,11 +294,14 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   $imgRaw = Get-PropValue $scene "image_query"
   if ($imgRaw -and ($imgRaw -is [string])) { $imgq = $imgRaw.Trim() }
 
-  $q = BuildQuery -topic $topic -imageQuery $imgq -kws $kws -SceneIndex $i
+  $queryCandidates = @(BuildQueryCandidates -topic $topic -imageQuery $imgq -sceneText $sceneText -kws $kws -SceneIndex $i)
+  $q = ""
+  if ($queryCandidates.Count -gt 0) { $q = [string]$queryCandidates[0] }
 
   Ensure-Pso -parent $scene -name "assets"
   Ensure-Pso -parent $scene.assets -name "image"
   Set-Note -obj $scene.assets.image -name "query" -value $q
+  Set-Note -obj $scene.assets.image -name "query_candidates" -value $queryCandidates
 
   if (-not $DownloadPixabay) { continue }
 
@@ -257,15 +315,32 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     if (-not (Test-Path -LiteralPath $cacheDir)) {
       New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
     }
-    $cacheJson = Join-Path $cacheDir ("scene_{0:000}.json" -f ($i + 1))
 
-    & $stock -Query $q -OutJsonPath $cacheJson -Seed ($Seed + $i) -PerPage $PerPage | Out-Null
-
-    $pj = Get-Content -LiteralPath $cacheJson -Raw -Encoding UTF8 | ConvertFrom-Json
     $hits = @()
-    if ($pj -and (Has-Prop $pj "hits") -and $pj.hits) { $hits = @($pj.hits) }
+    $usedQuery = ""
+    $cacheJson = ""
+
+    foreach ($candidate in $queryCandidates) {
+      if (-not $candidate) { continue }
+
+      $safeName = ("scene_{0:000}_{1}" -f ($i + 1), (Sha256Hex $candidate).Substring(0,12))
+      $cacheJson = Join-Path $cacheDir ($safeName + ".json")
+
+      & $stock -Query $candidate -OutJsonPath $cacheJson -Seed ($Seed + $i) -PerPage $PerPage | Out-Null
+
+      $pj = Get-Content -LiteralPath $cacheJson -Raw -Encoding UTF8 | ConvertFrom-Json
+      $candidateHits = @()
+      if ($pj -and (Has-Prop $pj "hits") -and $pj.hits) { $candidateHits = @($pj.hits) }
+
+      if ($candidateHits.Count -gt 0) {
+        $hits = $candidateHits
+        $usedQuery = [string]$candidate
+        break
+      }
+    }
 
     Set-Note -obj $scene.assets.image -name "provider" -value "pixabay"
+    Set-Note -obj $scene.assets.image -name "used_query" -value $usedQuery
     Set-Note -obj $scene.assets.image -name "hits_count" -value $hits.Count
 
     if ($hits.Count -lt 1) {
@@ -274,7 +349,7 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
       continue
     }
 
-    $idx = Pick-DeterministicIndex -GlobalSeed $Seed -SceneIndex $i -Query $q -Count $hits.Count
+    $idx = Pick-DeterministicIndex -GlobalSeed $Seed -SceneIndex $i -Query $usedQuery -Count $hits.Count
     $hit = $hits[$idx]
 
     $url = ""
@@ -299,6 +374,14 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     Set-Note -obj $scene.assets.image -name "picked_index" -value $idx
     Set-Note -obj $scene.assets.image -name "source_url" -value $url
     $downloaded++
+  }
+  catch {
+    Set-Note -obj $scene.assets.image -name "provider" -value "pixabay"
+    Set-Note -obj $scene.assets.image -name "note" -value ("pixabay error: " + $_.Exception.Message)
+    $withErrors++
+  }
+  finally {
+    $env:PIXABAY_API_KEY = $prev
   }
   catch {
     Set-Note -obj $scene.assets.image -name "provider" -value "pixabay"

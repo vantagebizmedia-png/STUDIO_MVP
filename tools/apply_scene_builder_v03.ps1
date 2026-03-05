@@ -3,7 +3,13 @@ param(
   [Parameter(Mandatory=$false)][string]$PackDir,
   [int]$MaxScenes = 6,
   [int]$Seed = 123,
-  [switch]$Force
+  [switch]$Force,
+
+  # v0.3+: opciones rápidas/deterministas
+  # -SkipPixabay: NO usa Pixabay aunque exista PIXABAY_API_KEY (solo fallback determinista)
+  # -SkipEnrich : NO ejecuta enrich_scene_queries_v03.ps1
+  [switch]$SkipPixabay,
+  [switch]$SkipEnrich
 )
 
 Set-StrictMode -Version Latest
@@ -208,11 +214,19 @@ for ($i=0; $i -lt @($m.scenes_v03).Count; $i++) {
   if (-not $q -or $q.Trim().Length -lt 3) { $q = "motivación" }
   $q = $q.Trim()
 
+  # --- v0.3+: SkipPixabay => fuerza fallback determinista (rápido/offline) ---
+  $canPixabay = $false
+  if (-not $SkipPixabay) {
+    if ($env:PIXABAY_API_KEY -and (Test-Path -LiteralPath $pixQuery) -and (Test-Path -LiteralPath $dlTool)) {
+      $canPixabay = $true
+    }
+  }
+
   $picked = $null
   $cacheJson = Join-Path $cacheDir ("pixabay_scene_{0:000}.json" -f ($i+1))
 
-  try {
-    if ($env:PIXABAY_API_KEY -and (Test-Path -LiteralPath $pixQuery) -and (Test-Path -LiteralPath $dlTool)) {
+  if ($canPixabay) {
+    try {
       if (-not (Test-Path -LiteralPath $cacheJson)) {
         pwsh -NoProfile -ExecutionPolicy Bypass -File $pixQuery -Query $q -OutJsonPath $cacheJson -Seed $Seed | Out-Null
       }
@@ -225,8 +239,8 @@ for ($i=0; $i -lt @($m.scenes_v03).Count; $i++) {
         $k = ($Seed + $i) % $hits.Count
         $picked = [string]$hits[$k].url
       }
-    }
-  } catch { $picked = $null }
+    } catch { $picked = $null }
+  }
 
   $ok = $false
   if ($picked) {
@@ -241,7 +255,11 @@ for ($i=0; $i -lt @($m.scenes_v03).Count; $i++) {
   if (-not $ok) {
     Copy-Item -LiteralPath $fallbackAbs -Destination $outAbs -Force
     $scene.assets.image = @([pscustomobject]@{ path = $outRel })
-    Write-Host "OK: scene[$i] image=FALLBACK(artifacts.image) -> $outRel" -ForegroundColor DarkGray
+    if ($SkipPixabay) {
+      Write-Host "OK: scene[$i] image=FALLBACK(SkipPixabay) -> $outRel" -ForegroundColor DarkGray
+    } else {
+      Write-Host "OK: scene[$i] image=FALLBACK(artifacts.image) -> $outRel" -ForegroundColor DarkGray
+    }
   }
 }
 
@@ -251,38 +269,43 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($manifest, $out, $utf8NoBom)
 
 # --- v0.3: enrich stock_query por escena (determinista) ---
-try {
-  $enricher = Join-Path $repo "tools\enrich_scene_queries_v03.ps1"
-  if (Test-Path -LiteralPath $enricher) {
+if (-not $SkipEnrich) {
+  try {
+    $enricher = Join-Path $repo "tools\enrich_scene_queries_v03.ps1"
+    if (Test-Path -LiteralPath $enricher) {
 
-    $manifestGuess = $null
+      $manifestGuess = $null
 
-    # Caso smoke/live estándar
-    if ($WorkspaceRoot -and $WorkspaceRoot.Trim().Length -gt 0) {
-      $mg = Join-Path $WorkspaceRoot "runs\smoke_live_latest\manifest_v03.json"
-      if (Test-Path -LiteralPath $mg) { $manifestGuess = $mg }
-    }
-
-    # Caso PackDir (si existe en este script)
-    if (-not $manifestGuess -and (Get-Variable -Name PackDir -ErrorAction SilentlyContinue)) {
-      if ($PackDir -and (Test-Path -LiteralPath $PackDir)) {
-        $mg2 = Join-Path $PackDir "manifest_v03.json"
-        if (Test-Path -LiteralPath $mg2) { $manifestGuess = $mg2 }
+      # Caso smoke/live estándar
+      if ($WorkspaceRoot -and $WorkspaceRoot.Trim().Length -gt 0) {
+        $mg = Join-Path $WorkspaceRoot "runs\smoke_live_latest\manifest_v03.json"
+        if (Test-Path -LiteralPath $mg) { $manifestGuess = $mg }
       }
-    }
 
-    if ($manifestGuess -and (Test-Path -LiteralPath $manifestGuess)) {
-      pwsh -NoProfile -ExecutionPolicy Bypass -File $enricher -ManifestPath $manifestGuess -Seed $Seed | Out-Null
-      Write-Host "OK: enrich_scene_queries_v03 aplicado (manifest=$manifestGuess)" -ForegroundColor DarkGray
+      # Caso PackDir (si existe en este script)
+      if (-not $manifestGuess -and (Get-Variable -Name PackDir -ErrorAction SilentlyContinue)) {
+        if ($PackDir -and (Test-Path -LiteralPath $PackDir)) {
+          $mg2 = Join-Path $PackDir "manifest_v03.json"
+          if (Test-Path -LiteralPath $mg2) { $manifestGuess = $mg2 }
+        }
+      }
+
+      if ($manifestGuess -and (Test-Path -LiteralPath $manifestGuess)) {
+        pwsh -NoProfile -ExecutionPolicy Bypass -File $enricher -ManifestPath $manifestGuess -Seed $Seed | Out-Null
+        Write-Host "OK: enrich_scene_queries_v03 aplicado (manifest=$manifestGuess)" -ForegroundColor DarkGray
+      } else {
+        Write-Host "WARN: no encontré manifest_v03.json para enriquecer queries" -ForegroundColor Yellow
+      }
+
     } else {
-      Write-Host "WARN: no encontré manifest_v03.json para enriquecer queries" -ForegroundColor Yellow
+      Write-Host "WARN: faltan tool enrich_scene_queries_v03.ps1 (skip)" -ForegroundColor Yellow
     }
-
-  } else {
-    Write-Host "WARN: faltan tool enrich_scene_queries_v03.ps1 (skip)" -ForegroundColor Yellow
+  } catch {
+    Write-Host ("WARN: enrich_scene_queries_v03 falló (skip): {0}" -f $_.Exception.Message) -ForegroundColor Yellow
   }
-} catch {
-  Write-Host ("WARN: enrich_scene_queries_v03 falló (skip): {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+} else {
+  Write-Host "SKIP: enrich_scene_queries_v03 (SkipEnrich=True)" -ForegroundColor DarkGray
 }
 # --- fin enrich ---
-Write-Host ("OK: scene_builder v03 aplicado. scenes={0} live={1} force={2}" -f @($m.scenes_v03).Count, $live, [bool]$Force) -ForegroundColor Green
+
+Write-Host ("OK: scene_builder v03 aplicado. scenes={0} live={1} force={2} skipPixabay={3} skipEnrich={4}" -f @($m.scenes_v03).Count, $live, [bool]$Force, [bool]$SkipPixabay, [bool]$SkipEnrich) -ForegroundColor Green

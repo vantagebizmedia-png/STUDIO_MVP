@@ -1,35 +1,23 @@
 param(
-  # Compat con smoke actual:
   [Parameter(Mandatory=$false)][string]$LiveDir,
-
-  # Compat alternativa (por si lo llamas así en otros lados):
   [Parameter(Mandatory=$false)][string]$WorkspaceRoot,
 
   [string]$SrtName = "captions_v03.srt",
-
-  # Nombre “canon” nuevo:
   [string]$OutVideoName = "video_subtitles.mp4",
-
-  # Compat nombre viejo:
   [string]$OutVideoLegacyName = "video_subs.mp4",
 
-  # Poblar scenes_v03.text desde script_*.txt (determinista)
   [switch]$PopulateFromScriptFiles,
-
-  # Permitir placeholder (para no romper smoke)
   [switch]$AllowPlaceholderText,
-
-  # NUEVO: usar autofit si existe (fallback al burn_in clásico si falla)
   [switch]$UseAutofit,
 
-  # baseline style (fallback burn_in)
+  # fallback burn-in
   [int]$FontSize = 18,
   [int]$Outline = 2,
   [int]$Shadow = 1,
   [int]$MarginV = 80,
   [int]$Alignment = 2,
 
-  # límites para autofit (si aplica)
+  # autofit bounds (si aplica)
   [int]$MinFontSize = 14,
   [int]$MaxFontSize = 28
 )
@@ -40,19 +28,16 @@ chcp 65001 | Out-Null
 
 $repo = (Resolve-Path ".").Path
 
-# Defaults (compat): en smoke queremos robustez determinista
+# Defaults deterministas para smoke
 if (-not $PSBoundParameters.ContainsKey("PopulateFromScriptFiles")) { $PopulateFromScriptFiles = $true }
 if (-not $PSBoundParameters.ContainsKey("AllowPlaceholderText"))    { $AllowPlaceholderText    = $true }
 if (-not $PSBoundParameters.ContainsKey("UseAutofit"))              { $UseAutofit              = $true }
 
 # Resolver LIVE dir
 if (-not $LiveDir -or $LiveDir.Trim().Length -eq 0) {
-  if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -eq 0) {
-    throw "Falta -LiveDir o -WorkspaceRoot"
-  }
+  if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -eq 0) { throw "Falta -LiveDir o -WorkspaceRoot" }
   $LiveDir = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
 }
-
 $live = (Resolve-Path $LiveDir).Path
 if (-not (Test-Path -LiteralPath $live)) { throw "No existe LIVE: $live" }
 
@@ -74,12 +59,29 @@ $srtOut      = Join-Path $live $SrtName
 $videoOut    = Join-Path $live $OutVideoName
 $videoLegacy = Join-Path $live $OutVideoLegacyName
 
-# 0) (Opcional) Poblar texto real por escena desde script_*.txt (determinista)
+function Get-AutofitParamNames([string]$scriptPath) {
+  if (-not (Test-Path -LiteralPath $scriptPath)) { return @() }
+  $t = Get-Content -LiteralPath $scriptPath -Raw -Encoding UTF8
+  $t = $t -replace "`r`n","`n"
+
+  # extrae bloque param(...) de forma simple
+  $m = [regex]::Match($t, '(?is)^\s*param\s*\((?<body>.*?)\)\s*', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+  if (-not $m.Success) { return @() }
+
+  $body = $m.Groups["body"].Value
+  $names = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+
+  foreach ($mm in [regex]::Matches($body, '(?m)\$(?<n>[A-Za-z_]\w*)')) {
+    $null = $names.Add($mm.Groups["n"].Value)
+  }
+  return @($names)
+}
+
+# 0) Poblar texto por escena (determinista)
 if ($PopulateFromScriptFiles) {
   if (Test-Path -LiteralPath $popScene) {
     try {
-      pwsh -NoProfile -ExecutionPolicy Bypass -File $popScene `
-        -LiveDir $live | Out-Null
+      pwsh -NoProfile -ExecutionPolicy Bypass -File $popScene -LiveDir $live | Out-Null
       Write-Host "OK: populate_scene_text_from_scriptfiles_v03 aplicado" -ForegroundColor DarkGray
     } catch {
       Write-Host ("WARN: populate_scene_text_from_scriptfiles_v03 falló (se continúa): {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
@@ -100,30 +102,63 @@ if ($AllowPlaceholderText) {
     -ManifestPath $man `
     -OutSrtPath $srtOut | Out-Null
 }
-
 if (-not (Test-Path -LiteralPath $srtOut)) { throw "No se generó SRT: $srtOut" }
 $lenSrt = (Get-Item -LiteralPath $srtOut).Length
 if ($lenSrt -lt 10) { throw "SRT demasiado pequeño (posible fallo): $srtOut (bytes=$lenSrt)" }
 
-# 2) Burn-in: intenta AUTOFIT primero (si existe y está habilitado). Si falla, fallback al burn_in clásico.
+# Borra outputs previos para que el chequeo sea real (evita falso positivo)
+Remove-Item -LiteralPath $videoOut -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $videoLegacy -Force -ErrorAction SilentlyContinue
+
+# 2) Burn-in: intenta AUTOFIT (si existe) con auto-detección de params; si falla, fallback a burn_in clásico.
 $didAutofit = $false
 if ($UseAutofit -and (Test-Path -LiteralPath $autofit)) {
-  try {
-    # Intento “optimista” con parámetros comunes; si tu script difiere, caerá al catch.
-    pwsh -NoProfile -ExecutionPolicy Bypass -File $autofit `
-      -InVideo $videoIn `
-      -SrtPath $srtOut `
-      -OutVideo $videoOut `
-      -MinFontSize $MinFontSize -MaxFontSize $MaxFontSize `
-      -Outline $Outline -Shadow $Shadow -MarginV $MarginV -Alignment $Alignment | Out-Null
+  $pnames = Get-AutofitParamNames $autofit
 
-    if (Test-Path -LiteralPath $videoOut) {
+  # posibles alias para SRT en scripts distintos
+  $srtParamCandidates = @("SrtPath","InSrt","Srt","CaptionsPath","Captions","SubtitlesPath","SubPath")
+  $inVideoCandidates  = @("InVideo","InputVideo","VideoIn","InMp4","Input")
+  $outVideoCandidates = @("OutVideo","OutputVideo","VideoOut","OutMp4","Output")
+
+  function Pick-FirstPresent([string[]]$cands, [string[]]$present) {
+    foreach ($c in $cands) { if ($present -contains $c) { return $c } }
+    return $null
+  }
+
+  $pSrt = Pick-FirstPresent $srtParamCandidates $pnames
+  $pIn  = Pick-FirstPresent $inVideoCandidates  $pnames
+  $pOut = Pick-FirstPresent $outVideoCandidates $pnames
+
+  if (-not $pSrt -or -not $pIn -or -not $pOut) {
+    Write-Host ("WARN: autofit existe pero no pude inferir params (SRT/In/Out). Detectados: {0}" -f ($pnames -join ", ")) -ForegroundColor DarkYellow
+  } else {
+    $args = @("-NoProfile","-ExecutionPolicy","Bypass","-File",$autofit)
+
+    # agrega pares param-valor detectados
+    $args += @("-$pIn",  $videoIn)
+    $args += @("-$pSrt", $srtOut)
+    $args += @("-$pOut", $videoOut)
+
+    # opcionales si el script los tiene
+    if ($pnames -contains "MinFontSize") { $args += @("-MinFontSize", "$MinFontSize") }
+    if ($pnames -contains "MaxFontSize") { $args += @("-MaxFontSize", "$MaxFontSize") }
+    if ($pnames -contains "Outline")     { $args += @("-Outline", "$Outline") }
+    if ($pnames -contains "Shadow")      { $args += @("-Shadow", "$Shadow") }
+    if ($pnames -contains "MarginV")     { $args += @("-MarginV", "$MarginV") }
+    if ($pnames -contains "Alignment")   { $args += @("-Alignment", "$Alignment") }
+
+    # Ejecuta y valida con exit code + archivo nuevo
+    & pwsh @args | Out-Null
+    $code = $LASTEXITCODE
+
+    if (($code -eq 0) -and (Test-Path -LiteralPath $videoOut)) {
       $didAutofit = $true
-      Write-Host "OK: autofit_burnin_srt_v03 aplicado" -ForegroundColor DarkGray
+      Write-Host ("OK: autofit aplicado (params: In={0} Srt={1} Out={2})" -f $pIn,$pSrt,$pOut) -ForegroundColor DarkGray
+    } else {
+      Write-Host ("WARN: autofit falló (exit={0}). Se usa burn_in clásico." -f $code) -ForegroundColor DarkYellow
+      $didAutofit = $false
+      Remove-Item -LiteralPath $videoOut -Force -ErrorAction SilentlyContinue
     }
-  } catch {
-    Write-Host ("WARN: autofit falló, se usa burn_in clásico: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
-    $didAutofit = $false
   }
 }
 
@@ -137,7 +172,7 @@ if (-not $didAutofit) {
 
 if (-not (Test-Path -LiteralPath $videoOut)) { throw "No se generó video_subtitles: $videoOut" }
 
-# 3) Compat: también escribe el nombre legacy (video_subs.mp4)
+# 3) Compat: también escribe legacy
 Copy-Item -LiteralPath $videoOut -Destination $videoLegacy -Force
 
 $len = (Get-Item -LiteralPath $videoOut).Length

@@ -89,7 +89,7 @@
         "model"
       ]
     },
-    "pixabay_images": {
+    "pixabay_image": {
       "type": "pixabay_stock",
       "model": "",
       "timeout_s": 120,

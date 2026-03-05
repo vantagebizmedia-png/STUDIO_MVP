@@ -92,8 +92,11 @@ $zipPath = Join-Path $handoffDir $ZipName
 if ($Force -and (Test-Path -LiteralPath $zipPath)) { Remove-Item -LiteralPath $zipPath -Force }
 
 if (-not (Test-Path -LiteralPath $zipPath)) {
-  # Compress-Archive mete timestamps, pero para nuestro uso (entrega + hash) es suficiente y determinista a nivel contenido.
-  Compress-Archive -LiteralPath (Join-Path $handoffDir "*") -DestinationPath $zipPath -Force
+  # OJO: -LiteralPath NO expande comodines (*). Usamos -Path con lista real de items.
+  $items = Get-ChildItem -LiteralPath $handoffDir -Force | Select-Object -ExpandProperty FullName
+  if (-not $items -or $items.Count -le 0) { throw "handoffDir vacío, no se puede zippear: $handoffDir" }
+
+  Compress-Archive -Path $items -DestinationPath $zipPath -Force
 }
 
 if (-not (Test-Path -LiteralPath $zipPath)) { throw "No se generó ZIP: $zipPath" }

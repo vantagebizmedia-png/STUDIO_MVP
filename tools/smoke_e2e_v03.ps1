@@ -8,7 +8,7 @@ param(
   # v0.3+: modo rápido determinista (no red)
   # Afecta SOLO el PRE-HANDOFF refresh (usa fallback + no enrich)
   [switch]$Fast,
-  [switch]$SkipProviderCheck,
+  [switch]$SkipProviderCheck
 )
 
 Set-StrictMode -Version Latest

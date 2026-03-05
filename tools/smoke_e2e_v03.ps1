@@ -98,12 +98,24 @@ Run-Step $step $total "ensure_outputs_live_v03.ps1" {
 $step++
 if ($DoHandoff) {
   Run-Step $step $total "pre_handoff_refresh_scene_builder_v03.ps1" {
+    # Este step está dentro de: if ($DoHandoff) { ... }  (pero igual lo dejamos defensivo)
     if (-not $DoHandoff) {
       Write-Host "SKIP: pre_handoff_refresh (DoHandoff=False)" -ForegroundColor DarkGray
       return
     }
   
     $toolSb = Join-Path $repo "tools\apply_scene_builder_v03.ps1"
+    $sbArgs = @(
+      "-WorkspaceRoot", $WorkspaceRoot,
+      "-MaxScenes", $MaxScenes,
+      "-Seed", 123,
+      "-Force"
+    )
+  
+    Write-Host "[PRE-HANDOFF] refresh apply_scene_builder_v03.ps1 (-Force)" -ForegroundColor DarkGray
+    Write-Host ("Running: pwsh -NoProfile -ExecutionPolicy Bypass -File {0} {1}" -f $toolSb, ($sbArgs -join " ")) -ForegroundColor DarkGray
+    pwsh -NoProfile -ExecutionPolicy Bypass -File $toolSb @sbArgs
+  }$toolSb = Join-Path $repo "tools\apply_scene_builder_v03.ps1"
     $sbArgs = @(
       "-WorkspaceRoot", $WorkspaceRoot,
       "-MaxScenes", $MaxScenes,

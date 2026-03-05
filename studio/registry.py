@@ -61,6 +61,16 @@ def _hf_image(cfg: dict[str, Any] | None) -> BaseImageProvider:
     )
 
 
+def _pixabay_image(cfg: dict[str, Any] | None) -> BaseImageProvider:
+    from studio.providers.image.pixabay_image import PixabayImageProvider
+    cfg = cfg or {}
+    return PixabayImageProvider(
+        api_key_env=str(cfg.get("api_key_env", "PIXABAY_API_KEY")),
+        timeout_s=int(cfg.get("timeout_s", 10)),
+        replay_strict=bool(cfg.get("replay_strict", False)),
+        cache_enabled=bool(cfg.get("cache_enabled", True)),
+    )
+
 def _demo_text(cfg: dict[str, Any] | None) -> Any:
     from studio.providers.text.demo_text import DemoTextProvider
     return DemoTextProvider()
@@ -100,6 +110,7 @@ REGISTRY: Dict[str, ProviderEntry] = {
     "a1111_image": ProviderEntry(kind="image", factory=_a1111_image),
     "hf_image":    ProviderEntry(kind="image", factory=_hf_image),
 
+    "pixabay_image": ProviderEntry(kind="image", factory=_pixabay_image),
     # TEXT
     "demo_text":   ProviderEntry(kind="text", factory=_demo_text),
     "openai_text": ProviderEntry(kind="text", factory=_openai_text),

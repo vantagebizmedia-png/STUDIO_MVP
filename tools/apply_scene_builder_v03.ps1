@@ -417,6 +417,144 @@ function Ensure-Scenes {
   $ManifestObj.scenes_v03 = @($sc)
 }
 
+function Sync-PackCompat {
+  param(
+    [Parameter(Mandatory=$true)]$ManifestObj,
+    [Parameter(Mandatory=$true)][string]$LiveDir
+  )
+
+  $packCompatScenes = @()
+
+  foreach ($scene in @($ManifestObj.scenes_v03)) {
+    $imgPath = ""
+    try {
+      if ($scene.assets -and $scene.assets.image) {
+        if (($scene.assets.image -is [System.Collections.IEnumerable]) -and -not ($scene.assets.image -is [string])) {
+          $firstImg = @($scene.assets.image)[0]
+          if ($firstImg) {
+            if ($firstImg -is [string]) {
+              $imgPath = [string]$firstImg
+            }
+            elseif ($firstImg.PSObject.Properties["path"] -and $firstImg.path) {
+              $imgPath = [string]$firstImg.path
+            }
+          }
+        }
+        elseif ($scene.assets.image -is [string]) {
+          $imgPath = [string]$scene.assets.image
+        }
+      }
+    }
+    catch { $imgPath = "" }
+
+    $audioPath = ""
+    try {
+      if ($scene.assets -and $scene.assets.audio_clip) {
+        $audioPath = [string]$scene.assets.audio_clip
+      }
+    }
+    catch { $audioPath = "" }
+
+    $packCompatScenes += [pscustomobject]@{
+      id         = [string]$scene.id
+      index      = [int](([string]$scene.id -replace '[^\d]',''))
+      text       = [string]$scene.text
+      narration  = [string]$scene.text
+      onscreen   = [string]$scene.text
+      audio_text = [string]$scene.text
+      image      = $imgPath
+      audio      = $audioPath
+      start_ms   = [int]$scene.start_ms
+      end_ms     = [int]$scene.end_ms
+    }
+  }
+
+  $packCompat = [pscustomobject]@{
+    version = "v03"
+    script = [string]$ManifestObj.script
+    scenes = $packCompatScenes
+    scenes_v03 = $ManifestObj.scenes_v03
+    audio_clips = $ManifestObj.audio_clips
+    artifacts = [pscustomobject]@{
+      image = [string]$ManifestObj.artifacts.image
+      audio = [string]$ManifestObj.artifacts.audio
+    }
+  }
+
+  $packJsonPath = Join-Path $LiveDir "pack.json"
+  $utf8NoBomPack = [System.Text.UTF8Encoding]::new($false)
+  [System.IO.File]::WriteAllText($packJsonPath, ($packCompat | ConvertTo-Json -Depth 50), $utf8NoBomPack)
+}
+
+function Sync-PackCompat {
+  param(
+    [Parameter(Mandatory=$true)]$ManifestObj,
+    [Parameter(Mandatory=$true)][string]$LiveDir
+  )
+
+  $packCompatScenes = @()
+
+  foreach ($scene in @($ManifestObj.scenes_v03)) {
+    $imgPath = ""
+    try {
+      if ($scene.assets -and $scene.assets.image) {
+        if (($scene.assets.image -is [System.Collections.IEnumerable]) -and -not ($scene.assets.image -is [string])) {
+          $firstImg = @($scene.assets.image)[0]
+          if ($firstImg) {
+            if ($firstImg -is [string]) {
+              $imgPath = [string]$firstImg
+            }
+            elseif ($firstImg.PSObject.Properties["path"] -and $firstImg.path) {
+              $imgPath = [string]$firstImg.path
+            }
+          }
+        }
+        elseif ($scene.assets.image -is [string]) {
+          $imgPath = [string]$scene.assets.image
+        }
+      }
+    }
+    catch { $imgPath = "" }
+
+    $audioPath = ""
+    try {
+      if ($scene.assets -and $scene.assets.audio_clip) {
+        $audioPath = [string]$scene.assets.audio_clip
+      }
+    }
+    catch { $audioPath = "" }
+
+    $packCompatScenes += [pscustomobject]@{
+      id         = [string]$scene.id
+      index      = [int](([string]$scene.id -replace '[^\d]',''))
+      text       = [string]$scene.text
+      narration  = [string]$scene.text
+      onscreen   = [string]$scene.text
+      audio_text = [string]$scene.text
+      image      = $imgPath
+      audio      = $audioPath
+      start_ms   = [int]$scene.start_ms
+      end_ms     = [int]$scene.end_ms
+    }
+  }
+
+  $packCompat = [pscustomobject]@{
+    version = "v03"
+    script = [string]$ManifestObj.script
+    scenes = $packCompatScenes
+    scenes_v03 = $ManifestObj.scenes_v03
+    audio_clips = $ManifestObj.audio_clips
+    artifacts = [pscustomobject]@{
+      image = [string]$ManifestObj.artifacts.image
+      audio = [string]$ManifestObj.artifacts.audio
+    }
+  }
+
+  $packJsonPath = Join-Path $LiveDir "pack.json"
+  $utf8NoBomPack = [System.Text.UTF8Encoding]::new($false)
+  [System.IO.File]::WriteAllText($packJsonPath, ($packCompat | ConvertTo-Json -Depth 50), $utf8NoBomPack)
+}
+
 if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -eq 0) {
   if (-not $PackDir -or $PackDir.Trim().Length -eq 0) {
     throw "Falta -WorkspaceRoot o -PackDir"
@@ -510,13 +648,20 @@ $desiredScenes = Get-DynamicSceneCount `
 
 if (-not $Force) {
   if (ScenesHaveValidImages -ManifestObj $m -LiveDir $live -ExpectedCount $desiredScenes) {
+    $outSkip = $m | ConvertTo-Json -Depth 50
+    $utf8NoBomSkip = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($manifest, $outSkip, $utf8NoBomSkip)
+
+    Sync-PackCompat -ManifestObj $m -LiveDir $live
+
     if ($AudioClipsChanged) {
-      $outSkip = $m | ConvertTo-Json -Depth 50
-      $utf8NoBomSkip = New-Object System.Text.UTF8Encoding($false)
-      [System.IO.File]::WriteAllText($manifest, $outSkip, $utf8NoBomSkip)
-      Write-Host "OK: manifest actualizado (solo audio_clips) antes de SKIP" -ForegroundColor DarkGray
+      Write-Host "OK: manifest actualizado (audio_clips) antes de SKIP" -ForegroundColor DarkGray
+    }
+    else {
+      Write-Host "OK: manifest preservado antes de SKIP" -ForegroundColor DarkGray
     }
 
+    Write-Host ("OK: pack.json resincronizado desde scenes_v03 antes de SKIP. scenes={0}" -f @($m.scenes_v03).Count) -ForegroundColor DarkGray
     Write-Host ("SKIP: scene_builder v03 (ya hay scenes+images válidos). scenes={0} desired={1} totalAudioMs={2}" -f @($m.scenes_v03).Count, $desiredScenes, $totalAudioMs) -ForegroundColor DarkGray
     exit 0
   }
@@ -551,6 +696,12 @@ $dlTool   = Join-Path $repo "tools\download_file_v03.ps1"
 $assetsDir = Join-Path $live "assets\scenes_v03"
 if (-not (Test-Path -LiteralPath $assetsDir)) {
   New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
+}
+
+# Compat legacy para finalize_pack_v03.ps1 / render_pack_v03.py
+$legacyScenesDir = Join-Path $live "artifacts\scenes"
+if (-not (Test-Path -LiteralPath $legacyScenesDir)) {
+  New-Item -ItemType Directory -Force -Path $legacyScenesDir | Out-Null
 }
 
 # Asegurar clips físicos por escena para que smoke_live_manifest_v03 no falle
@@ -616,6 +767,12 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   $outAbs  = Join-Path $assetsDir $outName
   $outRel  = ("assets/scenes_v03/{0}" -f $outName)
 
+  $legacySceneDir = Join-Path $legacyScenesDir ("scene_{0:d2}" -f ($i + 1))
+  if (-not (Test-Path -LiteralPath $legacySceneDir)) {
+    New-Item -ItemType Directory -Force -Path $legacySceneDir | Out-Null
+  }
+  $legacyImgAbs = Join-Path $legacySceneDir "image.png"
+
   $q = [string]$scene.text
   if ([string]::IsNullOrWhiteSpace($q) -or $q.Trim().Length -lt 3) {
     $q = "motivación"
@@ -672,8 +829,9 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
           note         = ""
         }
       )
+      Copy-Item -LiteralPath $outAbs -Destination $legacyImgAbs -Force
       $ok = $true
-      Write-Host ("OK: scene[{0}] image=PIXABAY -> {1}" -f $i, $outRel) -ForegroundColor DarkGray
+      Write-Host ("OK: scene[{0}] image=PIXABAY -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray
     }
     catch {
       $ok = $false
@@ -694,11 +852,13 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
       }
     )
 
+    Copy-Item -LiteralPath $outAbs -Destination $legacyImgAbs -Force
+
     if ($SkipPixabay) {
-      Write-Host ("OK: scene[{0}] image=FALLBACK(SkipPixabay) -> {1}" -f $i, $outRel) -ForegroundColor DarkGray
+      Write-Host ("OK: scene[{0}] image=FALLBACK(SkipPixabay) -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray
     }
     else {
-      Write-Host ("OK: scene[{0}] image=FALLBACK(artifacts.image) -> {1}" -f $i, $outRel) -ForegroundColor DarkGray
+      Write-Host ("OK: scene[{0}] image=FALLBACK(artifacts.image) -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray
     }
   }
 }
@@ -706,6 +866,12 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
 $out = $m | ConvertTo-Json -Depth 50
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($manifest, $out, $utf8NoBom)
+
+Sync-PackCompat -ManifestObj $m -LiveDir $live
+Write-Host ("OK: pack.json resincronizado desde scenes_v03. scenes={0}" -f @($m.scenes_v03).Count) -ForegroundColor DarkGray
+
+Sync-PackCompat -ManifestObj $m -LiveDir $live
+Write-Host ("OK: pack.json resincronizado desde scenes_v03. scenes={0}" -f @($m.scenes_v03).Count) -ForegroundColor DarkGray
 
 if (-not $SkipEnrich) {
   try {

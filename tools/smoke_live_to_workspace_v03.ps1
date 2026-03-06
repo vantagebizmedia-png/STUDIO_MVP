@@ -250,9 +250,58 @@ $mfOut = [pscustomobject]@{
   scenes_v03 = $scenes
 }
 
-$mfPath = Join-Path $dstRoot "manifest_v03.json"
 $utf8NoBom = [Text.UTF8Encoding]::new($false)
+
+# manifest_v03.json principal
+$mfPath = Join-Path $dstRoot "manifest_v03.json"
 [IO.File]::WriteAllText($mfPath, ($mfOut | ConvertTo-Json -Depth 50), $utf8NoBom)
 
-Write-Host ("OK: smoke_live_to_workspace_v03 -> totalAudioMs={0} scenes={1} scriptLines={2}" -f $totalMs, $max, @($scriptLines).Count) -ForegroundColor Green
+# pack.json compat para render_pack_v03.py / finalize_pack_v03.ps1
+$packCompatScenes = @()
+foreach ($scene in $scenes) {
+  $imgPath = ""
+  try {
+    if ($scene.assets -and $scene.assets.image) {
+      if (($scene.assets.image -is [System.Collections.IEnumerable]) -and -not ($scene.assets.image -is [string])) {
+        $imgPath = [string]$scene.assets.image[0].path
+      }
+      elseif ($scene.assets.image -is [string]) {
+        $imgPath = [string]$scene.assets.image
+      }
+    }
+  } catch { $imgPath = "" }
+
+  $audioPath = ""
+  try {
+    if ($scene.assets -and $scene.assets.audio_clip) {
+      $audioPath = [string]$scene.assets.audio_clip
+    }
+  } catch { $audioPath = "" }
+
+  $packCompatScenes += [pscustomobject]@{
+    id = [string]$scene.id
+    text = [string]$scene.text
+    image = $imgPath
+    audio = $audioPath
+    start_ms = [int]$scene.start_ms
+    end_ms = [int]$scene.end_ms
+  }
+}
+
+$packCompat = [pscustomobject]@{
+  version = "v03"
+  script = $scriptText
+  scenes = $packCompatScenes
+  scenes_v03 = $scenes
+  audio_clips = $audioClips
+  artifacts = [pscustomobject]@{
+    image = $img0.Name
+    audio = $aud0.Name
+  }
+}
+
+$packJsonPath = Join-Path $dstRoot "pack.json"
+[IO.File]::WriteAllText($packJsonPath, ($packCompat | ConvertTo-Json -Depth 50), $utf8NoBom)
+
+Write-Host ("OK: smoke_live_to_workspace_v03 -> totalAudioMs={0} scenes={1} scriptLines={2} packJson=True" -f $totalMs, $max, @($scriptLines).Count) -ForegroundColor Green
 Write-Output ("LIVE_WORKSPACE_DIR=" + $dstRoot)

@@ -31,6 +31,8 @@ Write-Host ("DoHandoff : {0}" -f [bool]$DoHandoff)
 Write-Host ("Fast      : {0}" -f [bool]$Fast)
 Write-Host ""
 
+$script:StepErrors = New-Object System.Collections.Generic.List[string]
+
 function Invoke-Step {
   param(
     [Parameter(Mandatory=$true)][string]$Label,
@@ -64,6 +66,8 @@ function Invoke-StepSafe {
     Invoke-Step -Label $Label -FilePath $FilePath -Arguments $Arguments
   }
   catch {
+    $msg = ("{0} :: {1}" -f $Label, $_.Exception.Message)
+    $script:StepErrors.Add($msg) | Out-Null
     Write-Host ("ERROR: {0}" -f $_.Exception.Message) -ForegroundColor Red
     if ($FailFast) { throw }
   }
@@ -74,6 +78,7 @@ $smokeLive      = Join-Path $repo "tools\smoke_live_to_workspace_v03.ps1"
 $sceneBuilder   = Join-Path $repo "tools\apply_scene_builder_v03.ps1"
 $normalize      = Join-Path $repo "tools\normalize_scene_assets_v03.ps1"
 $smokeManifest  = Join-Path $repo "tools\smoke_live_manifest_v03.ps1"
+$finalizePack   = Join-Path $repo "tools\finalize_pack_v03.ps1"
 $subsApply      = Join-Path $repo "tools\apply_subtitles_live_v03.ps1"
 $subsSmoke      = Join-Path $repo "tools\smoke_subtitles_live_v03.ps1"
 $qualitySmoke   = Join-Path $repo "tools\smoke_quality_live_v03.ps1"
@@ -81,18 +86,18 @@ $ensureOutputs  = Join-Path $repo "tools\ensure_outputs_live_v03.ps1"
 $finalize       = Join-Path $repo "tools\finalize_handoff_v03.ps1"
 $handoffPack    = Join-Path $repo "tools\handoff_pack_v03.ps1"
 
-$liveDir = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
+$liveDir  = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
 $manifest = Join-Path $liveDir "manifest_v03.json"
 
 $sceneBuilderMax = [Math]::Max(40, ($MaxScenes * 6))
 
-Invoke-StepSafe -Label "[0/12] check_providers_cfg_v03.ps1" -FilePath $checkProviders
+Invoke-StepSafe -Label "[0/13] check_providers_cfg_v03.ps1" -FilePath $checkProviders
 
-Invoke-StepSafe -Label "[1/12] smoke_live_to_workspace_v03.ps1" -FilePath $smokeLive -Arguments @(
+Invoke-StepSafe -Label "[1/13] smoke_live_to_workspace_v03.ps1" -FilePath $smokeLive -Arguments @(
   "-WorkspaceRoot", $WorkspaceRoot
 )
 
-Invoke-StepSafe -Label "[2/12] apply_scene_builder_v03.ps1 (SKIP/OK)" -FilePath $sceneBuilder -Arguments @(
+Invoke-StepSafe -Label "[2/13] apply_scene_builder_v03.ps1 (SKIP/OK)" -FilePath $sceneBuilder -Arguments @(
   "-WorkspaceRoot", $WorkspaceRoot,
   "-MinScenes", "8",
   "-MaxScenes", "$sceneBuilderMax",
@@ -102,35 +107,41 @@ Invoke-StepSafe -Label "[2/12] apply_scene_builder_v03.ps1 (SKIP/OK)" -FilePath 
   "-Seed", "$Seed"
 )
 
-Invoke-StepSafe -Label "[3/12] normalize_scene_assets_v03.ps1" -FilePath $normalize -Arguments @(
+Invoke-StepSafe -Label "[3/13] normalize_scene_assets_v03.ps1" -FilePath $normalize -Arguments @(
   "-ManifestPath", $manifest
 )
 
-Invoke-StepSafe -Label "[4/12] smoke_live_manifest_v03.ps1" -FilePath $smokeManifest -Arguments @(
+Invoke-StepSafe -Label "[4/13] smoke_live_manifest_v03.ps1" -FilePath $smokeManifest -Arguments @(
   "-LiveDir", $liveDir,
   "-MaxScenes", "$sceneBuilderMax"
 )
 
-Invoke-StepSafe -Label "[5/12] apply_subtitles_live_v03.ps1" -FilePath $subsApply -Arguments @(
+# RENDER BASE OBLIGATORIO: genera video.mp4 antes de subtítulos
+Invoke-StepSafe -Label "[5/13] finalize_pack_v03.ps1" -FilePath $finalizePack -Arguments @(
+  "-PackDir", $liveDir,
+  "-Fit", "crop"
+)
+
+Invoke-StepSafe -Label "[6/13] apply_subtitles_live_v03.ps1" -FilePath $subsApply -Arguments @(
   "-LiveDir", $liveDir
 )
 
-Invoke-StepSafe -Label "[6/12] smoke_subtitles_live_v03.ps1" -FilePath $subsSmoke -Arguments @(
+Invoke-StepSafe -Label "[7/13] smoke_subtitles_live_v03.ps1" -FilePath $subsSmoke -Arguments @(
   "-LiveDir", $liveDir,
   "-MaxScenes", "$sceneBuilderMax"
 )
 
-Invoke-StepSafe -Label "[7/12] smoke_quality_live_v03.ps1" -FilePath $qualitySmoke -Arguments @(
+Invoke-StepSafe -Label "[8/13] smoke_quality_live_v03.ps1" -FilePath $qualitySmoke -Arguments @(
   "-WorkspaceRoot", $WorkspaceRoot
 )
 
-Invoke-StepSafe -Label "[8/12] ensure_outputs_live_v03.ps1" -FilePath $ensureOutputs -Arguments @(
+Invoke-StepSafe -Label "[9/13] ensure_outputs_live_v03.ps1" -FilePath $ensureOutputs -Arguments @(
   "-LiveDir", $liveDir,
   "-Seed", "$Seed"
 )
 
 if ($DoHandoff) {
-  Write-Host "[9/12] pre_handoff_refresh_scene_builder_v03.ps1" -ForegroundColor Yellow
+  Write-Host "[10/13] pre_handoff_refresh_scene_builder_v03.ps1" -ForegroundColor Yellow
   Write-Host "[PRE-HANDOFF] refresh apply_scene_builder_v03.ps1 (-Force)" -ForegroundColor DarkGray
 
   Invoke-StepSafe -Label "Running pre-handoff refresh" -FilePath $sceneBuilder -Arguments @(
@@ -144,15 +155,24 @@ if ($DoHandoff) {
     "-Force"
   )
 
-  Invoke-StepSafe -Label "[10/12] finalize_handoff_v03.ps1" -FilePath $finalize -Arguments @(
+  Invoke-StepSafe -Label "[11/13] finalize_handoff_v03.ps1" -FilePath $finalize -Arguments @(
     "-LiveDir", $liveDir
   )
 
-  Invoke-StepSafe -Label "[11/12] handoff_pack_v03.ps1" -FilePath $handoffPack -Arguments @(
+  Invoke-StepSafe -Label "[12/13] handoff_pack_v03.ps1" -FilePath $handoffPack -Arguments @(
     "-InDir", (Join-Path $liveDir "handoff_v03"),
     "-OutZip", (Join-Path $liveDir "handoff_v03\handoff_v03.zip")
   )
 }
 
 Write-Host ""
-Write-Host "SMOKE OK: E2E v0.3 (LIVE(workspace) + scene_builder + subtitles + optional handoff)" -ForegroundColor Green
+
+if ($script:StepErrors.Count -gt 0) {
+  Write-Host "SMOKE FAIL: hubo errores en el pipeline." -ForegroundColor Red
+  Write-Host ""
+  Write-Host "===== ERRORES =====" -ForegroundColor Yellow
+  $script:StepErrors | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+  throw ("SMOKE FAIL: total errores = {0}" -f $script:StepErrors.Count)
+}
+
+Write-Host "SMOKE OK: E2E v0.3 (LIVE(workspace) + render base + scene_builder + subtitles + optional handoff)" -ForegroundColor Green

@@ -263,6 +263,8 @@ for ($i=0; $i -lt @($m.scenes_v03).Count; $i++) {
   }
 
   $picked = $null
+  $pickedIndex = -1
+  $hitsCount = 0
   $cacheJson = Join-Path $cacheDir ("pixabay_scene_{0:000}.json" -f ($i+1))
 
   if ($canPixabay) {
@@ -274,19 +276,34 @@ for ($i=0; $i -lt @($m.scenes_v03).Count; $i++) {
       $cj = Get-Content -LiteralPath $cacheJson -Raw -Encoding UTF8 | ConvertFrom-Json
       $hits = @()
       if ($cj -and $cj.hits) { $hits = @($cj.hits) }
+      $hitsCount = @($hits).Count
 
-      if ($hits.Count -gt 0) {
-        $k = ($Seed + $i) % $hits.Count
-        $picked = [string]$hits[$k].url
+      if ($hitsCount -gt 0) {
+        $pickedIndex = ($Seed + $i) % $hitsCount
+        $picked = [string]$hits[$pickedIndex].url
       }
-    } catch { $picked = $null }
+    } catch {
+      $picked = $null
+      $pickedIndex = -1
+      $hitsCount = 0
+    }
   }
 
   $ok = $false
   if ($picked) {
     try {
       pwsh -NoProfile -ExecutionPolicy Bypass -File $dlTool -Url $picked -OutPath $outAbs | Out-Null
-      $scene.assets.image = @([pscustomobject]@{ path = $outRel })
+      $scene.assets.image = @(
+        [pscustomobject]@{
+          path       = $outRel
+          provider   = "pixabay"
+          used_query = $q
+          hits_count = $hitsCount
+          picked_index = $pickedIndex
+          source_url = $picked
+          note       = ""
+        }
+      )
       $ok = $true
       Write-Host "OK: scene[$i] image=PIXABAY -> $outRel" -ForegroundColor DarkGray
     } catch { $ok = $false }
@@ -294,7 +311,17 @@ for ($i=0; $i -lt @($m.scenes_v03).Count; $i++) {
 
   if (-not $ok) {
     Copy-Item -LiteralPath $fallbackAbs -Destination $outAbs -Force
-    $scene.assets.image = @([pscustomobject]@{ path = $outRel })
+    $scene.assets.image = @(
+      [pscustomobject]@{
+        path       = $outRel
+        provider   = ($(if ($SkipPixabay) { "fallback_skip_pixabay" } else { "fallback_artifacts_image" }))
+        used_query = $q
+        hits_count = $hitsCount
+        picked_index = $pickedIndex
+        source_url = ""
+        note       = ($(if ($SkipPixabay) { "fallback: SkipPixabay=True" } else { "fallback: artifacts.image" }))
+      }
+    )
     if ($SkipPixabay) {
       Write-Host "OK: scene[$i] image=FALLBACK(SkipPixabay) -> $outRel" -ForegroundColor DarkGray
     } else {

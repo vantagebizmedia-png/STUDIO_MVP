@@ -3,7 +3,7 @@ param(
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference="Stop"
+$ErrorActionPreference = "Stop"
 
 Write-Host "== SMOKE v0.3 (live->workspace copier) ==" -ForegroundColor Cyan
 
@@ -73,7 +73,7 @@ foreach ($it in $items) {
   Copy-Item -LiteralPath $it.FullName -Destination $dstArt -Force -ErrorAction Stop
 }
 
-# Promover manifest_v03 y 1 imagen+audio al ROOT (compat con herramientas viejas)
+# Promover manifest_v03 y 1 imagen+audio al ROOT
 $srcManifest = Join-Path $srcArtifacts "manifest_v03.json"
 if (-not (Test-Path -LiteralPath $srcManifest)) { throw ("Falta manifest_v03.json en: " + $srcArtifacts) }
 Copy-Item -LiteralPath $srcManifest -Destination (Join-Path $dstRoot "manifest_v03.json") -Force
@@ -86,37 +86,86 @@ $aud0 = Get-ChildItem -LiteralPath $srcArtifacts -Filter "audio_*.wav" -File | S
 if (-not $aud0) { throw ("Falta audio_*.wav en: " + $srcArtifacts) }
 Copy-Item -LiteralPath $aud0.FullName -Destination (Join-Path $dstRoot $aud0.Name) -Force
 
-# 3) Normaliza manifest_v03.json a schema LIVE v03 esperado por tools:
-#    - artifacts.image / artifacts.audio (NECESARIO para apply_subtitles_live_v03.ps1)
-#    - scenes_v03[i].assets.audio_clip = artifacts/audio_sXX.wav
-#    - scenes_v03[i].assets.image = [{path: <ABSOLUTE_PATH_EXISTING>}]
+# 3) LIVE normalizado
 $max = 6
 try {
   if (-not [string]::IsNullOrWhiteSpace($env:STUDIO_SMOKE_MAXSCENES)) { $max = [int]$env:STUDIO_SMOKE_MAXSCENES }
 } catch { $max = 6 }
 if ($max -lt 1) { $max = 1 }
 
-# Total determinista (compat con smoke_live_manifest_v03)
-$totalMs = 20000
-$seg = [int]([Math]::Floor($totalMs / $max))
-$rem = $totalMs - ($seg * $max)
+# Baseline actual
+if ($max -le 4) {
+  $totalMs = 120000
+}
+elseif ($max -le 8) {
+  $totalMs = 180000
+}
+else {
+  $totalMs = 300000
+}
 
-# Base assets (promovidos al root)
 $baseImgAbs = (Resolve-Path -LiteralPath (Join-Path $dstRoot $img0.Name)).Path
 $baseAudAbs = (Resolve-Path -LiteralPath (Join-Path $dstRoot $aud0.Name)).Path
 
-# Crear escenas visuales (artifacts/scenes/scene_XX/image.png) y audio_clips (artifacts/audio_sXX.wav)
 $sceneRoot = Join-Path $dstArt "scenes"
 New-Item -ItemType Directory -Force -Path $sceneRoot | Out-Null
 
 $scenes = @()
 $audioClips = @()
+
+# Reparto no uniforme pero determinista
+$weights = @()
+for ($i = 1; $i -le $max; $i++) {
+  $w = 100
+
+  if ($i -eq 1) {
+    $w = 70
+  }
+  elseif ($i -eq $max) {
+    $w = 120
+  }
+  else {
+    $w = 100 + ((($i) % 5) * 10)
+  }
+
+  $weights += $w
+}
+
+$weightSum = (@($weights) | Measure-Object -Sum).Sum
+if (-not $weightSum -or $weightSum -le 0) {
+  throw "weightSum inválido en smoke_live_to_workspace_v03.ps1"
+}
+
+$durations = @()
+$assigned = 0
+
+for ($i = 0; $i -lt $max; $i++) {
+  if ($i -lt ($max - 1)) {
+    $dur = [int][Math]::Floor(($totalMs * $weights[$i]) / $weightSum)
+    if ($dur -lt 3000) { $dur = 3000 }
+    $durations += $dur
+    $assigned += $dur
+  }
+  else {
+    $dur = $totalMs - $assigned
+    if ($dur -lt 3000) { $dur = 3000 }
+    $durations += $dur
+  }
+}
+
+$sumDur = (@($durations) | Measure-Object -Sum).Sum
+if ($sumDur -ne $totalMs) {
+  $delta = $totalMs - $sumDur
+  $durations[$durations.Count - 1] = [int]($durations[$durations.Count - 1] + $delta)
+}
+
 $cur = 0
 
 for ($i=1; $i -le $max; $i++) {
-  $dur = $seg + ($(if ($i -le $rem) { 1 } else { 0 }))
+  $dur = [int]$durations[$i - 1]
   $st = $cur
   $en = $cur + $dur
+  if ($i -eq $max) { $en = $totalMs }
   $cur = $en
 
   $clipRel = ("artifacts/audio_s{0:d2}.wav" -f $i)
@@ -138,6 +187,7 @@ for ($i=1; $i -le $max; $i++) {
   }
 
   $scenes += [pscustomobject]@{
+    id       = ("scene_{0:000}" -f $i)
     index    = $i
     start_ms = $st
     end_ms   = $en
@@ -149,17 +199,53 @@ for ($i=1; $i -le $max; $i++) {
   }
 }
 
-# artifacts.* para apply_subtitles_live_v03.ps1 (relativos al root LIVE)
+# Script dummy más rico y determinista para alimentar mejor el scene builder
+$scriptLines = @(
+  "Inicio directo con una idea clara para captar atención desde el primer segundo.",
+  "Presentamos el tema principal con una frase simple y fácil de recordar.",
+  "Abrimos una promesa concreta para mantener el interés en la siguiente escena.",
+  "Introducimos el contexto con lenguaje breve, claro y visual.",
+  "Marcamos el problema central que el video busca resolver.",
+  "Conectamos el problema con una situación cotidiana y reconocible.",
+  "Mostramos una consecuencia práctica de no actuar a tiempo.",
+  "Cambiamos el ritmo con una frase corta que funcione como micro hook.",
+  "Explicamos el primer punto con enfoque directo y sin rodeos.",
+  "Añadimos un ejemplo breve para darle más fuerza a la idea.",
+  "Subimos un poco la intensidad narrativa con una afirmación concreta.",
+  "Pasamos al segundo punto manteniendo continuidad visual.",
+  "Aterrizamos el concepto con una imagen mental sencilla.",
+  "Reforzamos el beneficio principal con una frase positiva.",
+  "Introducimos una transición natural hacia la siguiente mini idea.",
+  "Describimos una acción práctica que la audiencia puede imaginar fácil.",
+  "Damos una razón clara para seguir viendo el contenido completo.",
+  "Insertamos una línea corta pensada para un cambio visual rápido.",
+  "Presentamos otro ángulo del mismo tema para evitar monotonía.",
+  "Añadimos una micro conclusión parcial antes del último tramo.",
+  "Hacemos una pausa conceptual con una frase breve y contundente.",
+  "Volvemos al hilo principal con una explicación concreta.",
+  "Resumimos lo importante en palabras simples y memorables.",
+  "Empujamos la narrativa hacia el cierre con una idea útil.",
+  "Reforzamos el valor práctico de todo lo mostrado hasta aquí.",
+  "Introducimos el cierre con tono más concluyente.",
+  "Recordamos el mensaje central con una formulación compacta.",
+  "Añadimos una última imagen mental para fortalecer retención.",
+  "Cerramos con una frase de impulso orientada a acción.",
+  "Terminamos con un cierre limpio, directo y fácil de reutilizar en export."
+)
+
+$scriptText = ($scriptLines -join " ")
+
 $mfOut = [pscustomobject]@{
   version = "v03"
   artifacts = [pscustomobject]@{
     image = $img0.Name
     audio = $aud0.Name
   }
+  script = $scriptText
   audio_clips = $audioClips
   scene_builder_v03 = [pscustomobject]@{
     total_audio_ms = $totalMs
-    note = "normalized_by_smoke_live_to_workspace_v03"
+    note = "normalized_by_smoke_live_to_workspace_v03_dynamic_duration"
   }
   scenes_v03 = $scenes
 }
@@ -168,5 +254,5 @@ $mfPath = Join-Path $dstRoot "manifest_v03.json"
 $utf8NoBom = [Text.UTF8Encoding]::new($false)
 [IO.File]::WriteAllText($mfPath, ($mfOut | ConvertTo-Json -Depth 50), $utf8NoBom)
 
+Write-Host ("OK: smoke_live_to_workspace_v03 -> totalAudioMs={0} scenes={1} scriptLines={2}" -f $totalMs, $max, @($scriptLines).Count) -ForegroundColor Green
 Write-Output ("LIVE_WORKSPACE_DIR=" + $dstRoot)
-exit 0

@@ -4,13 +4,17 @@ param(
   [Parameter(Mandatory=$true)][string]$OutVideo,
 
   [double]$MarginVFrac = 0.08,
-  [int]$FontSizeMax = 54,
-  [int]$FontSizeMin = 28,
-  [double]$MaxLineCharsTarget = 28
+  [double]$MarginHFrac = 0.08,
+  [int]$FontSizeMax = 48,
+  [int]$FontSizeMin = 24,
+  [double]$MaxLineCharsTarget = 26,
+  [int]$Outline = 2,
+  [int]$Shadow = 0,
+  [int]$Alignment = 2
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference="Stop"
+$ErrorActionPreference = "Stop"
 
 function Get-LongestSrtLineLen([string]$Path) {
   $lines = Get-Content -LiteralPath $Path -Encoding UTF8
@@ -22,6 +26,31 @@ function Get-LongestSrtLineLen([string]$Path) {
     if ($t -match '^\d{2}:\d{2}:\d{2},\d{3}\s-->\s') { continue }
     if ($t.Length -gt $max) { $max = $t.Length }
   }
+  return $max
+}
+
+function Get-MaxLinesPerBlock([string]$Path) {
+  $lines = Get-Content -LiteralPath $Path -Encoding UTF8
+  $cur = 0
+  $max = 0
+
+  foreach ($l in $lines) {
+    $t = $l.Trim()
+
+    if (-not $t) {
+      if ($cur -gt $max) { $max = $cur }
+      $cur = 0
+      continue
+    }
+
+    if ($t -match '^\d+$') { continue }
+    if ($t -match '^\d{2}:\d{2}:\d{2},\d{3}\s-->\s') { continue }
+
+    $cur++
+  }
+
+  if ($cur -gt $max) { $max = $cur }
+  if ($max -lt 1) { $max = 1 }
   return $max
 }
 
@@ -48,14 +77,35 @@ function Resolve-Srt([string]$Path) {
 }
 
 function Escape-ForFfmpegSubtitlesFilename([string]$p) {
-  # ffmpeg filtergraph: escape backslash, single quote, and colon after drive letter (C:)
-  # 1) normaliza a / para evitar \ como escape raro
   $x = $p -replace '\\','/'
-  # 2) escapa : (importante por C:)
-  $x = $x -replace ':','\:'   # C:/... -> C\:/...
-  # 3) escapa comillas simples para filename='...'
+  $x = $x -replace ':','\:'
   $x = $x -replace "'","\'"
   return $x
+}
+
+function Get-VideoSize([string]$VideoPath) {
+  $w = 1080
+  $h = 1920
+
+  try {
+    $probe = & ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x "$VideoPath"
+    if ($LASTEXITCODE -eq 0 -and $probe) {
+      $parts = @(($probe.Trim()) -split 'x')
+      if ($parts.Count -eq 2) {
+        $pw = 0
+        $ph = 0
+        [void][int]::TryParse($parts[0], [ref]$pw)
+        [void][int]::TryParse($parts[1], [ref]$ph)
+        if ($pw -gt 0) { $w = $pw }
+        if ($ph -gt 0) { $h = $ph }
+      }
+    }
+  } catch { }
+
+  return [pscustomobject]@{
+    Width = $w
+    Height = $h
+  }
 }
 
 if (-not (Test-Path -LiteralPath $InVideo)) { throw "No existe InVideo: $InVideo" }
@@ -64,32 +114,56 @@ $InSrt = Resolve-Srt -Path $InSrt
 $maxLen = Get-LongestSrtLineLen $InSrt
 if ($maxLen -lt 1) { $maxLen = 1 }
 
-$ratio = [math]::Sqrt($MaxLineCharsTarget / [double]$maxLen)
-$fs = [int][math]::Round($FontSizeMax * $ratio)
+$maxLines = Get-MaxLinesPerBlock $InSrt
+if ($maxLines -lt 1) { $maxLines = 1 }
+
+$videoSize = Get-VideoSize $InVideo
+$w = [int]$videoSize.Width
+$h = [int]$videoSize.Height
+
+if ($w -lt 320) { $w = 1080 }
+if ($h -lt 320) { $h = 1920 }
+
+$marginV = [int][math]::Round($h * $MarginVFrac)
+$marginH = [int][math]::Round($w * $MarginHFrac)
+
+if ($marginV -lt 60) { $marginV = 60 }
+if ($marginH -lt 60) { $marginH = 60 }
+
+$usableWidth = $w - (2 * $marginH)
+if ($usableWidth -lt 200) { $usableWidth = [int][math]::Max(200, $w - 120) }
+
+$charRatio = [math]::Sqrt($MaxLineCharsTarget / [double]$maxLen)
+$linePenalty = 1.0
+if ($maxLines -ge 3) { $linePenalty = 0.86 }
+elseif ($maxLines -eq 2) { $linePenalty = 0.93 }
+
+$widthPenalty = [math]::Sqrt($usableWidth / 920.0)
+if ($widthPenalty -gt 1.0) { $widthPenalty = 1.0 }
+if ($widthPenalty -lt 0.72) { $widthPenalty = 0.72 }
+
+$fs = [int][math]::Round($FontSizeMax * $charRatio * $linePenalty * $widthPenalty)
+
 if ($fs -gt $FontSizeMax) { $fs = $FontSizeMax }
 if ($fs -lt $FontSizeMin) { $fs = $FontSizeMin }
 
-$h = 1920
-try {
-  $probe = & ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=nw=1:nk=1 "$InVideo"
-  if ($LASTEXITCODE -eq 0 -and $probe) { $h = [int]($probe.Trim()) }
-} catch { }
-
-$mv = [int][math]::Round($h * $MarginVFrac)
-
-$force = "Fontsize=$fs,MarginV=$mv,MarginL=80,MarginR=80,Alignment=2,WrapStyle=2,Outline=2,Shadow=0"
+$force = "Fontsize=$fs,MarginV=$marginV,MarginL=$marginH,MarginR=$marginH,Alignment=$Alignment,WrapStyle=2,Outline=$Outline,Shadow=$Shadow"
 
 Write-Host ("Using SRT: {0}" -f $InSrt)
-Write-Host ("SRT longest line = {0} chars | font={1} | marginV={2}px" -f $maxLen, $fs, $mv)
+Write-Host ("Video size = {0}x{1}" -f $w, $h)
+Write-Host ("SRT longest line = {0} chars | max lines block = {1}" -f $maxLen, $maxLines)
+Write-Host ("Autofit font={0} marginH={1}px marginV={2}px usableWidth={3}px" -f $fs, $marginH, $marginV, $usableWidth)
 
 $inV = (Resolve-Path -LiteralPath $InVideo).Path
 $inS = (Resolve-Path -LiteralPath $InSrt).Path
 $inS_esc = Escape-ForFfmpegSubtitlesFilename $inS
 
-# CLAVE: usar filename=... para evitar que el ':' del path se interprete como separador de opciones
 $vf = "subtitles=filename='$inS_esc':force_style='$force'"
 
 & ffmpeg -y -v error -i "$inV" -vf "$vf" -c:a copy "$OutVideo"
 if ($LASTEXITCODE -ne 0) { throw "ffmpeg burn-in falló" }
 
-Write-Host "OK burn-in -> $OutVideo" -ForegroundColor Green
+if (-not (Test-Path -LiteralPath $OutVideo)) { throw "No se generó OutVideo: $OutVideo" }
+
+$len = (Get-Item -LiteralPath $OutVideo).Length
+Write-Host ("OK burn-in autofit -> {0} ({1} bytes)" -f $OutVideo, $len) -ForegroundColor Green

@@ -83,52 +83,69 @@ function Build-SceneTexts {
   if ($SceneCount -lt 1) { return @() }
   if (@($partsArr).Count -eq 0) { return @() }
 
-  $totalParts = @($partsArr).Count
+  $cleanParts = @(
+    $partsArr |
+    ForEach-Object { [string]$_ } |
+    ForEach-Object { ($_ -replace "\s+", " ").Trim() } |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+
+  if (@($cleanParts).Count -eq 0) { return @() }
+
+  $totalParts = @($cleanParts).Count
+  $effectiveSceneCount = [Math]::Max(1, [Math]::Min($SceneCount, $totalParts))
+  $totalWords = 0
+
+  foreach ($p in $cleanParts) {
+    $wc = @([regex]::Matches([string]$p, '\S+')).Count
+    if ($wc -lt 1) { $wc = 1 }
+    $totalWords += $wc
+  }
+
+  $avgWordsPerScene = [Math]::Max(6, [int][Math]::Round($totalWords / [double]$effectiveSceneCount))
   $result = New-Object System.Collections.Generic.List[string]
-
-  $partsPerSceneBase = [Math]::Floor($totalParts / $SceneCount)
-  if ($partsPerSceneBase -lt 1) { $partsPerSceneBase = 1 }
-
-  $remainder = $totalParts % $SceneCount
   $cursor = 0
 
-  for ($i = 0; $i -lt $SceneCount; $i++) {
-    $take = $partsPerSceneBase
-    if ($remainder -gt 0) {
-      $take++
-      $remainder--
-    }
-
+  for ($i = 0; $i -lt $effectiveSceneCount; $i++) {
+    $remainingScenes = $effectiveSceneCount - $i
     $remainingParts = $totalParts - $cursor
-    $remainingScenes = $SceneCount - $i
 
-    if ($remainingParts -le 0) {
-      $fallback = "contenido"
-      if ($result.Count -gt 0) {
-        $fallback = [string]$result[$result.Count - 1]
-      }
-      $result.Add($fallback) | Out-Null
+    if ($remainingScenes -le 1) {
+      $tail = ($cleanParts[$cursor..($totalParts - 1)] -join " ").Trim()
+      $result.Add(($tail -replace "\s+", " ")) | Out-Null
+      $cursor = $totalParts
       continue
     }
 
-    if ($take -gt $remainingParts) {
-      $take = $remainingParts
+    $maxTake = $remainingParts - ($remainingScenes - 1)
+    if ($maxTake -lt 1) { $maxTake = 1 }
+
+    $sceneWordTarget = [Math]::Max(5, $avgWordsPerScene + ((($i % 3) - 1) * 2))
+    $take = 0
+    $accWords = 0
+
+    while ($take -lt $maxTake) {
+      $part = [string]$cleanParts[$cursor + $take]
+      $wc = @([regex]::Matches($part, '\S+')).Count
+      if ($wc -lt 1) { $wc = 1 }
+
+      $accWords += $wc
+      $take++
+
+      if ($take -ge 1 -and $accWords -ge $sceneWordTarget) { break }
+      if ($accWords -ge [int]($sceneWordTarget * 1.5)) { break }
     }
 
-    if ($remainingParts -lt $remainingScenes) {
-      $take = 1
-    }
+    if ($take -lt 1) { $take = 1 }
 
     $chunk = @()
     for ($j = 0; $j -lt $take; $j++) {
-      if (($cursor + $j) -lt $totalParts) {
-        $chunk += [string]$partsArr[$cursor + $j]
-      }
+      $chunk += [string]$cleanParts[$cursor + $j]
     }
 
     $text = (($chunk -join " ") -replace "\s+", " ").Trim()
     if ([string]::IsNullOrWhiteSpace($text)) {
-      $text = "contenido"
+      $text = [string]$cleanParts[$cursor]
     }
 
     $result.Add($text) | Out-Null
@@ -136,10 +153,7 @@ function Build-SceneTexts {
   }
 
   while ($result.Count -lt $SceneCount) {
-    $last = "contenido"
-    if ($result.Count -gt 0) {
-      $last = [string]$result[$result.Count - 1]
-    }
+    $last = [string]$result[[Math]::Max(0, $result.Count - 1)]
     $result.Add($last) | Out-Null
   }
 
@@ -235,38 +249,54 @@ function Get-DynamicSceneCount {
   $minSceneMs = [Math]::Max(1000, ($SceneMinSec * 1000))
   $maxSceneMs = [Math]::Max($minSceneMs, ($SceneMaxSec * 1000))
 
-  $audioTargetCount = [int][Math]::Round($TotalAudioMs / [double]$targetMs)
-  $audioMinByMax    = [int][Math]::Ceiling($TotalAudioMs / [double]$maxSceneMs)
-  $audioMaxByMin    = [int][Math]::Floor($TotalAudioMs / [double]$minSceneMs)
-
-  if ($audioTargetCount -lt 1) { $audioTargetCount = 1 }
-  if ($audioMinByMax -lt 1)    { $audioMinByMax = 1 }
-  if ($audioMaxByMin -lt 1)    { $audioMaxByMin = 1 }
-
   $scriptCount = @($partsArr).Count
 
   if ($scriptCount -gt 0) {
-    $scriptDrivenTarget = [int][Math]::Ceiling($scriptCount / 2.0)
-    if ($scriptDrivenTarget -lt 1) { $scriptDrivenTarget = 1 }
+    $n = [int][Math]::Ceiling($scriptCount / 2.0)
+    if ($scriptCount -le 3) { $n = $scriptCount }
+    if ($n -lt 1) { $n = 1 }
 
-    $n = $scriptDrivenTarget
-
-    if ($ConfiguredMinScenes -gt 0 -and $n -lt $ConfiguredMinScenes) {
+    if ($ConfiguredMinScenes -gt 0 -and $scriptCount -ge $ConfiguredMinScenes -and $n -lt $ConfiguredMinScenes) {
       $n = $ConfiguredMinScenes
     }
 
-    if ($ConfiguredMaxScenes -gt 0 -and $n -gt $ConfiguredMaxScenes) {
-      $n = $ConfiguredMaxScenes
+    $softMinMs = [int][Math]::Round($minSceneMs * 0.60)
+    $softMaxMs = [int][Math]::Round($maxSceneMs * 1.60)
+    if ($softMinMs -lt 1000) { $softMinMs = 1000 }
+    if ($softMaxMs -lt $softMinMs) { $softMaxMs = $softMinMs }
+
+    $avgMs = [int][Math]::Round($TotalAudioMs / [double][Math]::Max(1, $n))
+
+    if ($avgMs -gt $softMaxMs) {
+      $add = [int][Math]::Ceiling(($avgMs - $softMaxMs) / [double]$softMaxMs)
+      if ($add -lt 1) { $add = 1 }
+      if ($add -gt 3) { $add = 3 }
+      $n += $add
+    }
+    elseif ($avgMs -lt $softMinMs -and $n -gt 1) {
+      $sub = [int][Math]::Ceiling(($softMinMs - $avgMs) / [double]$softMinMs)
+      if ($sub -lt 1) { $sub = 1 }
+      if ($sub -gt 2) { $sub = 2 }
+      $n -= $sub
     }
 
+    if ($n -gt $scriptCount) { $n = $scriptCount }
+    if ($ConfiguredMaxScenes -gt 0 -and $n -gt $ConfiguredMaxScenes) { $n = $ConfiguredMaxScenes }
     if ($n -lt 1) { $n = 1 }
     return $n
   }
 
+  $audioTargetCount = [int][Math]::Round($TotalAudioMs / [double]$targetMs)
+  $audioMinByMax    = [int][Math]::Ceiling($TotalAudioMs / [double]$maxSceneMs)
+  $audioMaxByMin    = [int][Math]::Floor($TotalAudioMs / [double]$minSceneMs)
+  if ($audioTargetCount -lt 1) { $audioTargetCount = 1 }
+  if ($audioMinByMax -lt 1)    { $audioMinByMax = 1 }
+  if ($audioMaxByMin -lt 1)    { $audioMaxByMin = 1 }
+
   $n = $audioTargetCount
-  if ($n -lt $ConfiguredMinScenes) { $n = $ConfiguredMinScenes }
+  if ($ConfiguredMinScenes -gt 0 -and $n -lt $ConfiguredMinScenes) { $n = $ConfiguredMinScenes }
   if ($n -lt $audioMinByMax)       { $n = $audioMinByMax }
-  if ($n -gt $ConfiguredMaxScenes) { $n = $ConfiguredMaxScenes }
+  if ($ConfiguredMaxScenes -gt 0 -and $n -gt $ConfiguredMaxScenes) { $n = $ConfiguredMaxScenes }
   if ($n -gt $audioMaxByMin)       { $n = $audioMaxByMin }
   if ($n -lt 1) { $n = 1 }
 
@@ -282,77 +312,165 @@ function New-Durations {
     [int]$SeedValue
   )
 
-  $minMs = $SceneMinSec * 1000
-  $maxMs = $SceneMaxSec * 1000
-
   if ($SceneCount -lt 1) { return @() }
+  $minMs = [Math]::Max(1000, ($SceneMinSec * 1000))
+  $maxMs = [Math]::Max($minMs, ($SceneMaxSec * 1000))
+  $softMinMs = [Math]::Max(1000, [int][Math]::Round($minMs * 0.60))
+  $softMaxMs = [Math]::Max($softMinMs, [int][Math]::Round($maxMs * 1.80))
 
-  $weights = @()
-  for ($i = 1; $i -le $SceneCount; $i++) {
-    $w = 100
+  # Prefer narrative cues from existing scene texts (kept by Ensure-Scenes when reusing scenes).
+  $sceneTexts = @()
+  $callerScenes = Get-Variable -Scope 1 -Name sc -ErrorAction SilentlyContinue
+  if ($callerScenes -and $callerScenes.Value) {
+    $tmpScenes = @($callerScenes.Value)
+    for ($i = 0; $i -lt [Math]::Min($SceneCount, @($tmpScenes).Count); $i++) {
+      $t = ""
+      try { if ($tmpScenes[$i].text) { $t = [string]$tmpScenes[$i].text } } catch { $t = "" }
+      $sceneTexts += $t
+    }
+  }
 
-    if ($i -eq 1) {
-      $w = 75
-    }
-    elseif ($i -eq $SceneCount) {
-      $w = 115
-    }
-    else {
-      $w = 90 + ((($SeedValue + $i) % 7) * 6)
+  while (@($sceneTexts).Count -lt $SceneCount) { $sceneTexts += "" }
+
+  $weights = New-Object System.Collections.Generic.List[double]
+  $hasNarrativeSignal = $false
+
+  for ($i = 0; $i -lt $SceneCount; $i++) {
+    $text = [string]$sceneTexts[$i]
+    $textNorm = ($text -replace "\s+", " ").Trim()
+
+    $words = 0
+    $strongPunct = 0
+    $chars = 0
+
+    if (-not [string]::IsNullOrWhiteSpace($textNorm)) {
+      $words = @([regex]::Matches($textNorm, '\S+')).Count
+      $strongPunct = @([regex]::Matches($textNorm, '[\.\!\?\:\;]')).Count
+      $chars = $textNorm.Length
+      if ($words -gt 0 -or $strongPunct -gt 0 -or $chars -gt 0) { $hasNarrativeSignal = $true }
     }
 
-    $weights += $w
+    if ($words -lt 1) { $words = 1 }
+    $seedJitter = 0.92 + (((($SeedValue + (($i + 1) * 17)) % 19) / 100.0))
+
+    $w = 1.0 + ($words * 1.0) + ($strongPunct * 2.5) + ([Math]::Sqrt([Math]::Max(1, $chars)) * 0.35)
+    $weights.Add([Math]::Max(0.25, ($w * $seedJitter))) | Out-Null
+  }
+
+  if (-not $hasNarrativeSignal) {
+    $weights.Clear()
+    for ($i = 0; $i -lt $SceneCount; $i++) {
+      $wFallback = 0.85 + (((($SeedValue + (($i + 1) * 13)) % 23) / 20.0))
+      if ($i -eq 0) { $wFallback *= 0.85 }
+      if ($i -eq ($SceneCount - 1)) { $wFallback *= 1.15 }
+      $weights.Add([Math]::Max(0.25, $wFallback)) | Out-Null
+    }
   }
 
   $weightSum = (@($weights) | Measure-Object -Sum).Sum
-  if (-not $weightSum -or $weightSum -le 0) {
-    throw "weightSum inválido en New-Durations"
-  }
+  if (-not $weightSum -or $weightSum -le 0) { throw "weightSum inválido en New-Durations" }
 
-  $durations = @()
+  $durations = New-Object System.Collections.Generic.List[int]
+  $remainders = New-Object System.Collections.Generic.List[pscustomobject]
   $assigned = 0
 
   for ($i = 0; $i -lt $SceneCount; $i++) {
-    if ($i -lt ($SceneCount - 1)) {
-      $dur = [int][Math]::Floor(($TotalAudioMs * $weights[$i]) / $weightSum)
-      if ($dur -lt $minMs) { $dur = $minMs }
-      if ($dur -gt $maxMs) { $dur = $maxMs }
-      $durations += $dur
-      $assigned += $dur
+    $raw = ($TotalAudioMs * [double]$weights[$i]) / [double]$weightSum
+    $base = [int][Math]::Floor($raw)
+    if ($base -lt 1) { $base = 1 }
+    $durations.Add($base) | Out-Null
+    $assigned += $base
+    $remainders.Add([pscustomobject]@{ idx = $i; rem = ($raw - $base) }) | Out-Null
+  }
+
+  $delta0 = $TotalAudioMs - $assigned
+  if ($delta0 -gt 0) {
+    $order = @($remainders | Sort-Object -Property rem -Descending)
+    $k = 0
+    while ($delta0 -gt 0) {
+      $idx = [int]$order[$k % @($order).Count].idx
+      $durations[$idx] = [int]$durations[$idx] + 1
+      $delta0--
+      $k++
     }
-    else {
-      $dur = $TotalAudioMs - $assigned
-      if ($dur -lt $minMs) { $dur = $minMs }
-      if ($dur -gt $maxMs) { $dur = $maxMs }
-      $durations += $dur
+  }
+  elseif ($delta0 -lt 0) {
+    $need = -$delta0
+    $orderDown = @(0..($SceneCount - 1) | Sort-Object { $durations[$_] } -Descending)
+    $k = 0
+    while ($need -gt 0 -and $k -lt 200000) {
+      $idx = [int]$orderDown[$k % @($orderDown).Count]
+      if ($durations[$idx] -gt 1) {
+        $durations[$idx] = [int]$durations[$idx] - 1
+        $need--
+      }
+      $k++
     }
   }
 
-  $sumDur = (@($durations) | Measure-Object -Sum).Sum
   $guard = 0
+  while ($guard -lt 10000) {
+    $changed = $false
 
-  while ($sumDur -ne $TotalAudioMs -and $guard -lt 10000) {
-    $delta = $TotalAudioMs - $sumDur
-
-    if ($delta -gt 0) {
-      for ($i = 0; $i -lt $SceneCount -and $delta -gt 0; $i++) {
-        if ($durations[$i] -lt $maxMs) {
-          $durations[$i]++
-          $delta--
+    for ($i = 0; $i -lt $SceneCount; $i++) {
+      if ($durations[$i] -lt $softMinMs) {
+        $need = $softMinMs - $durations[$i]
+        $donors = @(0..($SceneCount - 1) | Where-Object { $_ -ne $i -and $durations[$_] -gt $softMinMs } | Sort-Object { $durations[$_] } -Descending)
+        foreach ($d in $donors) {
+          if ($need -le 0) { break }
+          $canGive = $durations[$d] - $softMinMs
+          if ($canGive -le 0) { continue }
+          $take = [Math]::Min($need, $canGive)
+          $durations[$d] = [int]$durations[$d] - $take
+          $durations[$i] = [int]$durations[$i] + $take
+          $need -= $take
+          $changed = $true
+        }
+      }
+      elseif ($durations[$i] -gt $softMaxMs) {
+        $extra = $durations[$i] - $softMaxMs
+        $receivers = @(0..($SceneCount - 1) | Where-Object { $_ -ne $i -and $durations[$_] -lt $softMaxMs } | Sort-Object { $durations[$_] })
+        foreach ($r in $receivers) {
+          if ($extra -le 0) { break }
+          $cap = $softMaxMs - $durations[$r]
+          if ($cap -le 0) { continue }
+          $move = [Math]::Min($extra, $cap)
+          $durations[$r] = [int]$durations[$r] + $move
+          $durations[$i] = [int]$durations[$i] - $move
+          $extra -= $move
+          $changed = $true
         }
       }
     }
-    else {
-      for ($i = $SceneCount - 1; $i -ge 0 -and $delta -lt 0; $i--) {
-        if ($durations[$i] -gt $minMs) {
-          $durations[$i]--
-          $delta++
-        }
-      }
-    }
 
-    $sumDur = (@($durations) | Measure-Object -Sum).Sum
+    if (-not $changed) { break }
     $guard++
+  }
+
+  $sumDur = (@($durations) | Measure-Object -Sum).Sum
+  $delta = $TotalAudioMs - $sumDur
+  if ($delta -gt 0) {
+    $orderUp = @(0..($SceneCount - 1) | Sort-Object { $weights[$_] } -Descending)
+    $k = 0
+    while ($delta -gt 0) {
+      $idx = [int]$orderUp[$k % @($orderUp).Count]
+      $durations[$idx] = [int]$durations[$idx] + 1
+      $delta--
+      $k++
+    }
+  }
+  elseif ($delta -lt 0) {
+    $need = -$delta
+    $orderDown = @(0..($SceneCount - 1) | Sort-Object { $weights[$_] })
+    $k = 0
+    while ($need -gt 0 -and $k -lt 300000) {
+      $idx = [int]$orderDown[$k % @($orderDown).Count]
+      if ($durations[$idx] -gt 1000) {
+        $durations[$idx] = [int]$durations[$idx] - 1
+        $need--
+      }
+      $k++
+    }
   }
 
   if ((@($durations) | Measure-Object -Sum).Sum -ne $TotalAudioMs) {

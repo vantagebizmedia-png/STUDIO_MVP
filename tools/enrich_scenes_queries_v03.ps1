@@ -174,11 +174,13 @@ function Normalize-QueryText([string]$text, [int]$MaxLen = 90) {
 }
 
 function Get-VisualAnchorTerms([string[]]$terms) {
-  $anchors = @()
+  $anchors = New-Object System.Collections.Generic.List[string]
   $t = @($terms | Where-Object { $_ } | ForEach-Object { $_.ToLowerInvariant() } | Select-Object -Unique)
 
   function Add-Anchor([string]$value) {
-    if ($value -and $value.Trim()) { $script:anchors += $value.Trim().ToLowerInvariant() }
+    if ($value -and $value.Trim()) {
+      [void]$anchors.Add($value.Trim().ToLowerInvariant())
+    }
   }
 
   if (@($t | Where-Object { $_ -in @("disciplina","habito","habitos","rutina","constancia") }).Count -gt 0) {

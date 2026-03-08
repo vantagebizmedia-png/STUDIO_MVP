@@ -183,13 +183,13 @@ function Get-VisualAnchorTerms([string[]]$terms) {
     }
   }
 
-  if (@($t | Where-Object { $_ -in @("disciplina","habito","habitos","rutina","constancia","orden","consistencia") }).Count -gt 0) {
+  if (@($t | Where-Object { $_ -in @("disciplina","habito","habitos","rutina","constancia","orden","consistencia","recordar","agenda","cuaderno") }).Count -gt 0) {
     Add-Anchor "persona escritorio agenda"
     Add-Anchor "manos cuaderno escritorio"
     Add-Anchor "laptop cafe escritorio"
   }
 
-  if (@($t | Where-Object { $_ -in @("productividad","enfoque","plan","planes","prioridad","prioridades","trabajo","organizacion","organizar") }).Count -gt 0) {
+  if (@($t | Where-Object { $_ -in @("productividad","enfoque","plan","planes","prioridad","prioridades","trabajo","organizacion","organizar","objetivo","objetivos") }).Count -gt 0) {
     Add-Anchor "persona trabajando laptop"
     Add-Anchor "escritorio computadora oficina"
     Add-Anchor "reunion oficina equipo"
@@ -237,6 +237,18 @@ function Get-VisualAnchorTerms([string[]]$terms) {
     Add-Anchor "equipo reunion oficina"
   }
 
+  if (@($t | Where-Object { $_ -in @("problema","situacion","cotidiana","cotidiano","resolver","solucion","atencion","interes") }).Count -gt 0) {
+    Add-Anchor "persona pensando escritorio"
+    Add-Anchor "persona mirando laptop"
+    Add-Anchor "situacion cotidiana hogar"
+  }
+
+  if (@($t | Where-Object { $_ -in @("frase","mensaje","idea","concepto","explicacion","contexto","lenguaje","claro","simple") }).Count -gt 0) {
+    Add-Anchor "persona hablando camara"
+    Add-Anchor "persona oficina fondo neutro"
+    Add-Anchor "manos cuaderno mesa"
+  }
+
   if ($anchors.Count -eq 0) {
     if (@($t | Where-Object { $VISUAL -contains $_ }).Count -gt 0) {
       Add-Anchor "persona lifestyle"
@@ -245,12 +257,12 @@ function Get-VisualAnchorTerms([string[]]$terms) {
   }
 
   if ($anchors.Count -eq 0) {
+    Add-Anchor "persona escritorio"
     Add-Anchor "person lifestyle"
   }
 
   return @($anchors | Select-Object -Unique)
 }
-
 function Get-ConcreteSceneTerms([string[]]$terms, [int]$Top = 4) {
   $items = New-Object System.Collections.Generic.List[object]
 
@@ -319,6 +331,24 @@ function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$scen
   $concreteTerms = @(Get-ConcreteSceneTerms -terms $anchorTerms -Top 4)
   $concreteTop2 = @($concreteTerms | Select-Object -First 2)
 
+  $kwUseful = @(
+    $kwArr |
+      Where-Object {
+        $_ -and
+        $_.Length -ge 4 -and
+        $_ -notmatch '^(inicio|directo|idea|clara|frase|simple|facil|mantener|interes|contexto|lenguaje|breve|visual|problema|central|video|busca|resolver|cotidiana|reconocible|presentamos|introducimos|conectamos|marcamos|abrimos|segundo|tema|principal|escena|siguiente|claro|situacion|rec|visu|atencion|captar|recordar|promesa|concreta|mensaje|explicacion|concepto)$'
+      } |
+      Select-Object -First 2
+  )
+
+  $subjectTerms = @()
+  if ($concreteTop2.Count -gt 0) {
+    $subjectTerms = @($concreteTop2)
+  }
+  elseif ($kwUseful.Count -gt 0) {
+    $subjectTerms = @($kwUseful)
+  }
+
   $candidates = New-Object System.Collections.Generic.List[string]
 
   function Add-Candidate([string]$value) {
@@ -329,26 +359,24 @@ function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$scen
   }
 
   foreach ($anchor in $anchors) {
-    Add-Candidate "$anchor photo"
-    if ($topicN) { Add-Candidate "$topicN $anchor photo" }
-  }
-
-  if ($imgqN -and $concreteTop2.Count -gt 0) {
-    Add-Candidate "$imgqN $($concreteTop2 -join ' ') photo"
-  }
-
-  foreach ($anchor in $anchors) {
-    if ($concreteTop2.Count -gt 0) {
-      Add-Candidate "$anchor $($concreteTop2 -join ' ') photo"
+    if ($subjectTerms.Count -gt 0) {
+      Add-Candidate "$anchor $($subjectTerms -join ' ') photo"
     }
-  }
-
-  if ($topicN -and $concreteTop2.Count -gt 0) {
-    Add-Candidate "$topicN $($concreteTop2 -join ' ') photo"
+    Add-Candidate "$anchor photo"
+    if ($topicN) {
+      Add-Candidate "$topicN $anchor photo"
+    }
   }
 
   if ($imgqN) {
     Add-Candidate "$imgqN photo"
+    if ($subjectTerms.Count -gt 0) {
+      Add-Candidate "$imgqN $($subjectTerms -join ' ') photo"
+    }
+  }
+
+  if ($topicN -and $subjectTerms.Count -gt 0) {
+    Add-Candidate "$topicN $($subjectTerms -join ' ') photo"
   }
 
   if ($topicN) {
@@ -356,7 +384,7 @@ function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$scen
   }
 
   if ($candidates.Count -eq 0) {
-    Add-Candidate ("person lifestyle scene {0:000} photo" -f ($SceneIndex + 1))
+    Add-Candidate ("persona escritorio scene {0:000} photo" -f ($SceneIndex + 1))
   }
 
   return @($candidates | Select-Object -Unique)

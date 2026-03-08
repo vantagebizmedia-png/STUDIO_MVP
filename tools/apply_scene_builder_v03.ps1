@@ -217,6 +217,7 @@ function ScenesHaveValidImages {
 
 function Get-DynamicSceneCount {
   param(
+    [object[]]$ScriptParts,
     [int]$TotalAudioMs,
     [int]$ConfiguredMinScenes,
     [int]$ConfiguredMaxScenes,
@@ -225,23 +226,50 @@ function Get-DynamicSceneCount {
     [int]$SceneMaxSec
   )
 
+  $partsArr = @(Normalize-ToArray -Value $ScriptParts)
+
   $targetMs   = [Math]::Max(1000, ($SceneTargetSec * 1000))
   $minSceneMs = [Math]::Max(1000, ($SceneMinSec * 1000))
   $maxSceneMs = [Math]::Max($minSceneMs, ($SceneMaxSec * 1000))
 
-  $targetCount      = [int][Math]::Round($TotalAudioMs / [double]$targetMs)
-  $minByMaxDuration = [int][Math]::Ceiling($TotalAudioMs / [double]$maxSceneMs)
-  $maxByMinDuration = [int][Math]::Floor($TotalAudioMs / [double]$minSceneMs)
+  $audioTargetCount = [int][Math]::Round($TotalAudioMs / [double]$targetMs)
+  $audioMinByMax    = [int][Math]::Ceiling($TotalAudioMs / [double]$maxSceneMs)
+  $audioMaxByMin    = [int][Math]::Floor($TotalAudioMs / [double]$minSceneMs)
 
-  if ($targetCount -lt 1) { $targetCount = 1 }
-  if ($minByMaxDuration -lt 1) { $minByMaxDuration = 1 }
-  if ($maxByMinDuration -lt 1) { $maxByMinDuration = 1 }
+  if ($audioTargetCount -lt 1) { $audioTargetCount = 1 }
+  if ($audioMinByMax -lt 1)    { $audioMinByMax = 1 }
+  if ($audioMaxByMin -lt 1)    { $audioMaxByMin = 1 }
 
-  $n = $targetCount
+  $scriptCount = @($partsArr).Count
+
+  if ($scriptCount -gt 0) {
+    $n = $scriptCount
+
+    if ($ConfiguredMinScenes -gt 0 -and $n -lt $ConfiguredMinScenes) {
+      $n = $ConfiguredMinScenes
+    }
+
+    if ($ConfiguredMaxScenes -gt 0 -and $n -gt $ConfiguredMaxScenes) {
+      $n = $ConfiguredMaxScenes
+    }
+
+    if ($audioMinByMax -gt 0 -and $n -lt $audioMinByMax) {
+      $n = $audioMinByMax
+    }
+
+    if ($audioMaxByMin -gt 0 -and $n -gt $audioMaxByMin) {
+      $n = $audioMaxByMin
+    }
+
+    if ($n -lt 1) { $n = 1 }
+    return $n
+  }
+
+  $n = $audioTargetCount
   if ($n -lt $ConfiguredMinScenes) { $n = $ConfiguredMinScenes }
-  if ($n -lt $minByMaxDuration)    { $n = $minByMaxDuration }
+  if ($n -lt $audioMinByMax)       { $n = $audioMinByMax }
   if ($n -gt $ConfiguredMaxScenes) { $n = $ConfiguredMaxScenes }
-  if ($n -gt $maxByMinDuration)    { $n = $maxByMinDuration }
+  if ($n -gt $audioMaxByMin)       { $n = $audioMaxByMin }
   if ($n -lt 1) { $n = 1 }
 
   return $n
@@ -572,6 +600,7 @@ catch {
 $scriptParts = @(Split-ScriptSentences -Text $scriptText)
 
 $desiredScenes = Get-DynamicSceneCount `
+  -ScriptParts $scriptParts `
   -TotalAudioMs $totalAudioMs `
   -ConfiguredMinScenes $MinScenes `
   -ConfiguredMaxScenes $MaxScenes `
@@ -579,6 +608,10 @@ $desiredScenes = Get-DynamicSceneCount `
   -SceneMinSec $MinSceneSec `
   -SceneMaxSec $MaxSceneSec
 
+$sceneMode = "audio_fallback"
+if (@($scriptParts).Count -gt 0) {
+  $sceneMode = "script_driven"
+}
 if (-not $Force) {
   if (ScenesHaveValidImages -ManifestObj $m -LiveDir $live -ExpectedCount $desiredScenes) {
     $outSkip = $m | ConvertTo-Json -Depth 50
@@ -851,4 +884,4 @@ else {
   Write-Host "SKIP: enrich_scenes_queries_v03 (SkipEnrich=True)" -ForegroundColor DarkGray
 }
 
-Write-Host ("OK: scene_builder v03 aplicado. scenes={0} totalAudioMs={1} targetSceneSec={2} minSceneSec={3} maxSceneSec={4} minScenes={5} maxScenes={6} live={7} force={8} skipPixabay={9} skipEnrich={10}" -f @($m.scenes_v03).Count, $totalAudioMs, $TargetSceneSec, $MinSceneSec, $MaxSceneSec, $MinScenes, $MaxScenes, $live, [bool]$Force, [bool]$SkipPixabay, [bool]$SkipEnrich) -ForegroundColor Green
+Write-Host ("OK: scene_builder v03 aplicado. scenes={0} totalAudioMs={1} targetSceneSec={2} minSceneSec={3} maxSceneSec={4} minScenes={5} maxScenes={6} live={7} force={8} skipPixabay={9} skipEnrich={10} mode={11} scriptParts={12}" -f @($m.scenes_v03).Count, $totalAudioMs, $TargetSceneSec, $MinSceneSec, $MaxSceneSec, $MinScenes, $MaxScenes, $live, [bool]$Force, [bool]$SkipPixabay, [bool]$SkipEnrich, $sceneMode, @($scriptParts).Count) -ForegroundColor Green

@@ -83,51 +83,55 @@ function Build-SceneTexts {
   if ($SceneCount -lt 1) { return @() }
   if (@($partsArr).Count -eq 0) { return @() }
 
-  $result = New-Object System.Collections.Generic.List[string]
-  $cursor = 0
   $totalParts = @($partsArr).Count
+  $result = New-Object System.Collections.Generic.List[string]
+
+  $partsPerSceneBase = [Math]::Floor($totalParts / $SceneCount)
+  if ($partsPerSceneBase -lt 1) { $partsPerSceneBase = 1 }
+
+  $remainder = $totalParts % $SceneCount
+  $cursor = 0
 
   for ($i = 0; $i -lt $SceneCount; $i++) {
+    $take = $partsPerSceneBase
+    if ($remainder -gt 0) {
+      $take++
+      $remainder--
+    }
+
+    $remainingParts = $totalParts - $cursor
     $remainingScenes = $SceneCount - $i
-    $remainingParts  = $totalParts - $cursor
 
     if ($remainingParts -le 0) {
       $fallback = "contenido"
       if ($result.Count -gt 0) {
         $fallback = [string]$result[$result.Count - 1]
-        if (-not $fallback.EndsWith("...")) { $fallback = $fallback + "..." }
       }
-      $result.Add($fallback)
+      $result.Add($fallback) | Out-Null
       continue
     }
 
-    $take = [int][Math]::Ceiling($remainingParts / [double]$remainingScenes)
-    if ($take -lt 1) { $take = 1 }
-    if ($take -gt $remainingParts) { $take = $remainingParts }
-
-    $end = $cursor + $take - 1
-    $chunk = @($partsArr[$cursor..$end])
-
-    $chunkText = @(
-      $chunk |
-      ForEach-Object { [string]$_ } |
-      ForEach-Object { ($_ -replace '\s+', ' ').Trim() } |
-      Where-Object { $_ -and $_.Length -gt 0 }
-    ) -join " "
-
-    $chunkText = ($chunkText -replace '\s+', ' ').Trim()
-    if ([string]::IsNullOrWhiteSpace($chunkText)) {
-      $chunkText = "contenido"
+    if ($take -gt $remainingParts) {
+      $take = $remainingParts
     }
 
-    if ($result.Count -gt 0) {
-      $prev = [string]$result[$result.Count - 1]
-      if ($chunkText -eq $prev) {
-        $chunkText = $chunkText + "..."
+    if ($remainingParts -lt $remainingScenes) {
+      $take = 1
+    }
+
+    $chunk = @()
+    for ($j = 0; $j -lt $take; $j++) {
+      if (($cursor + $j) -lt $totalParts) {
+        $chunk += [string]$partsArr[$cursor + $j]
       }
     }
 
-    $result.Add($chunkText)
+    $text = (($chunk -join " ") -replace "\s+", " ").Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+      $text = "contenido"
+    }
+
+    $result.Add($text) | Out-Null
     $cursor += $take
   }
 
@@ -135,12 +139,11 @@ function Build-SceneTexts {
     $last = "contenido"
     if ($result.Count -gt 0) {
       $last = [string]$result[$result.Count - 1]
-      if (-not $last.EndsWith("...")) { $last = $last + "..." }
     }
-    $result.Add($last)
+    $result.Add($last) | Out-Null
   }
 
-  return @($result.ToArray())
+  return @($result)
 }
 
 function Get-AssetPathValue {
@@ -243,7 +246,10 @@ function Get-DynamicSceneCount {
   $scriptCount = @($partsArr).Count
 
   if ($scriptCount -gt 0) {
-    $n = $scriptCount
+    $scriptDrivenTarget = [int][Math]::Ceiling($scriptCount / 2.0)
+    if ($scriptDrivenTarget -lt 1) { $scriptDrivenTarget = 1 }
+
+    $n = $scriptDrivenTarget
 
     if ($ConfiguredMinScenes -gt 0 -and $n -lt $ConfiguredMinScenes) {
       $n = $ConfiguredMinScenes
@@ -251,14 +257,6 @@ function Get-DynamicSceneCount {
 
     if ($ConfiguredMaxScenes -gt 0 -and $n -gt $ConfiguredMaxScenes) {
       $n = $ConfiguredMaxScenes
-    }
-
-    if ($audioMinByMax -gt 0 -and $n -lt $audioMinByMax) {
-      $n = $audioMinByMax
-    }
-
-    if ($audioMaxByMin -gt 0 -and $n -gt $audioMaxByMin) {
-      $n = $audioMaxByMin
     }
 
     if ($n -lt 1) { $n = 1 }
@@ -612,6 +610,20 @@ $sceneMode = "audio_fallback"
 if (@($scriptParts).Count -gt 0) {
   $sceneMode = "script_driven"
 }
+
+$effectiveMinSceneSec = $MinSceneSec
+$effectiveMaxSceneSec = $MaxSceneSec
+
+if ($sceneMode -eq "script_driven" -and $desiredScenes -gt 0) {
+  $avgSceneSec = [int][Math]::Ceiling($totalAudioMs / [double](1000 * $desiredScenes))
+  $scriptAdaptiveMax = [Math]::Max($MaxSceneSec, ($avgSceneSec + 2))
+
+  if ($scriptAdaptiveMax -lt $effectiveMinSceneSec) {
+    $scriptAdaptiveMax = $effectiveMinSceneSec
+  }
+
+  $effectiveMaxSceneSec = $scriptAdaptiveMax
+}
 if (-not $Force) {
   if (ScenesHaveValidImages -ManifestObj $m -LiveDir $live -ExpectedCount $desiredScenes) {
     $outSkip = $m | ConvertTo-Json -Depth 50
@@ -637,8 +649,8 @@ Ensure-Scenes `
   -ManifestObj $m `
   -SceneCount $desiredScenes `
   -TotalAudioMs $totalAudioMs `
-  -SceneMinSec $MinSceneSec `
-  -SceneMaxSec $MaxSceneSec `
+  -SceneMinSec $effectiveMinSceneSec `
+  -SceneMaxSec $effectiveMaxSceneSec `
   -SeedValue $Seed
 
 if (@($scriptParts).Count -gt 0) {
@@ -884,4 +896,4 @@ else {
   Write-Host "SKIP: enrich_scenes_queries_v03 (SkipEnrich=True)" -ForegroundColor DarkGray
 }
 
-Write-Host ("OK: scene_builder v03 aplicado. scenes={0} totalAudioMs={1} targetSceneSec={2} minSceneSec={3} maxSceneSec={4} minScenes={5} maxScenes={6} live={7} force={8} skipPixabay={9} skipEnrich={10} mode={11} scriptParts={12}" -f @($m.scenes_v03).Count, $totalAudioMs, $TargetSceneSec, $MinSceneSec, $MaxSceneSec, $MinScenes, $MaxScenes, $live, [bool]$Force, [bool]$SkipPixabay, [bool]$SkipEnrich, $sceneMode, @($scriptParts).Count) -ForegroundColor Green
+Write-Host ("OK: scene_builder v03 aplicado. scenes={0} totalAudioMs={1} targetSceneSec={2} minSceneSec={3} maxSceneSec={4} minScenes={5} maxScenes={6} live={7} force={8} skipPixabay={9} skipEnrich={10} mode={11} scriptParts={12} effectiveMinSceneSec={13} effectiveMaxSceneSec={14}" -f @($m.scenes_v03).Count, $totalAudioMs, $TargetSceneSec, $MinSceneSec, $MaxSceneSec, $MinScenes, $MaxScenes, $live, [bool]$Force, [bool]$SkipPixabay, [bool]$SkipEnrich, $sceneMode, @($scriptParts).Count, $effectiveMinSceneSec, $effectiveMaxSceneSec) -ForegroundColor Green

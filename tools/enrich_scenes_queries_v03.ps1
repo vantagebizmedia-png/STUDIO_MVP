@@ -312,6 +312,12 @@ function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$scen
   $topicN = Normalize-QueryText $topic 40
   $imgqN  = Normalize-QueryText $imageQuery 56
   $textN  = Normalize-QueryText $sceneText 56
+  $residualPattern = '^(inicio|directo|idea|clara|frase|simple|facil|fácil|mantener|interes|interés|contexto|lenguaje|breve|visual|problema|central|video|busca|resolver|cotidiana|cotidiano|reconocible|presentamos|introducimos|conectamos|marcamos|abrimos|segundo|tema|principal|escena|siguiente|claro|situacion|situación|rec|visu|atencion|atención|captar|recordar|promesa|concreta|concreto|mensaje|explicacion|explicación|concepto|facilmente|fácilmente|interesar|interesa|resolverlo|resuelve|narrativa|cierre|micro|util|útil|mostramos|cambiamos|pasamos|reforzamos|insertamos|hacemos|evitar|mostrado|reutilizar|limpio|importante)$'
+  $verbPattern = '^(mostramos|cambiamos|pasamos|reforzamos|insertamos|hacemos|evitar|mostrado|reutilizar)$|((ar|er|ir|ando|iendo|ado|ido|amos|emos|imos))$'
+  $hardDrop = @(
+    "darle","punto","sencilla","audiencia","pensada","hacia","importante","ultima","última","ejemplo","pausa",
+    "siguiente","principal","problema","idea","mensaje","narrativa","cierre","micro","visual","claro","breve","simple","util","útil","directo","concreta","concreto"
+  )
 
   $kwArr = @()
   foreach ($k in @($kws)) {
@@ -326,6 +332,7 @@ function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$scen
   $anchorTerms += @(Tokenize $textN)
   $anchorTerms += @($kwArr)
   $anchorTerms = @($anchorTerms | Where-Object { $_ } | Select-Object -Unique)
+  $anchorVisualCount = @($anchorTerms | Where-Object { $VISUAL -contains $_ }).Count
 
   $anchors = @(Get-VisualAnchorTerms -terms $anchorTerms)
   $concreteTerms = @(Get-ConcreteSceneTerms -terms $anchorTerms -Top 4)
@@ -350,12 +357,104 @@ function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$scen
   }
 
   $candidates = New-Object System.Collections.Generic.List[string]
+  $anchorVisualPool = @(
+    @($anchorTerms | Where-Object { $VISUAL -contains $_ }) +
+    @((@($anchors | ForEach-Object { Tokenize ([string]$_) }) | ForEach-Object { $_ }) | Where-Object { $VISUAL -contains $_ })
+  ) | Select-Object -Unique
 
   function Add-Candidate([string]$value) {
     $q = Normalize-QueryText $value 90
+    $filtered = @(
+      (Tokenize $q) |
+      Where-Object {
+        $_ -and
+        ($_ -ne "photo") -and
+        ($_.Length -ge 3) -and
+        ($STOP -notcontains $_) -and
+        ($ABSTRACT -notcontains $_) -and
+        ($_ -notmatch $verbPattern) -and
+        ($_ -notmatch $residualPattern)
+      } |
+      Select-Object -Unique
+    )
+
+    if ($filtered.Count -eq 0) { return }
+
+    $visualTokens = @($filtered | Where-Object { $VISUAL -contains $_ } | Select-Object -Unique)
+    $otherTokens  = @($filtered | Where-Object { $VISUAL -notcontains $_ } | Select-Object -Unique)
+
+    $tokens = @($visualTokens + $otherTokens | Select-Object -Unique)
+
+    if ($visualTokens.Count -eq 0) {
+      if ($anchorVisualCount -gt 0) { return }
+      $tokens = @("persona") + $tokens
+      $tokens = @($tokens | Select-Object -Unique)
+    }
+
+    $tokens = @($tokens | Select-Object -First 24)
+    if ($tokens.Count -eq 0) { return }
+
+    $q = (($tokens -join " ") + " photo").Trim()
     if ($q -and $q.Trim().Length -ge 3) {
       $candidates.Add($q) | Out-Null
     }
+  }
+
+  function Get-FallbackCompactQuery([string[]]$visualPool) {
+    $vp = @($visualPool | Where-Object { $_ } | Select-Object -Unique)
+    if (@($vp | Where-Object { $_ -in @("manos","mano","cuaderno") }).Count -gt 0) { return "manos cuaderno photo" }
+    if (@($vp | Where-Object { $_ -in @("camara","cámara","rostro","cara") }).Count -gt 0) { return "persona camara photo" }
+    if (@($vp | Where-Object { $_ -in @("escritorio","oficina","computadora","laptop") }).Count -gt 0) { return "persona escritorio photo" }
+    return "persona escritorio photo"
+  }
+
+  function Compact-VisualQuery([string]$query, [string[]]$visualPool) {
+    $qt = @(
+      (Tokenize $query) |
+      Where-Object {
+        $_ -and
+        ($_ -ne "photo") -and
+        ($VISUAL -contains $_) -and
+        ($ABSTRACT -notcontains $_) -and
+        ($STOP -notcontains $_) -and
+        ($hardDrop -notcontains $_) -and
+        ($_ -notmatch $verbPattern) -and
+        ($_ -notmatch $residualPattern)
+      } |
+      Select-Object -Unique
+    )
+
+    if ($qt.Count -lt 2) {
+      return (Get-FallbackCompactQuery -visualPool $visualPool)
+    }
+
+    $maxTokens = 3
+    if ($qt.Count -ge 4) {
+      $first4 = @($qt | Select-Object -First 4)
+      if ($first4.Count -eq 4 -and @($first4 | Where-Object { $VISUAL -contains $_ }).Count -eq 4) {
+        $maxTokens = 4
+      }
+    }
+
+    $picked = @($qt | Select-Object -First $maxTokens)
+    if ($picked.Count -gt 3 -and @($picked | Where-Object { $VISUAL -contains $_ }).Count -lt $picked.Count) {
+      $picked = @($picked | Select-Object -First 3)
+    }
+
+    if ($picked.Count -lt 2) {
+      return (Get-FallbackCompactQuery -visualPool $visualPool)
+    }
+
+    return ((@($picked | Select-Object -Unique) -join " ") + " photo").Trim()
+  }
+
+  function Get-QueryCategory([string]$query) {
+    $qt = @((Tokenize $query) | Where-Object { $_ -and $_ -ne "photo" } | Select-Object -Unique)
+    if (@($qt | Where-Object { $_ -in @("manos","mano","cuaderno","mesa") }).Count -gt 0) { return "hands" }
+    if (@($qt | Where-Object { $_ -in @("camara","cámara","rostro","cara") }).Count -gt 0) { return "camera" }
+    if (@($qt | Where-Object { $_ -in @("reunion","reunión","equipo","oficina") }).Count -gt 0) { return "team" }
+    if (@($qt | Where-Object { $_ -in @("laptop","computadora","escritorio","oficina") }).Count -gt 0) { return "desk" }
+    return "other"
   }
 
   foreach ($anchor in $anchors) {
@@ -387,7 +486,65 @@ function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$scen
     Add-Candidate ("persona escritorio scene {0:000} photo" -f ($SceneIndex + 1))
   }
 
-  return @($candidates | Select-Object -Unique)
+  $uniq = @($candidates | Select-Object -Unique)
+  if ($uniq.Count -le 1) { return $uniq }
+
+  $compacted = @(
+    $uniq |
+      ForEach-Object { Compact-VisualQuery -query $_ -visualPool $anchorVisualPool } |
+      Where-Object { $_ -and $_.Trim().Length -ge 3 } |
+      Select-Object -Unique
+  )
+  if ($compacted.Count -eq 0) {
+    return @((Get-FallbackCompactQuery -visualPool $anchorVisualPool))
+  }
+
+  $hasBetterThanDefault = @(
+    $compacted |
+      Where-Object {
+        $_ -and
+        $_ -ne "persona escritorio photo" -and
+        @((Tokenize $_) | Where-Object { $_ -ne "photo" -and $VISUAL -contains $_ }).Count -ge 2
+      }
+  ).Count -gt 0
+
+  $ranked = @(
+    $compacted |
+      ForEach-Object {
+        $qt = @((Tokenize $_) | Where-Object { $_ -and $_ -ne "photo" } | Select-Object -Unique)
+        $vc = @($qt | Where-Object { $VISUAL -contains $_ }).Count
+        $score = ($vc * 10) + $qt.Count
+        if ($hasBetterThanDefault -and $_ -eq "persona escritorio photo") { $score -= 15 }
+        $cat = Get-QueryCategory -query $_
+        $catCycle = @("hands","camera","desk","team")
+        $targetCat = $catCycle[($SceneIndex % $catCycle.Count)]
+        $prevCat1 = $catCycle[((($SceneIndex - 1) % $catCycle.Count) + $catCycle.Count) % $catCycle.Count]
+        $prevCat2 = $catCycle[((($SceneIndex - 2) % $catCycle.Count) + $catCycle.Count) % $catCycle.Count]
+        $isGenericCompact = ($vc -ge 2 -and $qt.Count -le 3)
+        if ($cat -eq $targetCat) { $score += 6 }
+        if ($cat -eq "other") { $score -= 4 }
+        if ($_ -match '^persona escritorio photo$') { $score -= 6 }
+        if ($_ -match '^persona (escritorio|laptop) photo$' -and ($SceneIndex % 2 -eq 1)) { $score -= 3 }
+        if ($_ -match '^manos cuaderno mesa photo$' -and ($SceneIndex % 2 -eq 0)) { $score -= 2 }
+        if ($_ -eq "persona escritorio photo") { $score -= (8 + ($SceneIndex % 3)) }
+        if ($_ -eq "manos cuaderno mesa photo") { $score -= (7 + (($SceneIndex + 1) % 3)) }
+        if ($isGenericCompact -and ($cat -eq $prevCat1 -or $cat -eq $prevCat2)) { $score -= 5 }
+        if ($isGenericCompact -and $cat -ne $targetCat) { $score -= 2 }
+        [pscustomobject]@{
+          q = $_
+          cat = $cat
+          score = [int]$score
+          h = Sha256Hex(("candidate|{0}|{1}" -f $SceneIndex, $_))
+        }
+      } |
+      Sort-Object `
+        @{ Expression = "score"; Descending = $true }, `
+        @{ Expression = "cat"; Descending = $false }, `
+        @{ Expression = "h"; Descending = $false } |
+      Select-Object -ExpandProperty q
+  )
+
+  return @($ranked)
 }
 function Resolve-Manifest([string]$Root) {
   $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path

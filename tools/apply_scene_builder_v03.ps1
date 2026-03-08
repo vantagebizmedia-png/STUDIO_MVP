@@ -332,8 +332,8 @@ function New-Durations {
   if ($SceneCount -lt 1) { return @() }
   $minMs = [Math]::Max(1000, ($SceneMinSec * 1000))
   $maxMs = [Math]::Max($minMs, ($SceneMaxSec * 1000))
-  $softMinMs = [Math]::Max(1000, [int][Math]::Round($minMs * 0.60))
-  $softMaxMs = [Math]::Max($softMinMs, [int][Math]::Round($maxMs * 1.80))
+  $softMinMs = [Math]::Max(1000, [int][Math]::Round($minMs * 0.50))
+  $softMaxMs = [Math]::Max($softMinMs, [int][Math]::Round($maxMs * 2.40))
 
   # Prefer narrative cues from existing scene texts (kept by Ensure-Scenes when reusing scenes).
   $sceneTexts = @()
@@ -370,17 +370,23 @@ function New-Durations {
     if ($words -lt 1) { $words = 1 }
     $seedJitter = 0.92 + (((($SeedValue + (($i + 1) * 17)) % 19) / 100.0))
 
-    $w = 1.0 + ($words * 1.0) + ($strongPunct * 2.5) + ([Math]::Sqrt([Math]::Max(1, $chars)) * 0.35)
+    $w = 1.0 + ($words * 1.0) + ($strongPunct * 3.1) + ([Math]::Sqrt([Math]::Max(1, $chars)) * 0.50)
     $weights.Add([Math]::Max(0.25, ($w * $seedJitter))) | Out-Null
   }
 
   if (-not $hasNarrativeSignal) {
     $weights.Clear()
     for ($i = 0; $i -lt $SceneCount; $i++) {
-      $wFallback = 0.85 + (((($SeedValue + (($i + 1) * 13)) % 23) / 20.0))
+      $wFallback = 0.65 + (((($SeedValue + (($i + 1) * 13)) % 23) / 14.0))
       if ($i -eq 0) { $wFallback *= 0.85 }
       if ($i -eq ($SceneCount - 1)) { $wFallback *= 1.15 }
       $weights.Add([Math]::Max(0.25, $wFallback)) | Out-Null
+    }
+  }
+  else {
+    # Increase separation between dense and light narrative blocks without losing determinism.
+    for ($i = 0; $i -lt $weights.Count; $i++) {
+      $weights[$i] = [Math]::Pow([double]$weights[$i], 1.28)
     }
   }
 

@@ -336,7 +336,7 @@ function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$scen
       Where-Object {
         $_ -and
         $_.Length -ge 4 -and
-        $_ -notmatch '^(inicio|directo|idea|clara|frase|simple|facil|mantener|interes|contexto|lenguaje|breve|visual|problema|central|video|busca|resolver|cotidiana|reconocible|presentamos|introducimos|conectamos|marcamos|abrimos|segundo|tema|principal|escena|siguiente|claro|situacion|rec|visu|atencion|captar|recordar|promesa|concreta|mensaje|explicacion|concepto)$'
+        $_ -notmatch '^(inicio|directo|idea|clara|frase|simple|facil|fácil|mantener|interes|interés|contexto|lenguaje|breve|visual|problema|central|video|busca|resolver|cotidiana|cotidiano|reconocible|presentamos|introducimos|conectamos|marcamos|abrimos|segundo|tema|principal|escena|siguiente|claro|situacion|situación|rec|visu|atencion|atención|captar|recordar|promesa|concreta|mensaje|explicacion|explicación|concepto|facilmente|fácilmente|interesar|interesa|resolverlo|resuelve)$'
       } |
       Select-Object -First 2
   )

@@ -71,6 +71,39 @@ function Set-Note([object]$obj, [string]$name, $value) {
   else { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force }
 }
 
+
+function Get-SceneImageMetaTarget {
+  param([object]$Scene)
+
+  if (-not $Scene) { return $null }
+
+  if (-not ($Scene.PSObject.Properties.Name -contains "assets") -or -not $Scene.assets) {
+    $Scene | Add-Member -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{}) -Force
+  }
+
+  if (-not ($Scene.assets.PSObject.Properties.Name -contains "image") -or -not $Scene.assets.image) {
+    $Scene.assets | Add-Member -NotePropertyName image -NotePropertyValue @([pscustomobject]@{}) -Force
+  }
+  elseif ($Scene.assets.image -is [string]) {
+    $Scene.assets.image = @([pscustomobject]@{ path = [string]$Scene.assets.image })
+  }
+  elseif ($Scene.assets.image -isnot [System.Collections.IEnumerable] -or $Scene.assets.image -is [pscustomobject]) {
+    $Scene.assets.image = @($Scene.assets.image)
+  }
+
+  $imgs = @($Scene.assets.image)
+  if ($imgs.Count -lt 1) {
+    $Scene.assets.image = @([pscustomobject]@{})
+    $imgs = @($Scene.assets.image)
+  }
+
+  if ($null -eq $imgs[0]) {
+    $imgs[0] = [pscustomobject]@{}
+    $Scene.assets.image = $imgs
+  }
+
+  return $imgs[0]
+}
 function Tokenize([string]$text) {
   if (-not $text) { return @() }
   $t = $text.ToLowerInvariant()
@@ -659,8 +692,9 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
 
   Ensure-Pso -parent $scene -name "assets"
   Ensure-Pso -parent $scene.assets -name "image"
-  Set-Note -obj $scene.assets.image -name "query" -value $q
-  Set-Note -obj $scene.assets.image -name "query_candidates" -value $queryCandidates
+  $imgMeta = Get-SceneImageMetaTarget -Scene $scene
+    Set-Note -obj $imgMeta -name "query" -value $q
+  Set-Note -obj $imgMeta -name "query_candidates" -value $queryCandidates
 
   if (-not $DownloadPixabay) { continue }
 
@@ -698,12 +732,12 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
       }
     }
 
-    Set-Note -obj $scene.assets.image -name "provider" -value "pixabay"
-    Set-Note -obj $scene.assets.image -name "used_query" -value $usedQuery
-    Set-Note -obj $scene.assets.image -name "hits_count" -value $hits.Count
+    Set-Note -obj $imgMeta -name "provider" -value "pixabay"
+    Set-Note -obj $imgMeta -name "used_query" -value $usedQuery
+    Set-Note -obj $imgMeta -name "hits_count" -value $hits.Count
 
     if ($hits.Count -lt 1) {
-      Set-Note -obj $scene.assets.image -name "note" -value "pixabay: 0 hits"
+      Set-Note -obj $imgMeta -name "note" -value "pixabay: 0 hits"
       $withoutHits++
       continue
     }
@@ -716,7 +750,7 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
       $url = [string]$hit.url
     }
     if (-not $url) {
-      Set-Note -obj $scene.assets.image -name "note" -value "pixabay: hit sin .url"
+      Set-Note -obj $imgMeta -name "note" -value "pixabay: hit sin .url"
       $withErrors++
       continue
     }
@@ -729,14 +763,14 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     $outPath = Join-Path $outDir ("scene_{0:000}.jpg" -f ($i + 1))
     & $dl -Url $url -OutPath $outPath | Out-Null
 
-    Set-Note -obj $scene.assets.image -name "path" -value (Resolve-Path -LiteralPath $outPath).Path
-    Set-Note -obj $scene.assets.image -name "picked_index" -value $idx
-    Set-Note -obj $scene.assets.image -name "source_url" -value $url
+    Set-Note -obj $imgMeta -name "path" -value (Resolve-Path -LiteralPath $outPath).Path
+    Set-Note -obj $imgMeta -name "picked_index" -value $idx
+    Set-Note -obj $imgMeta -name "source_url" -value $url
     $downloaded++
   }
   catch {
-    Set-Note -obj $scene.assets.image -name "provider" -value "pixabay"
-    Set-Note -obj $scene.assets.image -name "note" -value ("pixabay error: " + $_.Exception.Message)
+    Set-Note -obj $imgMeta -name "provider" -value "pixabay"
+    Set-Note -obj $imgMeta -name "note" -value ("pixabay error: " + $_.Exception.Message)
     $withErrors++
   }
   finally {

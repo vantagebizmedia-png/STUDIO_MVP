@@ -407,7 +407,7 @@ IMAGE_STRATEGY_RULES = [
     {
         "reason": "wellness_lifestyle_detected",
         "image_source_mode": "stock",
-        "image_provider_override": "pixabay_images",
+        "image_provider_override": "pixabay_image",
         "stock_query": "person healthy routine meditation exercise calm lifestyle vertical portrait",
         "keywords": [
             "ejercicio", "exercise", "meditacion", "meditación", "meditation",
@@ -418,7 +418,7 @@ IMAGE_STRATEGY_RULES = [
     {
         "reason": "kitchen_lifestyle_detected",
         "image_source_mode": "stock",
-        "image_provider_override": "pixabay_images",
+        "image_provider_override": "pixabay_image",
         "stock_query": "person cooking in kitchen at home vertical portrait",
         "keywords": [
             "cocina", "kitchen", "cooking", "cook", "meal", "comida",
@@ -428,7 +428,7 @@ IMAGE_STRATEGY_RULES = [
     {
         "reason": "phone_social_detected",
         "image_source_mode": "stock",
-        "image_provider_override": "pixabay_images",
+        "image_provider_override": "pixabay_image",
         "stock_query": "person using smartphone at home vertical portrait",
         "keywords": [
             "telefono", "teléfono", "phone", "smartphone", "redes sociales",
@@ -438,7 +438,7 @@ IMAGE_STRATEGY_RULES = [
     {
         "reason": "organization_workspace_detected",
         "image_source_mode": "stock",
-        "image_provider_override": "pixabay_images",
+        "image_provider_override": "pixabay_image",
         "stock_query": "organized desk workspace cleanup home office vertical portrait",
         "keywords": [
             "organizar", "organizado", "organized", "organize",
@@ -449,7 +449,7 @@ IMAGE_STRATEGY_RULES = [
     {
         "reason": "finance_business_detected",
         "image_source_mode": "stock",
-        "image_provider_override": "pixabay_images",
+        "image_provider_override": "pixabay_image",
         "stock_query": "business person planning money finances laptop desk vertical portrait",
         "keywords": [
             "dinero", "money", "finanzas", "finance", "budget", "presupuesto",
@@ -459,7 +459,7 @@ IMAGE_STRATEGY_RULES = [
     {
         "reason": "productivity_office_detected",
         "image_source_mode": "stock",
-        "image_provider_override": "pixabay_images",
+        "image_provider_override": "pixabay_image",
         "stock_query": "productive person working at desk laptop home office vertical portrait",
         "keywords": [
             "disciplina", "discipline", "productividad", "productivity",
@@ -474,7 +474,7 @@ IMAGE_STRATEGY_RULES = [
 IMAGE_STRATEGY_DEFAULT = {
     "reason": "default_real_world_stock",
     "image_source_mode": "stock",
-    "image_provider_override": "pixabay_images",
+    "image_provider_override": "pixabay_image",
     "stock_query": "person explaining topic in modern studio vertical portrait",
 }
 

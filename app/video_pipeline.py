@@ -378,7 +378,7 @@ def main() -> None:
 
         chosen_provider_name = provider_override
         if not chosen_provider_name and image_source_mode == "stock":
-            chosen_provider_name = "pixabay_images"
+            chosen_provider_name = "pixabay_image"
 
         current_img = default_img
         if chosen_provider_name:

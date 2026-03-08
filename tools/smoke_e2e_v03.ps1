@@ -26,6 +26,7 @@ Write-Host "== SMOKE E2E v0.3 ==" -ForegroundColor Cyan
 Write-Host ("Repo      : {0}" -f $repo)
 Write-Host ("Workspace : {0}" -f $WorkspaceRoot)
 Write-Host ("MaxScenes : {0}" -f $MaxScenes)
+Write-Host ("Seed      : {0}" -f $Seed)
 Write-Host ("FailFast  : {0}" -f [bool]$FailFast)
 Write-Host ("DoHandoff : {0}" -f [bool]$DoHandoff)
 Write-Host ("Fast      : {0}" -f [bool]$Fast)
@@ -73,6 +74,28 @@ function Invoke-StepSafe {
   }
 }
 
+function Assert-FileExists {
+  param(
+    [Parameter(Mandatory=$true)][string]$Path,
+    [Parameter(Mandatory=$true)][string]$Label
+  )
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    throw ("Falta output requerido: {0} -> {1}" -f $Label, $Path)
+  }
+
+  $item = Get-Item -LiteralPath $Path
+  if ($item.PSIsContainer) {
+    throw ("Se esperaba archivo y se encontró directorio: {0} -> {1}" -f $Label, $Path)
+  }
+
+  if ($item.Length -le 0) {
+    throw ("Archivo vacío: {0} -> {1}" -f $Label, $Path)
+  }
+
+  Write-Host ("OK output: {0} -> {1} bytes" -f $Label, $item.Length) -ForegroundColor Green
+}
+
 $checkProviders = Join-Path $repo "tools\check_providers_cfg_v03.ps1"
 $smokeLive      = Join-Path $repo "tools\smoke_live_to_workspace_v03.ps1"
 $sceneBuilder   = Join-Path $repo "tools\apply_scene_builder_v03.ps1"
@@ -86,8 +109,12 @@ $ensureOutputs  = Join-Path $repo "tools\ensure_outputs_live_v03.ps1"
 $finalize       = Join-Path $repo "tools\finalize_handoff_v03.ps1"
 $handoffPack    = Join-Path $repo "tools\handoff_pack_v03.ps1"
 
-$liveDir  = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
-$manifest = Join-Path $liveDir "manifest_v03.json"
+$liveDir         = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
+$manifest        = Join-Path $liveDir "manifest_v03.json"
+$videoBase       = Join-Path $liveDir "video.mp4"
+$videoFinal      = Join-Path $liveDir "video_final.mp4"
+$captionsFile    = Join-Path $liveDir "captions_v03.srt"
+$handoffZip      = Join-Path $liveDir "handoff_v03\handoff_v03.zip"
 
 $sceneBuilderMax = [Math]::Max(40, ($MaxScenes * 6))
 
@@ -116,7 +143,6 @@ Invoke-StepSafe -Label "[4/13] smoke_live_manifest_v03.ps1" -FilePath $smokeMani
   "-MaxScenes", "$sceneBuilderMax"
 )
 
-# RENDER BASE OBLIGATORIO: genera video.mp4 antes de subtítulos
 Invoke-StepSafe -Label "[5/13] finalize_pack_v03.ps1" -FilePath $finalizePack -Arguments @(
   "-PackDir", $liveDir,
   "-Fit", "crop"
@@ -136,8 +162,7 @@ Invoke-StepSafe -Label "[8/13] smoke_quality_live_v03.ps1" -FilePath $qualitySmo
 )
 
 Invoke-StepSafe -Label "[9/13] ensure_outputs_live_v03.ps1" -FilePath $ensureOutputs -Arguments @(
-  "-LiveDir", $liveDir,
-  "-Seed", "$Seed"
+  "-LiveDir", $liveDir
 )
 
 if ($DoHandoff) {
@@ -161,8 +186,27 @@ if ($DoHandoff) {
 
   Invoke-StepSafe -Label "[12/13] handoff_pack_v03.ps1" -FilePath $handoffPack -Arguments @(
     "-InDir", (Join-Path $liveDir "handoff_v03"),
-    "-OutZip", (Join-Path $liveDir "handoff_v03\handoff_v03.zip")
+    "-OutZip", $handoffZip
   )
+}
+
+Write-Host ""
+Write-Host "== VALIDACIÓN OUTPUTS ==" -ForegroundColor Cyan
+
+try {
+  Assert-FileExists -Path $videoBase    -Label "video.mp4"
+  Assert-FileExists -Path $videoFinal   -Label "video_final.mp4"
+  Assert-FileExists -Path $captionsFile -Label "captions_v03.srt"
+
+  if ($DoHandoff) {
+    Assert-FileExists -Path $handoffZip -Label "handoff_v03.zip"
+  }
+}
+catch {
+  $msg = ("VALIDACIÓN OUTPUTS :: {0}" -f $_.Exception.Message)
+  $script:StepErrors.Add($msg) | Out-Null
+  Write-Host ("ERROR: {0}" -f $_.Exception.Message) -ForegroundColor Red
+  if ($FailFast) { throw }
 }
 
 Write-Host ""
@@ -175,4 +219,4 @@ if ($script:StepErrors.Count -gt 0) {
   throw ("SMOKE FAIL: total errores = {0}" -f $script:StepErrors.Count)
 }
 
-Write-Host "SMOKE OK: E2E v0.3 (LIVE(workspace) + render base + scene_builder + subtitles + optional handoff)" -ForegroundColor Green
+Write-Host "SMOKE OK: E2E v0.3 limpio (video.mp4 + video_final.mp4 + captions + optional handoff)" -ForegroundColor Green

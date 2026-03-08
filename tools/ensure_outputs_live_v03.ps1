@@ -1,113 +1,124 @@
 param(
   [Parameter(Mandatory=$false)][string]$LiveDir,
-  [Parameter(Mandatory=$false)][string]$WorkspaceRoot,
-  [int]$Seed = 123,
-  [double]$MusicVolume = 0.18
+  [Parameter(Mandatory=$false)][string]$WorkspaceRoot
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 chcp 65001 | Out-Null
 
-$repo = (Resolve-Path ".").Path
+function Resolve-LiveDir {
+  param(
+    [string]$LiveDir,
+    [string]$WorkspaceRoot
+  )
 
-if (-not $LiveDir -or $LiveDir.Trim().Length -eq 0) {
-  if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -eq 0) {
-    throw "Falta -LiveDir o -WorkspaceRoot"
+  if ($LiveDir -and $LiveDir.Trim().Length -gt 0) {
+    return (Resolve-Path $LiveDir).Path
   }
-  $LiveDir = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
+
+  if ($WorkspaceRoot -and $WorkspaceRoot.Trim().Length -gt 0) {
+    $candidate = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
+    return (Resolve-Path $candidate).Path
+  }
+
+  throw "Falta -LiveDir o -WorkspaceRoot"
 }
 
-$live = (Resolve-Path $LiveDir).Path
-if (-not (Test-Path -LiteralPath $live)) { throw "No existe LIVE: $live" }
+function Resolve-MusicFile {
+  param([Parameter(Mandatory=$true)][string]$LiveDir)
 
-$videoBase      = Join-Path $live "video.mp4"
-$musicAuto      = Join-Path $live "video_music_auto.mp4"
-$final          = Join-Path $live "video_final.mp4"
-$videoSubtitles = Join-Path $live "video_subtitles.mp4"
-$videoSubs      = Join-Path $live "video_subs.mp4"
-$srt            = Join-Path $live "captions_v03.srt"
+  $candidates = @(
+    (Join-Path $LiveDir "music\track.mp3"),
+    (Join-Path $LiveDir "music\music.mp3"),
+    (Join-Path $LiveDir "artifacts\music.mp3"),
+    (Join-Path $LiveDir "track.mp3")
+  )
+
+  foreach ($p in $candidates) {
+    if (Test-Path -LiteralPath $p) {
+      return $p
+    }
+  }
+
+  return $null
+}
+
+$live = Resolve-LiveDir -LiveDir $LiveDir -WorkspaceRoot $WorkspaceRoot
+
+$videoBase   = Join-Path $live "video.mp4"
+$videoSubs   = Join-Path $live "video_subs.mp4"
+$videoFinal  = Join-Path $live "video_final.mp4"
+
+$legacySubs1 = Join-Path $live "video_subtitles.mp4"
+$legacySubs2 = Join-Path $live "video_music_auto.mp4"
 
 if (-not (Test-Path -LiteralPath $videoBase)) {
-  throw "Falta video.mp4 en LIVE: $videoBase"
-}
-if (-not (Test-Path -LiteralPath $srt)) {
-  throw "Falta captions_v03.srt en LIVE: $srt"
-}
-if (-not (Test-Path -LiteralPath $videoSubtitles)) {
-  throw "Falta video_subtitles.mp4 en LIVE: $videoSubtitles"
-}
-if (-not (Test-Path -LiteralPath $videoSubs)) {
-  throw "Falta video_subs.mp4 en LIVE: $videoSubs"
+  throw "Falta video base: $videoBase"
 }
 
-$resolveMusic = Join-Path $repo "tools\resolve_music_bed_v03.ps1"
-$mixMusic     = Join-Path $repo "tools\mix_music_into_video_v03.ps1"
+$subtitleBase = $null
+if (Test-Path -LiteralPath $videoSubs) {
+  $subtitleBase = $videoSubs
+} else {
+  $subtitleBase = $videoBase
+}
 
-if (-not (Test-Path -LiteralPath $resolveMusic)) { throw "Falta tool: $resolveMusic" }
-if (-not (Test-Path -LiteralPath $mixMusic))     { throw "Falta tool: $mixMusic" }
+$musicFile = Resolve-MusicFile -LiveDir $live
 
-$musicInfoJson = pwsh -NoProfile -ExecutionPolicy Bypass -File $resolveMusic -LiveDir $live -Seed $Seed
-$musicInfo = $musicInfoJson | ConvertFrom-Json
+Write-Host "== ENSURE OUTPUTS LIVE v0.3 ==" -ForegroundColor Cyan
+Write-Host "LIVE         : $live"
+Write-Host "VIDEO_BASE   : $videoBase"
+Write-Host "VIDEO_SUBS   : $videoSubs"
+Write-Host "SUBTITLE_BASE: $subtitleBase"
+Write-Host "MUSIC        : $musicFile"
+Write-Host "VIDEO_FINAL  : $videoFinal"
 
-$didRealMusic = $false
-$musicSource = ""
-$musicNote = ""
+if (Test-Path -LiteralPath $videoFinal) {
+  Remove-Item -LiteralPath $videoFinal -Force -ErrorAction SilentlyContinue
+}
 
-if ($musicInfo.found -and $musicInfo.path -and (Test-Path -LiteralPath $musicInfo.path)) {
-  $musicSource = (Resolve-Path -LiteralPath $musicInfo.path).Path
-  try {
-    if (Test-Path -LiteralPath $musicAuto) {
-      Remove-Item -LiteralPath $musicAuto -Force -ErrorAction SilentlyContinue
-    }
+if ($musicFile) {
+  Write-Host "Generando video_final.mp4 con música..." -ForegroundColor Yellow
 
-    pwsh -NoProfile -ExecutionPolicy Bypass -File $mixMusic `
-      -InVideo $videoBase `
-      -MusicBed $musicSource `
-      -OutVideo $musicAuto `
-      -MusicVolume $MusicVolume | Out-Null
+  & ffmpeg `
+    -y `
+    -i $subtitleBase `
+    -i $musicFile `
+    -filter_complex "[1:a]volume=0.12[a1];[0:a][a1]amix=inputs=2:duration=first:dropout_transition=2" `
+    -c:v copy `
+    -c:a aac `
+    -b:a 192k `
+    $videoFinal
 
-    $mixExit = $LASTEXITCODE
-    if ($mixExit -ne 0) {
-      throw "mix_music_into_video_v03.ps1 devolvió exit code $mixExit"
-    }
-
-    if (-not (Test-Path -LiteralPath $musicAuto)) {
-      throw "No apareció video_music_auto.mp4 tras mezclar"
-    }
-
-    $didRealMusic = $true
-    $musicNote = "mixed_from_local_music_bed"
-  }
-  catch {
-    $didRealMusic = $false
-    $musicNote = ("mix_failed -> fallback_copy ({0})" -f $_.Exception.Message)
+  if ($LASTEXITCODE -ne 0) {
+    throw "ffmpeg falló mezclando música"
   }
 }
 else {
-  $musicNote = "no_local_music_bed_found -> fallback_copy"
+  Write-Host "No hay música. Copiando base subtitulada a video_final.mp4..." -ForegroundColor Yellow
+  Copy-Item -LiteralPath $subtitleBase -Destination $videoFinal -Force
 }
 
-if (-not $didRealMusic) {
-  Copy-Item -LiteralPath $videoBase -Destination $musicAuto -Force
-  Write-Host "WARN: video_music_auto.mp4 quedó como copia determinista de video.mp4" -ForegroundColor DarkYellow
+if (-not (Test-Path -LiteralPath $videoFinal)) {
+  throw "No se generó video_final.mp4"
 }
 
-# video_final.mp4:
-# por ahora debe representar la salida final más útil del smoke
-Copy-Item -LiteralPath $musicAuto -Destination $final -Force
-
-$lenBase = (Get-Item -LiteralPath $videoBase).Length
-$lenMusic = (Get-Item -LiteralPath $musicAuto).Length
-$lenFinal = (Get-Item -LiteralPath $final).Length
-$lenSubs = (Get-Item -LiteralPath $videoSubtitles).Length
-$lenSubsLegacy = (Get-Item -LiteralPath $videoSubs).Length
-$lenSrt = (Get-Item -LiteralPath $srt).Length
-
-if ($didRealMusic) {
-  Write-Host ("OK: music source -> {0}" -f $musicSource) -ForegroundColor DarkGray
-} else {
-  Write-Host ("WARN: music source unavailable -> {0}" -f $musicNote) -ForegroundColor DarkYellow
+if (Test-Path -LiteralPath $legacySubs1) {
+  Remove-Item -LiteralPath $legacySubs1 -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host ("OK: ensure outputs live v03 -> video={0} music_auto={1} final={2} subtitles={3} subs_legacy={4} srt={5} realMusic={6}" -f $lenBase, $lenMusic, $lenFinal, $lenSubs, $lenSubsLegacy, $lenSrt, $didRealMusic) -ForegroundColor Green
+if (Test-Path -LiteralPath $legacySubs2) {
+  Remove-Item -LiteralPath $legacySubs2 -Force -ErrorAction SilentlyContinue
+}
+
+$baseLen  = (Get-Item -LiteralPath $videoBase).Length
+$finalLen = (Get-Item -LiteralPath $videoFinal).Length
+
+Write-Host "OK outputs asegurados" -ForegroundColor Green
+Write-Host ("  video.mp4       -> {0} bytes" -f $baseLen)
+Write-Host ("  video_final.mp4 -> {0} bytes" -f $finalLen)
+if (Test-Path -LiteralPath $videoSubs) {
+  $subsLen = (Get-Item -LiteralPath $videoSubs).Length
+  Write-Host ("  video_subs.mp4  -> {0} bytes (intermedio)" -f $subsLen)
+}

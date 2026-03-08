@@ -276,16 +276,16 @@ function Get-ConcreteSceneTerms([string[]]$terms, [int]$Top = 4) {
     if ($w -match '\d') { continue }
     if ($w -match '^(photo|scene|video|visual|lifestyle|real|life|persona|person)$') { continue }
 
+    if ($w -match '^(inicio|directo|idea|clara|frase|simple|facil|fácil|mantener|interes|interés|contexto|lenguaje|breve|visual|problema|central|video|busca|resolver|cotidiana|cotidiano|reconocible|presentamos|introducimos|conectamos|marcamos|abrimos|segundo|tema|principal|escena|siguiente|claro|situacion|situación|rec|visu|atencion|atención|captar|recordar|promesa|concreta|mensaje|explicacion|explicación|concepto)$') {
+      continue
+    }
+
     $score = 0.0
 
     if ($VISUAL -contains $w)   { $score += 5.0 } else { $score += 0.5 }
     if ($ABSTRACT -contains $w) { $score -= 4.0 }
 
-    if ($w -match '^(inicio|directo|idea|clara|frase|simple|facil|mantener|interes|contexto|lenguaje|breve|visual|problema|central|video|busca|resolver|cotidiana|reconocible|presentamos|introducimos|conectamos|marcamos|abrimos|segundo|tema|principal|escena|siguiente|claro|situacion|rec|visu)$') {
-      $score -= 6.0
-    }
-
-    if ($w -match '(ando|iendo|ados|adas|able|ibles|mente|cion|sion|dad|ez)$') {
+    if ($w -match '(ando|iendo|ados|adas|able|ibles|mente|cion|ción|sion|dad|ez)$') {
       $score -= 2.5
     }
 

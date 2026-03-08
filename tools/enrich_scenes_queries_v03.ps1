@@ -1,6 +1,9 @@
 param(
   [Parameter(Mandatory=$true)][string]$WorkspaceRoot,
   [int]$Seed = 123,
+  [int]$MinScenes = 8,
+  [int]$MaxScenes = 40,
+  [switch]$Force,
   [int]$TopK = 6,
   [switch]$DownloadPixabay,
   [string]$PixabayApiKey = "",
@@ -145,6 +148,7 @@ function DeriveKeywords([string]$text, [int]$Top, [int]$SceneSeed) {
       ForEach-Object { $_.w }
   )
 }
+
 function Get-SceneText([object]$scene) {
   foreach ($k in @("script_text", "image_query", "text", "caption", "narration")) {
     $v = Get-PropValue $scene $k
@@ -310,6 +314,7 @@ function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$scen
       Select-Object -Unique
   )
 }
+
 function Resolve-Manifest([string]$Root) {
   $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path
   $candidates = @(
@@ -382,6 +387,13 @@ elseif ($json.scenes_v03 -is [System.Collections.IDictionary]) { $scenes = @($js
 else { $scenes = @($json.scenes_v03) }
 
 if ($scenes.Count -lt 1) { throw "scenes_v03 esta vacio" }
+
+if ($scenes.Count -lt $MinScenes) {
+  Write-Host ("WARN: scenes_v03 por debajo de MinScenes. scenes={0} min={1}" -f $scenes.Count, $MinScenes) -ForegroundColor Yellow
+}
+if ($scenes.Count -gt $MaxScenes) {
+  Write-Host ("WARN: scenes_v03 por encima de MaxScenes. scenes={0} max={1}" -f $scenes.Count, $MaxScenes) -ForegroundColor Yellow
+}
 
 $topic = Try-GetTopic $json
 $manifestDir = Split-Path -Parent $manifest
@@ -490,14 +502,6 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     Set-Note -obj $scene.assets.image -name "picked_index" -value $idx
     Set-Note -obj $scene.assets.image -name "source_url" -value $url
     $downloaded++
-  }
-  catch {
-    Set-Note -obj $scene.assets.image -name "provider" -value "pixabay"
-    Set-Note -obj $scene.assets.image -name "note" -value ("pixabay error: " + $_.Exception.Message)
-    $withErrors++
-  }
-  finally {
-    $env:PIXABAY_API_KEY = $prev
   }
   catch {
     Set-Note -obj $scene.assets.image -name "provider" -value "pixabay"

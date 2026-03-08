@@ -259,17 +259,25 @@ function Get-ConcreteSceneTerms([string[]]$terms, [int]$Top = 4) {
     if (-not $w) { continue }
     if ($STOP -contains $w) { continue }
 
+    if ($w.Length -lt 4) { continue }
+    if ($w.Length -gt 18) { continue }
+    if ($w -match '\d') { continue }
+    if ($w -match '^(photo|scene|video|visual|lifestyle|real|life|persona|person)$') { continue }
+
     $score = 0.0
 
-    if ($VISUAL -contains $w)   { $score += 4.0 } else { $score += 1.0 }
-    if ($ABSTRACT -contains $w) { $score -= 3.0 }
+    if ($VISUAL -contains $w)   { $score += 5.0 } else { $score += 0.5 }
+    if ($ABSTRACT -contains $w) { $score -= 4.0 }
 
-    if ($w -match '^(inicio|directo|idea|clara|frase|simple|facil|mantener|interes|contexto|lenguaje|breve|visual|problema|central|video|busca|resolver|cotidiana|reconocible|presentamos|introducimos|conectamos|marcamos|abrimos)$') {
-      $score -= 3.5
+    if ($w -match '^(inicio|directo|idea|clara|frase|simple|facil|mantener|interes|contexto|lenguaje|breve|visual|problema|central|video|busca|resolver|cotidiana|reconocible|presentamos|introducimos|conectamos|marcamos|abrimos|segundo|tema|principal|escena|siguiente|claro|situacion|rec|visu)$') {
+      $score -= 6.0
     }
 
-    if ($w.Length -ge 4 -and $w.Length -le 12) { $score += 0.5 }
-    if ($w.Length -gt 16) { $score -= 0.5 }
+    if ($w -match '(ando|iendo|ados|adas|able|ibles|mente|cion|sion|dad|ez)$') {
+      $score -= 2.5
+    }
+
+    if ($w.Length -ge 5 -and $w.Length -le 12) { $score += 0.5 }
 
     $items.Add([pscustomobject]@{
       term  = $w
@@ -280,6 +288,7 @@ function Get-ConcreteSceneTerms([string[]]$terms, [int]$Top = 4) {
 
   return @(
     $items |
+      Where-Object { $_.score -ge 4.5 } |
       Sort-Object `
         @{ Expression = "score"; Descending = $true }, `
         @{ Expression = "hash";  Descending = $false } |
@@ -287,7 +296,6 @@ function Get-ConcreteSceneTerms([string[]]$terms, [int]$Top = 4) {
       Select-Object -First $Top
   )
 }
-
 function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$sceneText, [string[]]$kws, [int]$SceneIndex) {
   $topicN = Normalize-QueryText $topic 40
   $imgqN  = Normalize-QueryText $imageQuery 56
@@ -310,7 +318,6 @@ function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$scen
   $anchors = @(Get-VisualAnchorTerms -terms $anchorTerms)
   $concreteTerms = @(Get-ConcreteSceneTerms -terms $anchorTerms -Top 4)
   $concreteTop2 = @($concreteTerms | Select-Object -First 2)
-  $concreteTop4 = @($concreteTerms | Select-Object -First 4)
 
   $candidates = New-Object System.Collections.Generic.List[string]
 
@@ -321,31 +328,27 @@ function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$scen
     }
   }
 
-  $subject2 = ""
-  if ($concreteTop2.Count -gt 0) { $subject2 = ($concreteTop2 -join " ") }
+  foreach ($anchor in $anchors) {
+    Add-Candidate "$anchor photo"
+    if ($topicN) { Add-Candidate "$topicN $anchor photo" }
+  }
 
-  $subject4 = ""
-  if ($concreteTop4.Count -gt 0) { $subject4 = ($concreteTop4 -join " ") }
-
-  if ($imgqN) {
-    Add-Candidate "$imgqN photo"
-    if ($subject2) { Add-Candidate "$imgqN $subject2 photo" }
-    if ($topicN)   { Add-Candidate "$topicN $imgqN photo" }
+  if ($imgqN -and $concreteTop2.Count -gt 0) {
+    Add-Candidate "$imgqN $($concreteTop2 -join ' ') photo"
   }
 
   foreach ($anchor in $anchors) {
-    if ($subject2) { Add-Candidate "$anchor $subject2 photo" }
-    Add-Candidate "$anchor photo"
-    if ($topicN)   { Add-Candidate "$topicN $anchor photo" }
+    if ($concreteTop2.Count -gt 0) {
+      Add-Candidate "$anchor $($concreteTop2 -join ' ') photo"
+    }
   }
 
-  if ($subject4) {
-    Add-Candidate "$subject4 photo"
-    if ($topicN) { Add-Candidate "$topicN $subject4 photo" }
+  if ($topicN -and $concreteTop2.Count -gt 0) {
+    Add-Candidate "$topicN $($concreteTop2 -join ' ') photo"
   }
 
-  if ($topicN -and $subject2) {
-    Add-Candidate "$topicN $subject2 photo"
+  if ($imgqN) {
+    Add-Candidate "$imgqN photo"
   }
 
   if ($topicN) {

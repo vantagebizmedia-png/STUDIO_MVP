@@ -76,3 +76,7 @@ captions_v03.srt
 captions_v03*.srt
 video_subtitles.mp4
 video_subs.mp4
+# STUDIO_MVP - music local/demo artifacts
+music/*.mp3
+music/*.wav
+!music/.gitkeep

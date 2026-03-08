@@ -94,15 +94,28 @@ function Build-SceneTexts {
 
   $totalParts = @($cleanParts).Count
   $effectiveSceneCount = [Math]::Max(1, [Math]::Min($SceneCount, $totalParts))
+  $partMeta = New-Object System.Collections.Generic.List[pscustomobject]
   $totalWords = 0
+  $totalStrongPunct = 0
 
   foreach ($p in $cleanParts) {
-    $wc = @([regex]::Matches([string]$p, '\S+')).Count
+    $txt = [string]$p
+    $wc = @([regex]::Matches($txt, '\S+')).Count
     if ($wc -lt 1) { $wc = 1 }
+    $pc = @([regex]::Matches($txt, '[\.\!\?\:\;]')).Count
+    $partMeta.Add([pscustomobject]@{
+      text = $txt
+      words = $wc
+      punct = $pc
+      endsStrong = [bool]($txt -match '[\.\!\?\:\;]\s*$')
+    }) | Out-Null
     $totalWords += $wc
+    $totalStrongPunct += $pc
   }
 
-  $avgWordsPerScene = [Math]::Max(6, [int][Math]::Round($totalWords / [double]$effectiveSceneCount))
+  $targetWordsPerScene = [Math]::Max(6, [int][Math]::Round($totalWords / [double]$effectiveSceneCount))
+  $targetPunctPerScene = [int][Math]::Round($totalStrongPunct / [double]$effectiveSceneCount)
+
   $result = New-Object System.Collections.Generic.List[string]
   $cursor = 0
 
@@ -111,7 +124,8 @@ function Build-SceneTexts {
     $remainingParts = $totalParts - $cursor
 
     if ($remainingScenes -le 1) {
-      $tail = ($cleanParts[$cursor..($totalParts - 1)] -join " ").Trim()
+      $tail = ($partMeta[$cursor..($totalParts - 1)] | ForEach-Object { [string]$_.text }) -join " "
+      $tail = ($tail -replace "\s+", " ").Trim()
       $result.Add(($tail -replace "\s+", " ")) | Out-Null
       $cursor = $totalParts
       continue
@@ -120,32 +134,35 @@ function Build-SceneTexts {
     $maxTake = $remainingParts - ($remainingScenes - 1)
     if ($maxTake -lt 1) { $maxTake = 1 }
 
-    $sceneWordTarget = [Math]::Max(5, $avgWordsPerScene + ((($i % 3) - 1) * 2))
     $take = 0
     $accWords = 0
+    $accPunct = 0
 
     while ($take -lt $maxTake) {
-      $part = [string]$cleanParts[$cursor + $take]
-      $wc = @([regex]::Matches($part, '\S+')).Count
-      if ($wc -lt 1) { $wc = 1 }
-
-      $accWords += $wc
+      $m = $partMeta[$cursor + $take]
+      $accWords += [int]$m.words
+      $accPunct += [int]$m.punct
       $take++
 
-      if ($take -ge 1 -and $accWords -ge $sceneWordTarget) { break }
-      if ($accWords -ge [int]($sceneWordTarget * 1.5)) { break }
+      if ($take -lt 1) { continue }
+
+      $reachedWordBalance = ($accWords -ge $targetWordsPerScene)
+      $reachedPunctBalance = ($targetPunctPerScene -le 0) -or ($accPunct -ge [Math]::Max(1, [int][Math]::Floor($targetPunctPerScene * 0.6)))
+      $isStrongBoundary = [bool]$m.endsStrong
+      $enoughContext = ($accWords -ge [int][Math]::Floor($targetWordsPerScene * 0.75))
+      $tooLong = ($accWords -ge [int][Math]::Ceiling($targetWordsPerScene * 1.8))
+
+      if ($reachedWordBalance -and $reachedPunctBalance) { break }
+      if ($isStrongBoundary -and $enoughContext) { break }
+      if ($tooLong) { break }
     }
 
     if ($take -lt 1) { $take = 1 }
 
-    $chunk = @()
-    for ($j = 0; $j -lt $take; $j++) {
-      $chunk += [string]$cleanParts[$cursor + $j]
-    }
-
+    $chunk = @($partMeta[$cursor..($cursor + $take - 1)] | ForEach-Object { [string]$_.text })
     $text = (($chunk -join " ") -replace "\s+", " ").Trim()
     if ([string]::IsNullOrWhiteSpace($text)) {
-      $text = [string]$cleanParts[$cursor]
+      $text = [string]$partMeta[$cursor].text
     }
 
     $result.Add($text) | Out-Null

@@ -486,74 +486,7 @@ function Sync-PackCompat {
   [System.IO.File]::WriteAllText($packJsonPath, ($packCompat | ConvertTo-Json -Depth 50), $utf8NoBomPack)
 }
 
-function Sync-PackCompat {
-  param(
-    [Parameter(Mandatory=$true)]$ManifestObj,
-    [Parameter(Mandatory=$true)][string]$LiveDir
-  )
 
-  $packCompatScenes = @()
-
-  foreach ($scene in @($ManifestObj.scenes_v03)) {
-    $imgPath = ""
-    try {
-      if ($scene.assets -and $scene.assets.image) {
-        if (($scene.assets.image -is [System.Collections.IEnumerable]) -and -not ($scene.assets.image -is [string])) {
-          $firstImg = @($scene.assets.image)[0]
-          if ($firstImg) {
-            if ($firstImg -is [string]) {
-              $imgPath = [string]$firstImg
-            }
-            elseif ($firstImg.PSObject.Properties["path"] -and $firstImg.path) {
-              $imgPath = [string]$firstImg.path
-            }
-          }
-        }
-        elseif ($scene.assets.image -is [string]) {
-          $imgPath = [string]$scene.assets.image
-        }
-      }
-    }
-    catch { $imgPath = "" }
-
-    $audioPath = ""
-    try {
-      if ($scene.assets -and $scene.assets.audio_clip) {
-        $audioPath = [string]$scene.assets.audio_clip
-      }
-    }
-    catch { $audioPath = "" }
-
-    $packCompatScenes += [pscustomobject]@{
-      id         = [string]$scene.id
-      index      = [int](([string]$scene.id -replace '[^\d]',''))
-      text       = [string]$scene.text
-      narration  = [string]$scene.text
-      onscreen   = [string]$scene.text
-      audio_text = [string]$scene.text
-      image      = $imgPath
-      audio      = $audioPath
-      start_ms   = [int]$scene.start_ms
-      end_ms     = [int]$scene.end_ms
-    }
-  }
-
-  $packCompat = [pscustomobject]@{
-    version = "v03"
-    script = [string]$ManifestObj.script
-    scenes = $packCompatScenes
-    scenes_v03 = $ManifestObj.scenes_v03
-    audio_clips = $ManifestObj.audio_clips
-    artifacts = [pscustomobject]@{
-      image = [string]$ManifestObj.artifacts.image
-      audio = [string]$ManifestObj.artifacts.audio
-    }
-  }
-
-  $packJsonPath = Join-Path $LiveDir "pack.json"
-  $utf8NoBomPack = [System.Text.UTF8Encoding]::new($false)
-  [System.IO.File]::WriteAllText($packJsonPath, ($packCompat | ConvertTo-Json -Depth 50), $utf8NoBomPack)
-}
 
 if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -eq 0) {
   if (-not $PackDir -or $PackDir.Trim().Length -eq 0) {
@@ -866,9 +799,6 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
 $out = $m | ConvertTo-Json -Depth 50
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($manifest, $out, $utf8NoBom)
-
-Sync-PackCompat -ManifestObj $m -LiveDir $live
-Write-Host ("OK: pack.json resincronizado desde scenes_v03. scenes={0}" -f @($m.scenes_v03).Count) -ForegroundColor DarkGray
 
 Sync-PackCompat -ManifestObj $m -LiveDir $live
 Write-Host ("OK: pack.json resincronizado desde scenes_v03. scenes={0}" -f @($m.scenes_v03).Count) -ForegroundColor DarkGray

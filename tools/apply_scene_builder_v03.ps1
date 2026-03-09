@@ -822,6 +822,15 @@ elseif (-not [string]::IsNullOrWhiteSpace($env:OPENAI_STUDIO_PIXABAY_API_KEY)) {
   Write-Host "INFO: PIXABAY_API_KEY cargada desde OPENAI_STUDIO_PIXABAY_API_KEY" -ForegroundColor DarkYellow
 }
 
+if (-not [string]::IsNullOrWhiteSpace($pixabayKey)) {
+  $k = $pixabayKey.Trim()
+  if ($k -match 'PON_AQUI|YOUR_KEY|API_KEY|TU_KEY|PIXABAY_KEY|PLACEHOLDER') {
+    Write-Host "WARN: PIXABAY_API_KEY parece placeholder; se desactiva Pixabay para evitar falso positivo" -ForegroundColor Yellow
+    $pixabayKey = ""
+    $env:PIXABAY_API_KEY = ""
+  }
+}
+
 $assetsDir = Join-Path $live "assets\scenes_v03"
 if (-not (Test-Path -LiteralPath $assetsDir)) {
   New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null

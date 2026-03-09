@@ -34,6 +34,59 @@ function Normalize-ToArray {
   return @($Value)
 }
 
+function Get-PixabaySafeQuery {
+  param(
+    [string]$Text,
+    [int]$MaxChars = 100
+  )
+
+  $fallback = "motivacion"
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $fallback }
+
+  $q = $Text.Trim().ToLowerInvariant()
+  $q = $q -replace '[\r\n\t]+', ' '
+  $q = $q -replace '[^a-zA-Z0-9áéíóúüñÁÉÍÓÚÜÑ ]+', ' '
+  $q = $q -replace '\s+', ' '
+  $q = $q.Trim()
+
+  if ([string]::IsNullOrWhiteSpace($q)) { return $fallback }
+
+  $stop = @(
+    "el","la","los","las","un","una","unos","unas",
+    "de","del","al","y","o","u","que","se","su","sus",
+    "por","para","con","sin","en","a","desde","hasta",
+    "como","más","mas","muy","ya","no","sí","si",
+    "the","a","an","and","or","of","to","for","with","in","on"
+  )
+
+  $words = @(
+    $q -split '\s+' |
+    Where-Object { $_ -and $_.Length -ge 3 -and ($stop -notcontains $_) }
+  )
+
+  if (@($words).Count -eq 0) { return $fallback }
+
+  $selected = New-Object System.Collections.Generic.List[string]
+  foreach ($w in $words) {
+    if ($selected.Count -ge 8) { break }
+    if (-not $selected.Contains($w)) {
+      $selected.Add($w)
+    }
+  }
+
+  $short = ($selected -join ' ').Trim()
+  if ([string]::IsNullOrWhiteSpace($short)) { $short = $fallback }
+
+  if ($short.Length -gt $MaxChars) {
+    $short = $short.Substring(0, $MaxChars)
+    $short = $short -replace '\s+\S*$', ''
+    $short = $short.Trim()
+  }
+
+  if ([string]::IsNullOrWhiteSpace($short)) { return $fallback }
+  return $short
+}
+
 function Get-TotalAudioMs {
   param($AudioClips)
 
@@ -914,11 +967,8 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   $outRel  = ("assets/scenes_v03/{0}" -f $outName)
   $legacyImgAbs = Join-Path $legacySceneDir "image.png"
 
-  $q = [string]$scene.text
-  if ([string]::IsNullOrWhiteSpace($q) -or $q.Trim().Length -lt 3) {
-    $q = "motivación"
-  }
-  $q = $q.Trim()
+  $sceneTextRaw = [string]$scene.text
+  $q = Get-PixabaySafeQuery -Text $sceneTextRaw -MaxChars 100
 
   $canPixabay = $false
   if (-not $SkipPixabay) {
@@ -941,7 +991,30 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   if ($canPixabay) {
     try {
       if (-not (Test-Path -LiteralPath $cacheJson)) {
-        pwsh -NoProfile -ExecutionPolicy Bypass -File $pixQuery -Query $q -OutJsonPath $cacheJson -Seed $Seed | Out-Null
+        $env:PIXABAY_API_KEY = $pixabayKey
+
+        $pixOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $pixQuery `
+          -Query $q `
+          -OutJsonPath $cacheJson `
+          -Seed $Seed 2>&1
+
+        $pixExit = $LASTEXITCODE
+
+        if ($pixExit -ne 0) {
+          $pixMsg = (($pixOutput | ForEach-Object { "$_" }) -join " | ").Trim()
+          if ([string]::IsNullOrWhiteSpace($pixMsg)) {
+            $pixMsg = "sin output del subprocess"
+          }
+          throw "stock_query_pixabay_v03.ps1 falló. exit=$pixExit query='$q' detail=$pixMsg"
+        }
+
+        if (-not (Test-Path -LiteralPath $cacheJson)) {
+          $pixMsg = (($pixOutput | ForEach-Object { "$_" }) -join " | ").Trim()
+          if ([string]::IsNullOrWhiteSpace($pixMsg)) {
+            $pixMsg = "sin output del subprocess"
+          }
+          throw "stock_query_pixabay_v03.ps1 terminó sin crear JSON. query='$q' out='$cacheJson' detail=$pixMsg"
+        }
       }
 
       $cj = Get-Content -LiteralPath $cacheJson -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -952,6 +1025,9 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
       if ($hitsCount -gt 0) {
         $pickedIndex = ($Seed + $i) % $hitsCount
         $picked = [string]$hits[$pickedIndex].url
+      }
+      else {
+        Write-Host ("WARN: scene[{0}] Pixabay respondió 0 hits para query='{1}'" -f $i, $q) -ForegroundColor Yellow
       }
     }
     catch {

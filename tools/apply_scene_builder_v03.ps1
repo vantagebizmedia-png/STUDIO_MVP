@@ -812,6 +812,16 @@ if (-not (Test-Path -LiteralPath $cacheDir)) {
 $pixQuery = Join-Path $repo "tools\stock_query_pixabay_v03.ps1"
 $dlTool   = Join-Path $repo "tools\download_file_v03.ps1"
 
+$pixabayKey = ""
+if (-not [string]::IsNullOrWhiteSpace($env:PIXABAY_API_KEY)) {
+  $pixabayKey = [string]$env:PIXABAY_API_KEY
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:OPENAI_STUDIO_PIXABAY_API_KEY)) {
+  $pixabayKey = [string]$env:OPENAI_STUDIO_PIXABAY_API_KEY
+  $env:PIXABAY_API_KEY = $pixabayKey
+  Write-Host "INFO: PIXABAY_API_KEY cargada desde OPENAI_STUDIO_PIXABAY_API_KEY" -ForegroundColor DarkYellow
+}
+
 $assetsDir = Join-Path $live "assets\scenes_v03"
 if (-not (Test-Path -LiteralPath $assetsDir)) {
   New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
@@ -825,26 +835,41 @@ if (-not (Test-Path -LiteralPath $legacyScenesDir)) {
 
 # Asegurar clips físicos por escena para que smoke_live_manifest_v03 no falle
 $baseAudioRel = [string]$m.artifacts.audio
-$baseAudioAbs = $baseAudioRel
-if (-not [System.IO.Path]::IsPathRooted($baseAudioRel)) {
-  $baseAudioAbs = Join-Path $live ($baseAudioRel -replace '/', '\')
+$baseAudioAbs = Join-Path $live $baseAudioRel
+if (-not (Test-Path -LiteralPath $baseAudioAbs)) {
+  throw "No existe audio base para escenas: $baseAudioRel"
 }
-$baseAudioAbs = (Resolve-Path -LiteralPath $baseAudioAbs).Path
+
+$audioClipsDir = Join-Path $live "assets\audio_clips"
+if (-not (Test-Path -LiteralPath $audioClipsDir)) {
+  New-Item -ItemType Directory -Force -Path $audioClipsDir | Out-Null
+}
+
+$fallbackRel = [string]$m.artifacts.image
+$fallbackAbs = Join-Path $live $fallbackRel
+if (-not (Test-Path -LiteralPath $fallbackAbs)) {
+  $fallbackAbs = Join-Path $live "image_9bfb2d47.png"
+}
+if (-not (Test-Path -LiteralPath $fallbackAbs)) {
+  throw "No existe fallback de imagen: $fallbackRel"
+}
 
 for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   $scene = $m.scenes_v03[$i]
 
-  $clipRel = ("artifacts/audio_s{0:d2}.wav" -f ($i + 1))
-  $clipAbs = Join-Path $live ($clipRel -replace '/', '\')
-
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $clipAbs) | Out-Null
-  Copy-Item -LiteralPath $baseAudioAbs -Destination $clipAbs -Force
-
   if (-not $scene.assets) {
     $scene | Add-Member -Force -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{
-      audio_clip = $clipRel
+      audio_clip = ""
       image      = @([pscustomobject]@{ path = "" })
     })
+  }
+
+  $clipName = ("s{0:d2}.wav" -f ($i + 1))
+  $clipAbs  = Join-Path $audioClipsDir $clipName
+  $clipRel  = ("assets/audio_clips/{0}" -f $clipName)
+
+  if (-not (Test-Path -LiteralPath $clipAbs)) {
+    Copy-Item -LiteralPath $baseAudioAbs -Destination $clipAbs -Force
   }
 
   if (-not ($scene.assets.PSObject.Properties.Name -contains "audio_clip")) {
@@ -853,26 +878,10 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   else {
     $scene.assets.audio_clip = $clipRel
   }
-}
 
-$fallbackRel = [string]$m.artifacts.image
-$fallbackAbs = (Resolve-Path (Join-Path $live ($fallbackRel -replace '/', '\'))).Path
-
-for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
-  $scene = $m.scenes_v03[$i]
-
-  if (-not $scene.assets) {
-    $scene | Add-Member -Force -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{
-      audio_clip = ("artifacts/audio_s{0:d2}.wav" -f ($i + 1))
-      image      = @([pscustomobject]@{ path = "" })
-    })
-  }
-
-  if (-not ($scene.assets.PSObject.Properties.Name -contains "audio_clip") -or [string]::IsNullOrWhiteSpace([string]$scene.assets.audio_clip)) {
-    $scene.assets | Add-Member -Force -NotePropertyName audio_clip -NotePropertyValue ("artifacts/audio_s{0:d2}.wav" -f ($i + 1))
-  }
-  else {
-    $scene.assets.audio_clip = ("artifacts/audio_s{0:d2}.wav" -f ($i + 1))
+  $legacySceneDir = Join-Path $legacyScenesDir ("scene_{0:00}" -f ($i + 1))
+  if (-not (Test-Path -LiteralPath $legacySceneDir)) {
+    New-Item -ItemType Directory -Force -Path $legacySceneDir | Out-Null
   }
 
   if (-not ($scene.assets.PSObject.Properties.Name -contains "image") -or -not $scene.assets.image) {
@@ -882,14 +891,18 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
     $scene.assets.image = @([pscustomobject]@{ path = [string]$scene.assets.image })
   }
 
+  if ($scene.assets.PSObject.Properties.Name -contains "video") {
+    $scene.PSObject.Properties.Remove("assets") | Out-Null
+    $newAssets = [pscustomobject]@{
+      audio_clip = $clipRel
+      image      = @([pscustomobject]@{ path = "" })
+    }
+    $scene | Add-Member -Force -NotePropertyName assets -NotePropertyValue $newAssets
+  }
+
   $outName = ("scene_{0:000}.jpg" -f ($i + 1))
   $outAbs  = Join-Path $assetsDir $outName
   $outRel  = ("assets/scenes_v03/{0}" -f $outName)
-
-  $legacySceneDir = Join-Path $legacyScenesDir ("scene_{0:d2}" -f ($i + 1))
-  if (-not (Test-Path -LiteralPath $legacySceneDir)) {
-    New-Item -ItemType Directory -Force -Path $legacySceneDir | Out-Null
-  }
   $legacyImgAbs = Join-Path $legacySceneDir "image.png"
 
   $q = [string]$scene.text
@@ -900,9 +913,15 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
 
   $canPixabay = $false
   if (-not $SkipPixabay) {
-    if ($env:PIXABAY_API_KEY -and (Test-Path -LiteralPath $pixQuery) -and (Test-Path -LiteralPath $dlTool)) {
+    if (-not [string]::IsNullOrWhiteSpace($pixabayKey) -and (Test-Path -LiteralPath $pixQuery) -and (Test-Path -LiteralPath $dlTool)) {
       $canPixabay = $true
     }
+    else {
+      Write-Host ("INFO: scene[{0}] Pixabay image branch skipped: missing API key or tools" -f $i) -ForegroundColor DarkYellow
+    }
+  }
+  else {
+    Write-Host ("INFO: scene[{0}] Pixabay image branch skipped: SkipPixabay=True" -f $i) -ForegroundColor DarkYellow
   }
 
   $picked = $null
@@ -930,6 +949,7 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
       $picked = $null
       $pickedIndex = -1
       $hitsCount = 0
+      Write-Host ("WARN: scene[{0}] Pixabay query failed -> fallback ({1})" -f $i, $_.Exception.Message) -ForegroundColor Yellow
     }
   }
 
@@ -954,6 +974,7 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
     }
     catch {
       $ok = $false
+      Write-Host ("WARN: scene[{0}] Pixabay download failed -> fallback ({1})" -f $i, $_.Exception.Message) -ForegroundColor Yellow
     }
   }
 
@@ -967,7 +988,7 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
         hits_count   = $hitsCount
         picked_index = $pickedIndex
         source_url   = ""
-        note         = ($(if ($SkipPixabay) { "fallback: SkipPixabay=True" } else { "fallback: artifacts.image" }))
+        note         = ($(if ($SkipPixabay) { "fallback: SkipPixabay=True" } elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) { "fallback: missing PIXABAY_API_KEY" } else { "fallback: artifacts.image" }))
       }
     )
 
@@ -975,6 +996,9 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
 
     if ($SkipPixabay) {
       Write-Host ("OK: scene[{0}] image=FALLBACK(SkipPixabay) -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray
+    }
+    elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) {
+      Write-Host ("OK: scene[{0}] image=FALLBACK(missing PIXABAY_API_KEY) -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray
     }
     else {
       Write-Host ("OK: scene[{0}] image=FALLBACK(artifacts.image) -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray

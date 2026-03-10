@@ -34,6 +34,59 @@ function Normalize-ToArray {
   return @($Value)
 }
 
+function Get-PixabaySafeQuery {
+  param(
+    [string]$Text,
+    [int]$MaxChars = 100
+  )
+
+  $fallback = "motivacion"
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $fallback }
+
+  $q = $Text.Trim().ToLowerInvariant()
+  $q = $q -replace '[\r\n\t]+', ' '
+  $q = $q -replace '[^a-zA-Z0-9áéíóúüñÁÉÍÓÚÜÑ ]+', ' '
+  $q = $q -replace '\s+', ' '
+  $q = $q.Trim()
+
+  if ([string]::IsNullOrWhiteSpace($q)) { return $fallback }
+
+  $stop = @(
+    "el","la","los","las","un","una","unos","unas",
+    "de","del","al","y","o","u","que","se","su","sus",
+    "por","para","con","sin","en","a","desde","hasta",
+    "como","más","mas","muy","ya","no","sí","si",
+    "the","a","an","and","or","of","to","for","with","in","on"
+  )
+
+  $words = @(
+    $q -split '\s+' |
+    Where-Object { $_ -and $_.Length -ge 3 -and ($stop -notcontains $_) }
+  )
+
+  if (@($words).Count -eq 0) { return $fallback }
+
+  $selected = New-Object System.Collections.Generic.List[string]
+  foreach ($w in $words) {
+    if ($selected.Count -ge 8) { break }
+    if (-not $selected.Contains($w)) {
+      $selected.Add($w)
+    }
+  }
+
+  $short = ($selected -join ' ').Trim()
+  if ([string]::IsNullOrWhiteSpace($short)) { $short = $fallback }
+
+  if ($short.Length -gt $MaxChars) {
+    $short = $short.Substring(0, $MaxChars)
+    $short = $short -replace '\s+\S*$', ''
+    $short = $short.Trim()
+  }
+
+  if ([string]::IsNullOrWhiteSpace($short)) { return $fallback }
+  return $short
+}
+
 function Get-TotalAudioMs {
   param($AudioClips)
 
@@ -83,64 +136,98 @@ function Build-SceneTexts {
   if ($SceneCount -lt 1) { return @() }
   if (@($partsArr).Count -eq 0) { return @() }
 
+  $cleanParts = @(
+    $partsArr |
+    ForEach-Object { [string]$_ } |
+    ForEach-Object { ($_ -replace "\s+", " ").Trim() } |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+
+  if (@($cleanParts).Count -eq 0) { return @() }
+
+  $totalParts = @($cleanParts).Count
+  $effectiveSceneCount = [Math]::Max(1, [Math]::Min($SceneCount, $totalParts))
+  $partMeta = New-Object System.Collections.Generic.List[pscustomobject]
+  $totalWords = 0
+  $totalStrongPunct = 0
+
+  foreach ($p in $cleanParts) {
+    $txt = [string]$p
+    $wc = @([regex]::Matches($txt, '\S+')).Count
+    if ($wc -lt 1) { $wc = 1 }
+    $pc = @([regex]::Matches($txt, '[\.\!\?\:\;]')).Count
+    $partMeta.Add([pscustomobject]@{
+      text = $txt
+      words = $wc
+      punct = $pc
+      endsStrong = [bool]($txt -match '[\.\!\?\:\;]\s*$')
+    }) | Out-Null
+    $totalWords += $wc
+    $totalStrongPunct += $pc
+  }
+
+  $targetWordsPerScene = [Math]::Max(6, [int][Math]::Round($totalWords / [double]$effectiveSceneCount))
+  $targetPunctPerScene = [int][Math]::Round($totalStrongPunct / [double]$effectiveSceneCount)
+
   $result = New-Object System.Collections.Generic.List[string]
   $cursor = 0
-  $totalParts = @($partsArr).Count
 
-  for ($i = 0; $i -lt $SceneCount; $i++) {
-    $remainingScenes = $SceneCount - $i
-    $remainingParts  = $totalParts - $cursor
+  for ($i = 0; $i -lt $effectiveSceneCount; $i++) {
+    $remainingScenes = $effectiveSceneCount - $i
+    $remainingParts = $totalParts - $cursor
 
-    if ($remainingParts -le 0) {
-      $fallback = "contenido"
-      if ($result.Count -gt 0) {
-        $fallback = [string]$result[$result.Count - 1]
-        if (-not $fallback.EndsWith("...")) { $fallback = $fallback + "..." }
-      }
-      $result.Add($fallback)
+    if ($remainingScenes -le 1) {
+      $tail = ($partMeta[$cursor..($totalParts - 1)] | ForEach-Object { [string]$_.text }) -join " "
+      $tail = ($tail -replace "\s+", " ").Trim()
+      $result.Add(($tail -replace "\s+", " ")) | Out-Null
+      $cursor = $totalParts
       continue
     }
 
-    $take = [int][Math]::Ceiling($remainingParts / [double]$remainingScenes)
+    $maxTake = $remainingParts - ($remainingScenes - 1)
+    if ($maxTake -lt 1) { $maxTake = 1 }
+
+    $take = 0
+    $accWords = 0
+    $accPunct = 0
+
+    while ($take -lt $maxTake) {
+      $m = $partMeta[$cursor + $take]
+      $accWords += [int]$m.words
+      $accPunct += [int]$m.punct
+      $take++
+
+      if ($take -lt 1) { continue }
+
+      $reachedWordBalance = ($accWords -ge $targetWordsPerScene)
+      $reachedPunctBalance = ($targetPunctPerScene -le 0) -or ($accPunct -ge [Math]::Max(1, [int][Math]::Floor($targetPunctPerScene * 0.6)))
+      $isStrongBoundary = [bool]$m.endsStrong
+      $enoughContext = ($accWords -ge [int][Math]::Floor($targetWordsPerScene * 0.75))
+      $tooLong = ($accWords -ge [int][Math]::Ceiling($targetWordsPerScene * 1.8))
+
+      if ($reachedWordBalance -and $reachedPunctBalance) { break }
+      if ($isStrongBoundary -and $enoughContext) { break }
+      if ($tooLong) { break }
+    }
+
     if ($take -lt 1) { $take = 1 }
-    if ($take -gt $remainingParts) { $take = $remainingParts }
 
-    $end = $cursor + $take - 1
-    $chunk = @($partsArr[$cursor..$end])
-
-    $chunkText = @(
-      $chunk |
-      ForEach-Object { [string]$_ } |
-      ForEach-Object { ($_ -replace '\s+', ' ').Trim() } |
-      Where-Object { $_ -and $_.Length -gt 0 }
-    ) -join " "
-
-    $chunkText = ($chunkText -replace '\s+', ' ').Trim()
-    if ([string]::IsNullOrWhiteSpace($chunkText)) {
-      $chunkText = "contenido"
+    $chunk = @($partMeta[$cursor..($cursor + $take - 1)] | ForEach-Object { [string]$_.text })
+    $text = (($chunk -join " ") -replace "\s+", " ").Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+      $text = [string]$partMeta[$cursor].text
     }
 
-    if ($result.Count -gt 0) {
-      $prev = [string]$result[$result.Count - 1]
-      if ($chunkText -eq $prev) {
-        $chunkText = $chunkText + "..."
-      }
-    }
-
-    $result.Add($chunkText)
+    $result.Add($text) | Out-Null
     $cursor += $take
   }
 
   while ($result.Count -lt $SceneCount) {
-    $last = "contenido"
-    if ($result.Count -gt 0) {
-      $last = [string]$result[$result.Count - 1]
-      if (-not $last.EndsWith("...")) { $last = $last + "..." }
-    }
-    $result.Add($last)
+    $last = [string]$result[[Math]::Max(0, $result.Count - 1)]
+    $result.Add($last) | Out-Null
   }
 
-  return @($result.ToArray())
+  return @($result)
 }
 
 function Get-AssetPathValue {
@@ -217,6 +304,7 @@ function ScenesHaveValidImages {
 
 function Get-DynamicSceneCount {
   param(
+    [object[]]$ScriptParts,
     [int]$TotalAudioMs,
     [int]$ConfiguredMinScenes,
     [int]$ConfiguredMaxScenes,
@@ -225,23 +313,61 @@ function Get-DynamicSceneCount {
     [int]$SceneMaxSec
   )
 
+  $partsArr = @(Normalize-ToArray -Value $ScriptParts)
+
   $targetMs   = [Math]::Max(1000, ($SceneTargetSec * 1000))
   $minSceneMs = [Math]::Max(1000, ($SceneMinSec * 1000))
   $maxSceneMs = [Math]::Max($minSceneMs, ($SceneMaxSec * 1000))
 
-  $targetCount      = [int][Math]::Round($TotalAudioMs / [double]$targetMs)
-  $minByMaxDuration = [int][Math]::Ceiling($TotalAudioMs / [double]$maxSceneMs)
-  $maxByMinDuration = [int][Math]::Floor($TotalAudioMs / [double]$minSceneMs)
+  $scriptCount = @($partsArr).Count
 
-  if ($targetCount -lt 1) { $targetCount = 1 }
-  if ($minByMaxDuration -lt 1) { $minByMaxDuration = 1 }
-  if ($maxByMinDuration -lt 1) { $maxByMinDuration = 1 }
+  if ($scriptCount -gt 0) {
+    $n = [int][Math]::Ceiling($scriptCount / 2.0)
+    if ($scriptCount -le 3) { $n = $scriptCount }
+    if ($n -lt 1) { $n = 1 }
 
-  $n = $targetCount
-  if ($n -lt $ConfiguredMinScenes) { $n = $ConfiguredMinScenes }
-  if ($n -lt $minByMaxDuration)    { $n = $minByMaxDuration }
-  if ($n -gt $ConfiguredMaxScenes) { $n = $ConfiguredMaxScenes }
-  if ($n -gt $maxByMinDuration)    { $n = $maxByMinDuration }
+    if ($ConfiguredMinScenes -gt 0 -and $scriptCount -ge $ConfiguredMinScenes -and $n -lt $ConfiguredMinScenes) {
+      $n = $ConfiguredMinScenes
+    }
+
+    $softMinMs = [int][Math]::Round($minSceneMs * 0.60)
+    $softMaxMs = [int][Math]::Round($maxSceneMs * 1.60)
+    if ($softMinMs -lt 1000) { $softMinMs = 1000 }
+    if ($softMaxMs -lt $softMinMs) { $softMaxMs = $softMinMs }
+
+    $avgMs = [int][Math]::Round($TotalAudioMs / [double][Math]::Max(1, $n))
+
+    if ($avgMs -gt $softMaxMs) {
+      $add = [int][Math]::Ceiling(($avgMs - $softMaxMs) / [double]$softMaxMs)
+      if ($add -lt 1) { $add = 1 }
+      if ($add -gt 3) { $add = 3 }
+      $n += $add
+    }
+    elseif ($avgMs -lt $softMinMs -and $n -gt 1) {
+      $sub = [int][Math]::Ceiling(($softMinMs - $avgMs) / [double]$softMinMs)
+      if ($sub -lt 1) { $sub = 1 }
+      if ($sub -gt 2) { $sub = 2 }
+      $n -= $sub
+    }
+
+    if ($n -gt $scriptCount) { $n = $scriptCount }
+    if ($ConfiguredMaxScenes -gt 0 -and $n -gt $ConfiguredMaxScenes) { $n = $ConfiguredMaxScenes }
+    if ($n -lt 1) { $n = 1 }
+    return $n
+  }
+
+  $audioTargetCount = [int][Math]::Round($TotalAudioMs / [double]$targetMs)
+  $audioMinByMax    = [int][Math]::Ceiling($TotalAudioMs / [double]$maxSceneMs)
+  $audioMaxByMin    = [int][Math]::Floor($TotalAudioMs / [double]$minSceneMs)
+  if ($audioTargetCount -lt 1) { $audioTargetCount = 1 }
+  if ($audioMinByMax -lt 1)    { $audioMinByMax = 1 }
+  if ($audioMaxByMin -lt 1)    { $audioMaxByMin = 1 }
+
+  $n = $audioTargetCount
+  if ($ConfiguredMinScenes -gt 0 -and $n -lt $ConfiguredMinScenes) { $n = $ConfiguredMinScenes }
+  if ($n -lt $audioMinByMax)       { $n = $audioMinByMax }
+  if ($ConfiguredMaxScenes -gt 0 -and $n -gt $ConfiguredMaxScenes) { $n = $ConfiguredMaxScenes }
+  if ($n -gt $audioMaxByMin)       { $n = $audioMaxByMin }
   if ($n -lt 1) { $n = 1 }
 
   return $n
@@ -256,77 +382,171 @@ function New-Durations {
     [int]$SeedValue
   )
 
-  $minMs = $SceneMinSec * 1000
-  $maxMs = $SceneMaxSec * 1000
-
   if ($SceneCount -lt 1) { return @() }
+  $minMs = [Math]::Max(1000, ($SceneMinSec * 1000))
+  $maxMs = [Math]::Max($minMs, ($SceneMaxSec * 1000))
+  $softMinMs = [Math]::Max(1000, [int][Math]::Round($minMs * 0.50))
+  $softMaxMs = [Math]::Max($softMinMs, [int][Math]::Round($maxMs * 2.40))
 
-  $weights = @()
-  for ($i = 1; $i -le $SceneCount; $i++) {
-    $w = 100
+  # Prefer narrative cues from existing scene texts (kept by Ensure-Scenes when reusing scenes).
+  $sceneTexts = @()
+  $callerScenes = Get-Variable -Scope 1 -Name sc -ErrorAction SilentlyContinue
+  if ($callerScenes -and $callerScenes.Value) {
+    $tmpScenes = @($callerScenes.Value)
+    for ($i = 0; $i -lt [Math]::Min($SceneCount, @($tmpScenes).Count); $i++) {
+      $t = ""
+      try { if ($tmpScenes[$i].text) { $t = [string]$tmpScenes[$i].text } } catch { $t = "" }
+      $sceneTexts += $t
+    }
+  }
 
-    if ($i -eq 1) {
-      $w = 75
-    }
-    elseif ($i -eq $SceneCount) {
-      $w = 115
-    }
-    else {
-      $w = 90 + ((($SeedValue + $i) % 7) * 6)
+  while (@($sceneTexts).Count -lt $SceneCount) { $sceneTexts += "" }
+
+  $weights = New-Object System.Collections.Generic.List[double]
+  $hasNarrativeSignal = $false
+
+  for ($i = 0; $i -lt $SceneCount; $i++) {
+    $text = [string]$sceneTexts[$i]
+    $textNorm = ($text -replace "\s+", " ").Trim()
+
+    $words = 0
+    $strongPunct = 0
+    $chars = 0
+
+    if (-not [string]::IsNullOrWhiteSpace($textNorm)) {
+      $words = @([regex]::Matches($textNorm, '\S+')).Count
+      $strongPunct = @([regex]::Matches($textNorm, '[\.\!\?\:\;]')).Count
+      $chars = $textNorm.Length
+      if ($words -gt 0 -or $strongPunct -gt 0 -or $chars -gt 0) { $hasNarrativeSignal = $true }
     }
 
-    $weights += $w
+    if ($words -lt 1) { $words = 1 }
+    $seedJitter = 0.92 + (((($SeedValue + (($i + 1) * 17)) % 19) / 100.0))
+
+    $w = 1.0 + ($words * 1.0) + ($strongPunct * 3.1) + ([Math]::Sqrt([Math]::Max(1, $chars)) * 0.50)
+    $weights.Add([Math]::Max(0.25, ($w * $seedJitter))) | Out-Null
+  }
+
+  if (-not $hasNarrativeSignal) {
+    $weights.Clear()
+    for ($i = 0; $i -lt $SceneCount; $i++) {
+      $wFallback = 0.65 + (((($SeedValue + (($i + 1) * 13)) % 23) / 14.0))
+      if ($i -eq 0) { $wFallback *= 0.85 }
+      if ($i -eq ($SceneCount - 1)) { $wFallback *= 1.15 }
+      $weights.Add([Math]::Max(0.25, $wFallback)) | Out-Null
+    }
+  }
+  else {
+    # Increase separation between dense and light narrative blocks without losing determinism.
+    for ($i = 0; $i -lt $weights.Count; $i++) {
+      $weights[$i] = [Math]::Pow([double]$weights[$i], 1.28)
+    }
   }
 
   $weightSum = (@($weights) | Measure-Object -Sum).Sum
-  if (-not $weightSum -or $weightSum -le 0) {
-    throw "weightSum inválido en New-Durations"
-  }
+  if (-not $weightSum -or $weightSum -le 0) { throw "weightSum inválido en New-Durations" }
 
-  $durations = @()
+  $durations = New-Object System.Collections.Generic.List[int]
+  $remainders = New-Object System.Collections.Generic.List[pscustomobject]
   $assigned = 0
 
   for ($i = 0; $i -lt $SceneCount; $i++) {
-    if ($i -lt ($SceneCount - 1)) {
-      $dur = [int][Math]::Floor(($TotalAudioMs * $weights[$i]) / $weightSum)
-      if ($dur -lt $minMs) { $dur = $minMs }
-      if ($dur -gt $maxMs) { $dur = $maxMs }
-      $durations += $dur
-      $assigned += $dur
+    $raw = ($TotalAudioMs * [double]$weights[$i]) / [double]$weightSum
+    $base = [int][Math]::Floor($raw)
+    if ($base -lt 1) { $base = 1 }
+    $durations.Add($base) | Out-Null
+    $assigned += $base
+    $remainders.Add([pscustomobject]@{ idx = $i; rem = ($raw - $base) }) | Out-Null
+  }
+
+  $delta0 = $TotalAudioMs - $assigned
+  if ($delta0 -gt 0) {
+    $order = @($remainders | Sort-Object -Property rem -Descending)
+    $k = 0
+    while ($delta0 -gt 0) {
+      $idx = [int]$order[$k % @($order).Count].idx
+      $durations[$idx] = [int]$durations[$idx] + 1
+      $delta0--
+      $k++
     }
-    else {
-      $dur = $TotalAudioMs - $assigned
-      if ($dur -lt $minMs) { $dur = $minMs }
-      if ($dur -gt $maxMs) { $dur = $maxMs }
-      $durations += $dur
+  }
+  elseif ($delta0 -lt 0) {
+    $need = -$delta0
+    $orderDown = @(0..($SceneCount - 1) | Sort-Object { $durations[$_] } -Descending)
+    $k = 0
+    while ($need -gt 0 -and $k -lt 200000) {
+      $idx = [int]$orderDown[$k % @($orderDown).Count]
+      if ($durations[$idx] -gt 1) {
+        $durations[$idx] = [int]$durations[$idx] - 1
+        $need--
+      }
+      $k++
     }
   }
 
-  $sumDur = (@($durations) | Measure-Object -Sum).Sum
   $guard = 0
+  while ($guard -lt 10000) {
+    $changed = $false
 
-  while ($sumDur -ne $TotalAudioMs -and $guard -lt 10000) {
-    $delta = $TotalAudioMs - $sumDur
-
-    if ($delta -gt 0) {
-      for ($i = 0; $i -lt $SceneCount -and $delta -gt 0; $i++) {
-        if ($durations[$i] -lt $maxMs) {
-          $durations[$i]++
-          $delta--
+    for ($i = 0; $i -lt $SceneCount; $i++) {
+      if ($durations[$i] -lt $softMinMs) {
+        $need = $softMinMs - $durations[$i]
+        $donors = @(0..($SceneCount - 1) | Where-Object { $_ -ne $i -and $durations[$_] -gt $softMinMs } | Sort-Object { $durations[$_] } -Descending)
+        foreach ($d in $donors) {
+          if ($need -le 0) { break }
+          $canGive = $durations[$d] - $softMinMs
+          if ($canGive -le 0) { continue }
+          $take = [Math]::Min($need, $canGive)
+          $durations[$d] = [int]$durations[$d] - $take
+          $durations[$i] = [int]$durations[$i] + $take
+          $need -= $take
+          $changed = $true
+        }
+      }
+      elseif ($durations[$i] -gt $softMaxMs) {
+        $extra = $durations[$i] - $softMaxMs
+        $receivers = @(0..($SceneCount - 1) | Where-Object { $_ -ne $i -and $durations[$_] -lt $softMaxMs } | Sort-Object { $durations[$_] })
+        foreach ($r in $receivers) {
+          if ($extra -le 0) { break }
+          $cap = $softMaxMs - $durations[$r]
+          if ($cap -le 0) { continue }
+          $move = [Math]::Min($extra, $cap)
+          $durations[$r] = [int]$durations[$r] + $move
+          $durations[$i] = [int]$durations[$i] - $move
+          $extra -= $move
+          $changed = $true
         }
       }
     }
-    else {
-      for ($i = $SceneCount - 1; $i -ge 0 -and $delta -lt 0; $i--) {
-        if ($durations[$i] -gt $minMs) {
-          $durations[$i]--
-          $delta++
-        }
-      }
-    }
 
-    $sumDur = (@($durations) | Measure-Object -Sum).Sum
+    if (-not $changed) { break }
     $guard++
+  }
+
+  $sumDur = (@($durations) | Measure-Object -Sum).Sum
+  $delta = $TotalAudioMs - $sumDur
+  if ($delta -gt 0) {
+    $orderUp = @(0..($SceneCount - 1) | Sort-Object { $weights[$_] } -Descending)
+    $k = 0
+    while ($delta -gt 0) {
+      $idx = [int]$orderUp[$k % @($orderUp).Count]
+      $durations[$idx] = [int]$durations[$idx] + 1
+      $delta--
+      $k++
+    }
+  }
+  elseif ($delta -lt 0) {
+    $need = -$delta
+    $orderDown = @(0..($SceneCount - 1) | Sort-Object { $weights[$_] })
+    $k = 0
+    while ($need -gt 0 -and $k -lt 300000) {
+      $idx = [int]$orderDown[$k % @($orderDown).Count]
+      if ($durations[$idx] -gt 1000) {
+        $durations[$idx] = [int]$durations[$idx] - 1
+        $need--
+      }
+      $k++
+    }
   }
 
   if ((@($durations) | Measure-Object -Sum).Sum -ne $TotalAudioMs) {
@@ -572,6 +792,7 @@ catch {
 $scriptParts = @(Split-ScriptSentences -Text $scriptText)
 
 $desiredScenes = Get-DynamicSceneCount `
+  -ScriptParts $scriptParts `
   -TotalAudioMs $totalAudioMs `
   -ConfiguredMinScenes $MinScenes `
   -ConfiguredMaxScenes $MaxScenes `
@@ -579,6 +800,24 @@ $desiredScenes = Get-DynamicSceneCount `
   -SceneMinSec $MinSceneSec `
   -SceneMaxSec $MaxSceneSec
 
+$sceneMode = "audio_fallback"
+if (@($scriptParts).Count -gt 0) {
+  $sceneMode = "script_driven"
+}
+
+$effectiveMinSceneSec = $MinSceneSec
+$effectiveMaxSceneSec = $MaxSceneSec
+
+if ($sceneMode -eq "script_driven" -and $desiredScenes -gt 0) {
+  $avgSceneSec = [int][Math]::Ceiling($totalAudioMs / [double](1000 * $desiredScenes))
+  $scriptAdaptiveMax = [Math]::Max($MaxSceneSec, ($avgSceneSec + 2))
+
+  if ($scriptAdaptiveMax -lt $effectiveMinSceneSec) {
+    $scriptAdaptiveMax = $effectiveMinSceneSec
+  }
+
+  $effectiveMaxSceneSec = $scriptAdaptiveMax
+}
 if (-not $Force) {
   if (ScenesHaveValidImages -ManifestObj $m -LiveDir $live -ExpectedCount $desiredScenes) {
     $outSkip = $m | ConvertTo-Json -Depth 50
@@ -604,8 +843,8 @@ Ensure-Scenes `
   -ManifestObj $m `
   -SceneCount $desiredScenes `
   -TotalAudioMs $totalAudioMs `
-  -SceneMinSec $MinSceneSec `
-  -SceneMaxSec $MaxSceneSec `
+  -SceneMinSec $effectiveMinSceneSec `
+  -SceneMaxSec $effectiveMaxSceneSec `
   -SeedValue $Seed
 
 if (@($scriptParts).Count -gt 0) {
@@ -626,6 +865,25 @@ if (-not (Test-Path -LiteralPath $cacheDir)) {
 $pixQuery = Join-Path $repo "tools\stock_query_pixabay_v03.ps1"
 $dlTool   = Join-Path $repo "tools\download_file_v03.ps1"
 
+$pixabayKey = ""
+if (-not [string]::IsNullOrWhiteSpace($env:PIXABAY_API_KEY)) {
+  $pixabayKey = [string]$env:PIXABAY_API_KEY
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:OPENAI_STUDIO_PIXABAY_API_KEY)) {
+  $pixabayKey = [string]$env:OPENAI_STUDIO_PIXABAY_API_KEY
+  $env:PIXABAY_API_KEY = $pixabayKey
+  Write-Host "INFO: PIXABAY_API_KEY cargada desde OPENAI_STUDIO_PIXABAY_API_KEY" -ForegroundColor DarkYellow
+}
+
+if (-not [string]::IsNullOrWhiteSpace($pixabayKey)) {
+  $k = $pixabayKey.Trim()
+  if ($k -match 'PON_AQUI|YOUR_KEY|API_KEY|TU_KEY|PIXABAY_KEY|PLACEHOLDER') {
+    Write-Host "WARN: PIXABAY_API_KEY parece placeholder; se desactiva Pixabay para evitar falso positivo" -ForegroundColor Yellow
+    $pixabayKey = ""
+    $env:PIXABAY_API_KEY = ""
+  }
+}
+
 $assetsDir = Join-Path $live "assets\scenes_v03"
 if (-not (Test-Path -LiteralPath $assetsDir)) {
   New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
@@ -639,26 +897,41 @@ if (-not (Test-Path -LiteralPath $legacyScenesDir)) {
 
 # Asegurar clips físicos por escena para que smoke_live_manifest_v03 no falle
 $baseAudioRel = [string]$m.artifacts.audio
-$baseAudioAbs = $baseAudioRel
-if (-not [System.IO.Path]::IsPathRooted($baseAudioRel)) {
-  $baseAudioAbs = Join-Path $live ($baseAudioRel -replace '/', '\')
+$baseAudioAbs = Join-Path $live $baseAudioRel
+if (-not (Test-Path -LiteralPath $baseAudioAbs)) {
+  throw "No existe audio base para escenas: $baseAudioRel"
 }
-$baseAudioAbs = (Resolve-Path -LiteralPath $baseAudioAbs).Path
+
+$audioClipsDir = Join-Path $live "assets\audio_clips"
+if (-not (Test-Path -LiteralPath $audioClipsDir)) {
+  New-Item -ItemType Directory -Force -Path $audioClipsDir | Out-Null
+}
+
+$fallbackRel = [string]$m.artifacts.image
+$fallbackAbs = Join-Path $live $fallbackRel
+if (-not (Test-Path -LiteralPath $fallbackAbs)) {
+  $fallbackAbs = Join-Path $live "image_9bfb2d47.png"
+}
+if (-not (Test-Path -LiteralPath $fallbackAbs)) {
+  throw "No existe fallback de imagen: $fallbackRel"
+}
 
 for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   $scene = $m.scenes_v03[$i]
 
-  $clipRel = ("artifacts/audio_s{0:d2}.wav" -f ($i + 1))
-  $clipAbs = Join-Path $live ($clipRel -replace '/', '\')
-
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $clipAbs) | Out-Null
-  Copy-Item -LiteralPath $baseAudioAbs -Destination $clipAbs -Force
-
   if (-not $scene.assets) {
     $scene | Add-Member -Force -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{
-      audio_clip = $clipRel
+      audio_clip = ""
       image      = @([pscustomobject]@{ path = "" })
     })
+  }
+
+  $clipName = ("s{0:d2}.wav" -f ($i + 1))
+  $clipAbs  = Join-Path $audioClipsDir $clipName
+  $clipRel  = ("assets/audio_clips/{0}" -f $clipName)
+
+  if (-not (Test-Path -LiteralPath $clipAbs)) {
+    Copy-Item -LiteralPath $baseAudioAbs -Destination $clipAbs -Force
   }
 
   if (-not ($scene.assets.PSObject.Properties.Name -contains "audio_clip")) {
@@ -667,26 +940,10 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   else {
     $scene.assets.audio_clip = $clipRel
   }
-}
 
-$fallbackRel = [string]$m.artifacts.image
-$fallbackAbs = (Resolve-Path (Join-Path $live ($fallbackRel -replace '/', '\'))).Path
-
-for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
-  $scene = $m.scenes_v03[$i]
-
-  if (-not $scene.assets) {
-    $scene | Add-Member -Force -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{
-      audio_clip = ("artifacts/audio_s{0:d2}.wav" -f ($i + 1))
-      image      = @([pscustomobject]@{ path = "" })
-    })
-  }
-
-  if (-not ($scene.assets.PSObject.Properties.Name -contains "audio_clip") -or [string]::IsNullOrWhiteSpace([string]$scene.assets.audio_clip)) {
-    $scene.assets | Add-Member -Force -NotePropertyName audio_clip -NotePropertyValue ("artifacts/audio_s{0:d2}.wav" -f ($i + 1))
-  }
-  else {
-    $scene.assets.audio_clip = ("artifacts/audio_s{0:d2}.wav" -f ($i + 1))
+  $legacySceneDir = Join-Path $legacyScenesDir ("scene_{0:00}" -f ($i + 1))
+  if (-not (Test-Path -LiteralPath $legacySceneDir)) {
+    New-Item -ItemType Directory -Force -Path $legacySceneDir | Out-Null
   }
 
   if (-not ($scene.assets.PSObject.Properties.Name -contains "image") -or -not $scene.assets.image) {
@@ -696,27 +953,34 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
     $scene.assets.image = @([pscustomobject]@{ path = [string]$scene.assets.image })
   }
 
+  if ($scene.assets.PSObject.Properties.Name -contains "video") {
+    $scene.PSObject.Properties.Remove("assets") | Out-Null
+    $newAssets = [pscustomobject]@{
+      audio_clip = $clipRel
+      image      = @([pscustomobject]@{ path = "" })
+    }
+    $scene | Add-Member -Force -NotePropertyName assets -NotePropertyValue $newAssets
+  }
+
   $outName = ("scene_{0:000}.jpg" -f ($i + 1))
   $outAbs  = Join-Path $assetsDir $outName
   $outRel  = ("assets/scenes_v03/{0}" -f $outName)
-
-  $legacySceneDir = Join-Path $legacyScenesDir ("scene_{0:d2}" -f ($i + 1))
-  if (-not (Test-Path -LiteralPath $legacySceneDir)) {
-    New-Item -ItemType Directory -Force -Path $legacySceneDir | Out-Null
-  }
   $legacyImgAbs = Join-Path $legacySceneDir "image.png"
 
-  $q = [string]$scene.text
-  if ([string]::IsNullOrWhiteSpace($q) -or $q.Trim().Length -lt 3) {
-    $q = "motivación"
-  }
-  $q = $q.Trim()
+  $sceneTextRaw = [string]$scene.text
+  $q = Get-PixabaySafeQuery -Text $sceneTextRaw -MaxChars 100
 
   $canPixabay = $false
   if (-not $SkipPixabay) {
-    if ($env:PIXABAY_API_KEY -and (Test-Path -LiteralPath $pixQuery) -and (Test-Path -LiteralPath $dlTool)) {
+    if (-not [string]::IsNullOrWhiteSpace($pixabayKey) -and (Test-Path -LiteralPath $pixQuery) -and (Test-Path -LiteralPath $dlTool)) {
       $canPixabay = $true
     }
+    else {
+      Write-Host ("INFO: scene[{0}] Pixabay image branch skipped: missing API key or tools" -f $i) -ForegroundColor DarkYellow
+    }
+  }
+  else {
+    Write-Host ("INFO: scene[{0}] Pixabay image branch skipped: SkipPixabay=True" -f $i) -ForegroundColor DarkYellow
   }
 
   $picked = $null
@@ -727,7 +991,30 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   if ($canPixabay) {
     try {
       if (-not (Test-Path -LiteralPath $cacheJson)) {
-        pwsh -NoProfile -ExecutionPolicy Bypass -File $pixQuery -Query $q -OutJsonPath $cacheJson -Seed $Seed | Out-Null
+        $env:PIXABAY_API_KEY = $pixabayKey
+
+        $pixOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $pixQuery `
+          -Query $q `
+          -OutJsonPath $cacheJson `
+          -Seed $Seed 2>&1
+
+        $pixExit = $LASTEXITCODE
+
+        if ($pixExit -ne 0) {
+          $pixMsg = (($pixOutput | ForEach-Object { "$_" }) -join " | ").Trim()
+          if ([string]::IsNullOrWhiteSpace($pixMsg)) {
+            $pixMsg = "sin output del subprocess"
+          }
+          throw "stock_query_pixabay_v03.ps1 falló. exit=$pixExit query='$q' detail=$pixMsg"
+        }
+
+        if (-not (Test-Path -LiteralPath $cacheJson)) {
+          $pixMsg = (($pixOutput | ForEach-Object { "$_" }) -join " | ").Trim()
+          if ([string]::IsNullOrWhiteSpace($pixMsg)) {
+            $pixMsg = "sin output del subprocess"
+          }
+          throw "stock_query_pixabay_v03.ps1 terminó sin crear JSON. query='$q' out='$cacheJson' detail=$pixMsg"
+        }
       }
 
       $cj = Get-Content -LiteralPath $cacheJson -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -739,11 +1026,15 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
         $pickedIndex = ($Seed + $i) % $hitsCount
         $picked = [string]$hits[$pickedIndex].url
       }
+      else {
+        Write-Host ("WARN: scene[{0}] Pixabay respondió 0 hits para query='{1}'" -f $i, $q) -ForegroundColor Yellow
+      }
     }
     catch {
       $picked = $null
       $pickedIndex = -1
       $hitsCount = 0
+      Write-Host ("WARN: scene[{0}] Pixabay query failed -> fallback ({1})" -f $i, $_.Exception.Message) -ForegroundColor Yellow
     }
   }
 
@@ -768,6 +1059,7 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
     }
     catch {
       $ok = $false
+      Write-Host ("WARN: scene[{0}] Pixabay download failed -> fallback ({1})" -f $i, $_.Exception.Message) -ForegroundColor Yellow
     }
   }
 
@@ -781,7 +1073,7 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
         hits_count   = $hitsCount
         picked_index = $pickedIndex
         source_url   = ""
-        note         = ($(if ($SkipPixabay) { "fallback: SkipPixabay=True" } else { "fallback: artifacts.image" }))
+        note         = ($(if ($SkipPixabay) { "fallback: SkipPixabay=True" } elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) { "fallback: missing PIXABAY_API_KEY" } else { "fallback: artifacts.image" }))
       }
     )
 
@@ -789,6 +1081,9 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
 
     if ($SkipPixabay) {
       Write-Host ("OK: scene[{0}] image=FALLBACK(SkipPixabay) -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray
+    }
+    elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) {
+      Write-Host ("OK: scene[{0}] image=FALLBACK(missing PIXABAY_API_KEY) -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray
     }
     else {
       Write-Host ("OK: scene[{0}] image=FALLBACK(artifacts.image) -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray
@@ -851,4 +1146,4 @@ else {
   Write-Host "SKIP: enrich_scenes_queries_v03 (SkipEnrich=True)" -ForegroundColor DarkGray
 }
 
-Write-Host ("OK: scene_builder v03 aplicado. scenes={0} totalAudioMs={1} targetSceneSec={2} minSceneSec={3} maxSceneSec={4} minScenes={5} maxScenes={6} live={7} force={8} skipPixabay={9} skipEnrich={10}" -f @($m.scenes_v03).Count, $totalAudioMs, $TargetSceneSec, $MinSceneSec, $MaxSceneSec, $MinScenes, $MaxScenes, $live, [bool]$Force, [bool]$SkipPixabay, [bool]$SkipEnrich) -ForegroundColor Green
+Write-Host ("OK: scene_builder v03 aplicado. scenes={0} totalAudioMs={1} targetSceneSec={2} minSceneSec={3} maxSceneSec={4} minScenes={5} maxScenes={6} live={7} force={8} skipPixabay={9} skipEnrich={10} mode={11} scriptParts={12} effectiveMinSceneSec={13} effectiveMaxSceneSec={14}" -f @($m.scenes_v03).Count, $totalAudioMs, $TargetSceneSec, $MinSceneSec, $MaxSceneSec, $MinScenes, $MaxScenes, $live, [bool]$Force, [bool]$SkipPixabay, [bool]$SkipEnrich, $sceneMode, @($scriptParts).Count, $effectiveMinSceneSec, $effectiveMaxSceneSec) -ForegroundColor Green

@@ -71,6 +71,39 @@ function Set-Note([object]$obj, [string]$name, $value) {
   else { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force }
 }
 
+
+function Get-SceneImageMetaTarget {
+  param([object]$Scene)
+
+  if (-not $Scene) { return $null }
+
+  if (-not ($Scene.PSObject.Properties.Name -contains "assets") -or -not $Scene.assets) {
+    $Scene | Add-Member -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{}) -Force
+  }
+
+  if (-not ($Scene.assets.PSObject.Properties.Name -contains "image") -or -not $Scene.assets.image) {
+    $Scene.assets | Add-Member -NotePropertyName image -NotePropertyValue @([pscustomobject]@{}) -Force
+  }
+  elseif ($Scene.assets.image -is [string]) {
+    $Scene.assets.image = @([pscustomobject]@{ path = [string]$Scene.assets.image })
+  }
+  elseif ($Scene.assets.image -isnot [System.Collections.IEnumerable] -or $Scene.assets.image -is [pscustomobject]) {
+    $Scene.assets.image = @($Scene.assets.image)
+  }
+
+  $imgs = @($Scene.assets.image)
+  if ($imgs.Count -lt 1) {
+    $Scene.assets.image = @([pscustomobject]@{})
+    $imgs = @($Scene.assets.image)
+  }
+
+  if ($null -eq $imgs[0]) {
+    $imgs[0] = [pscustomobject]@{}
+    $Scene.assets.image = $imgs
+  }
+
+  return $imgs[0]
+}
 function Tokenize([string]$text) {
   if (-not $text) { return @() }
   $t = $text.ToLowerInvariant()
@@ -100,7 +133,7 @@ $VISUAL = @(
   "oficina","escritorio","computadora","laptop","teclado","pantalla","telefono","movil","celular","libro","cuaderno",
   "lapiz","cafe","cocina","comida","agua","botella","casa","hogar","habitacion","cama","sofa","mesa","silla",
   "ventana","puerta","calle","ciudad","parque","auto","coche","bicicleta","gym","gimnasio","pesas","correr",
-  "caminar","manos","mano","rostro","cara","ojos","sonrisa","trabajo","estudio","escuela","clase","doctor",
+  "caminar","manos","mano","camara","cámara","rostro","cara","ojos","sonrisa","trabajo","estudio","escuela","clase","doctor",
   "hospital","dinero","billetes","monedas","banco","tarjeta","compra","mercado","playa","montaña","naturaleza",
   "arbol","bosque","atardecer","amanecer","noche","lluvia","sol","viaje","maleta","aeropuerto",
   "person","people","man","woman","family","team","office","desk","computer","laptop","phone","book","kitchen",
@@ -175,7 +208,7 @@ function Normalize-QueryText([string]$text, [int]$MaxLen = 90) {
 
 function Get-VisualAnchorTerms([string[]]$terms) {
   $anchors = New-Object System.Collections.Generic.List[string]
-  $t = @($terms | Where-Object { $_ } | ForEach-Object { $_.ToLowerInvariant() } | Select-Object -Unique)
+  $t = @($terms | Where-Object { $_ } | ForEach-Object { $_.ToLowerInvariant().Trim() } | Where-Object { $_ } | Select-Object -Unique)
 
   function Add-Anchor([string]$value) {
     if ($value -and $value.Trim()) {
@@ -183,67 +216,141 @@ function Get-VisualAnchorTerms([string[]]$terms) {
     }
   }
 
-  if (@($t | Where-Object { $_ -in @("disciplina","habito","habitos","rutina","constancia") }).Count -gt 0) {
+  if (@($t | Where-Object { $_ -in @("disciplina","habito","habitos","rutina","constancia","orden","consistencia","recordar","agenda","cuaderno") }).Count -gt 0) {
     Add-Anchor "persona escritorio agenda"
     Add-Anchor "manos cuaderno escritorio"
     Add-Anchor "laptop cafe escritorio"
   }
 
-  if (@($t | Where-Object { $_ -in @("productividad","enfoque","plan","planes","prioridad","prioridades","trabajo") }).Count -gt 0) {
+  if (@($t | Where-Object { $_ -in @("productividad","enfoque","plan","planes","prioridad","prioridades","trabajo","organizacion","organizar","objetivo","objetivos") }).Count -gt 0) {
     Add-Anchor "persona trabajando laptop"
     Add-Anchor "escritorio computadora oficina"
     Add-Anchor "reunion oficina equipo"
   }
 
-  if (@($t | Where-Object { $_ -in @("finanzas","dinero","ahorro","gastos","banco","tarjeta","inversion","inversiones") }).Count -gt 0) {
+  if (@($t | Where-Object { $_ -in @("finanzas","dinero","ahorro","gastos","banco","tarjeta","inversion","inversiones","deuda","presupuesto") }).Count -gt 0) {
     Add-Anchor "manos dinero laptop"
     Add-Anchor "calculadora billetes mesa"
     Add-Anchor "tarjeta banco pago"
   }
 
-  if (@($t | Where-Object { $_ -in @("ansiedad","estres","calma","bienestar","emociones","mentalidad","mindset") }).Count -gt 0) {
+  if (@($t | Where-Object { $_ -in @("ansiedad","estres","calma","bienestar","emociones","mentalidad","mindset","respirar","respiracion") }).Count -gt 0) {
     Add-Anchor "persona sola ventana"
     Add-Anchor "mujer sofa mirando ventana"
     Add-Anchor "manos taza cafe"
   }
 
-  if (@($t | Where-Object { $_ -in @("salud","bienestar","energia","ejercicio","gym","gimnasio") }).Count -gt 0) {
+  if (@($t | Where-Object { $_ -in @("salud","bienestar","energia","ejercicio","gym","gimnasio","entrenamiento","peso","pesas") }).Count -gt 0) {
     Add-Anchor "persona gym pesas"
     Add-Anchor "correr parque amanecer"
     Add-Anchor "botella agua gimnasio"
   }
 
-  if (@($t | Where-Object { $_ -in @("estudio","aprender","aprendizaje","escuela","clase","libro","lectura") }).Count -gt 0) {
+  if (@($t | Where-Object { $_ -in @("estudio","aprender","aprendizaje","escuela","clase","libro","lectura","universidad") }).Count -gt 0) {
     Add-Anchor "estudiante escritorio libro"
     Add-Anchor "laptop cuaderno estudio"
     Add-Anchor "biblioteca libro mesa"
   }
 
-  if (@($t | Where-Object { $_ -in @("viaje","viajar","aeropuerto","maleta","turismo") }).Count -gt 0) {
+  if (@($t | Where-Object { $_ -in @("viaje","viajar","aeropuerto","maleta","turismo","vacaciones") }).Count -gt 0) {
     Add-Anchor "aeropuerto maleta persona"
     Add-Anchor "persona caminando ciudad"
     Add-Anchor "mapa maleta mesa"
   }
 
-  if (@($t | Where-Object { $_ -in @("cocina","comida","nutricion","desayuno","almuerzo","cena") }).Count -gt 0) {
+  if (@($t | Where-Object { $_ -in @("cocina","comida","nutricion","desayuno","almuerzo","cena","receta") }).Count -gt 0) {
     Add-Anchor "cocina comida saludable"
     Add-Anchor "manos preparando comida"
     Add-Anchor "mesa desayuno cafe"
   }
 
-  if (@($t | Where-Object { $_ -in @("familia","pareja","amigos","equipo","reunion") }).Count -gt 0) {
+  if (@($t | Where-Object { $_ -in @("familia","pareja","amigos","equipo","reunion","hogar") }).Count -gt 0) {
     Add-Anchor "familia hogar sonrisa"
     Add-Anchor "pareja caminando parque"
     Add-Anchor "equipo reunion oficina"
   }
 
+  if (@($t | Where-Object { $_ -in @("problema","situacion","cotidiana","cotidiano","resolver","solucion","atencion","interes") }).Count -gt 0) {
+    Add-Anchor "persona pensando escritorio"
+    Add-Anchor "persona mirando laptop"
+    Add-Anchor "situacion cotidiana hogar"
+  }
+
+  if (@($t | Where-Object { $_ -in @("frase","mensaje","idea","concepto","explicacion","contexto","lenguaje","claro","simple") }).Count -gt 0) {
+    Add-Anchor "persona hablando camara"
+    Add-Anchor "persona oficina fondo neutro"
+    Add-Anchor "manos cuaderno mesa"
+  }
+
+  if ($anchors.Count -eq 0) {
+    if (@($t | Where-Object { $VISUAL -contains $_ }).Count -gt 0) {
+      Add-Anchor "persona lifestyle"
+      Add-Anchor "real life scene"
+    }
+  }
+
+  if ($anchors.Count -eq 0) {
+    Add-Anchor "persona escritorio"
+    Add-Anchor "person lifestyle"
+  }
+
   return @($anchors | Select-Object -Unique)
 }
+function Get-ConcreteSceneTerms([string[]]$terms, [int]$Top = 4) {
+  $items = New-Object System.Collections.Generic.List[object]
 
+  foreach ($term in @($terms | Where-Object { $_ })) {
+    $w = $term.ToLowerInvariant().Trim()
+    if (-not $w) { continue }
+    if ($STOP -contains $w) { continue }
+
+    if ($w.Length -lt 4) { continue }
+    if ($w.Length -gt 18) { continue }
+    if ($w -match '\d') { continue }
+    if ($w -match '^(photo|scene|video|visual|lifestyle|real|life|persona|person)$') { continue }
+
+    if ($w -match '^(inicio|directo|idea|clara|frase|simple|facil|fácil|mantener|interes|interés|contexto|lenguaje|breve|visual|problema|central|video|busca|resolver|cotidiana|cotidiano|reconocible|presentamos|introducimos|conectamos|marcamos|abrimos|segundo|tema|principal|escena|siguiente|claro|situacion|situación|rec|visu|atencion|atención|captar|recordar|promesa|concreta|mensaje|explicacion|explicación|concepto)$') {
+      continue
+    }
+
+    $score = 0.0
+
+    if ($VISUAL -contains $w)   { $score += 5.0 } else { $score += 0.5 }
+    if ($ABSTRACT -contains $w) { $score -= 4.0 }
+
+    if ($w -match '(ando|iendo|ados|adas|able|ibles|mente|cion|ción|sion|dad|ez)$') {
+      $score -= 2.5
+    }
+
+    if ($w.Length -ge 5 -and $w.Length -le 12) { $score += 0.5 }
+
+    $items.Add([pscustomobject]@{
+      term  = $w
+      score = $score
+      hash  = Sha256Hex("concrete|$w")
+    }) | Out-Null
+  }
+
+  return @(
+    $items |
+      Where-Object { $_.score -ge 4.5 } |
+      Sort-Object `
+        @{ Expression = "score"; Descending = $true }, `
+        @{ Expression = "hash";  Descending = $false } |
+      Select-Object -ExpandProperty term -Unique |
+      Select-Object -First $Top
+  )
+}
 function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$sceneText, [string[]]$kws, [int]$SceneIndex) {
-  $topicN = Normalize-QueryText $topic 48
-  $imgqN  = Normalize-QueryText $imageQuery 64
-  $textN  = Normalize-QueryText $sceneText 64
+  $topicN = Normalize-QueryText $topic 40
+  $imgqN  = Normalize-QueryText $imageQuery 56
+  $textN  = Normalize-QueryText $sceneText 56
+  $residualPattern = '^(inicio|directo|idea|clara|frase|simple|facil|fácil|mantener|interes|interés|contexto|lenguaje|breve|visual|problema|central|video|busca|resolver|cotidiana|cotidiano|reconocible|presentamos|introducimos|conectamos|marcamos|abrimos|segundo|tema|principal|escena|siguiente|claro|situacion|situación|rec|visu|atencion|atención|captar|recordar|promesa|concreta|concreto|mensaje|explicacion|explicación|concepto|facilmente|fácilmente|interesar|interesa|resolverlo|resuelve|narrativa|cierre|micro|util|útil|mostramos|cambiamos|pasamos|reforzamos|insertamos|hacemos|evitar|mostrado|reutilizar|limpio|importante)$'
+  $verbPattern = '^(mostramos|cambiamos|pasamos|reforzamos|insertamos|hacemos|evitar|mostrado|reutilizar)$|((ar|er|ir|ando|iendo|ado|ido|amos|emos|imos))$'
+  $hardDrop = @(
+    "darle","punto","sencilla","audiencia","pensada","hacia","importante","ultima","última","ejemplo","pausa",
+    "siguiente","principal","problema","idea","mensaje","narrativa","cierre","micro","visual","claro","breve","simple","util","útil","directo","concreta","concreto"
+  )
 
   $kwArr = @()
   foreach ($k in @($kws)) {
@@ -251,72 +358,294 @@ function BuildQueryCandidates([string]$topic, [string]$imageQuery, [string]$scen
     if ($kn -and $kn.Length -ge 3) { $kwArr += $kn }
   }
   $kwArr = @($kwArr | Select-Object -Unique)
-  $kwTop2 = @($kwArr | Select-Object -First 2)
-  $kwTop4 = @($kwArr | Select-Object -First 4)
+  $discursiveTerms = @(
+    "promesa","mensaje","cierre","recordar","explicacion","explicación","explicar",
+    "directa","directo","atencion","atención","frase","contundente","camara","cámara"
+  )
+  $discursiveTokens = @(
+    (Tokenize $topicN) +
+    (Tokenize $imgqN) +
+    (Tokenize $textN) +
+    @($kwArr)
+  ) | Where-Object { $_ } | Select-Object -Unique
+  $hasDiscursiveSignal = @($discursiveTokens | Where-Object { $discursiveTerms -contains $_ }).Count -gt 0
 
   $anchorTerms = @()
   $anchorTerms += @(Tokenize $topicN)
   $anchorTerms += @(Tokenize $imgqN)
   $anchorTerms += @(Tokenize $textN)
-  $anchorTerms += @($kwTop4)
+  $anchorTerms += @($kwArr)
   $anchorTerms = @($anchorTerms | Where-Object { $_ } | Select-Object -Unique)
+  $anchorVisualCount = @($anchorTerms | Where-Object { $VISUAL -contains $_ }).Count
 
   $anchors = @(Get-VisualAnchorTerms -terms $anchorTerms)
+  $concreteTerms = @(Get-ConcreteSceneTerms -terms $anchorTerms -Top 4)
+  $concreteTop2 = @($concreteTerms | Select-Object -First 2)
 
-  $candidates = @()
+  $kwUseful = @(
+    $kwArr |
+      Where-Object {
+        $_ -and
+        $_.Length -ge 4 -and
+        $_ -notmatch '^(inicio|directo|idea|clara|frase|simple|facil|fácil|mantener|interes|interés|contexto|lenguaje|breve|visual|problema|central|video|busca|resolver|cotidiana|cotidiano|reconocible|presentamos|introducimos|conectamos|marcamos|abrimos|segundo|tema|principal|escena|siguiente|claro|situacion|situación|rec|visu|atencion|atención|captar|recordar|promesa|concreta|mensaje|explicacion|explicación|concepto|facilmente|fácilmente|interesar|interesa|resolverlo|resuelve)$'
+      } |
+      Select-Object -First 2
+  )
+
+  $subjectTerms = @()
+  if ($concreteTop2.Count -gt 0) {
+    $subjectTerms = @($concreteTop2)
+  }
+  elseif ($kwUseful.Count -gt 0) {
+    $subjectTerms = @($kwUseful)
+  }
+
+  $candidates = New-Object System.Collections.Generic.List[string]
+  $anchorVisualPool = @(
+    @($anchorTerms | Where-Object { $VISUAL -contains $_ }) +
+    @((@($anchors | ForEach-Object { Tokenize ([string]$_) }) | ForEach-Object { $_ }) | Where-Object { $VISUAL -contains $_ })
+  ) | Select-Object -Unique
+
+  function Add-Candidate([string]$value) {
+    $q = Normalize-QueryText $value 90
+    $filtered = @(
+      (Tokenize $q) |
+      Where-Object {
+        $_ -and
+        ($_ -ne "photo") -and
+        ($_.Length -ge 3) -and
+        ($STOP -notcontains $_) -and
+        ($ABSTRACT -notcontains $_) -and
+        ($_ -notmatch $verbPattern) -and
+        ($_ -notmatch $residualPattern)
+      } |
+      Select-Object -Unique
+    )
+
+    if ($filtered.Count -eq 0) { return }
+
+    $visualTokens = @($filtered | Where-Object { $VISUAL -contains $_ } | Select-Object -Unique)
+    $otherTokens  = @($filtered | Where-Object { $VISUAL -notcontains $_ } | Select-Object -Unique)
+
+    $tokens = @($visualTokens + $otherTokens | Select-Object -Unique)
+
+    if ($visualTokens.Count -eq 0) {
+      if ($anchorVisualCount -gt 0) { return }
+      $tokens = @("persona") + $tokens
+      $tokens = @($tokens | Select-Object -Unique)
+    }
+
+    $tokens = @($tokens | Select-Object -First 24)
+    if ($tokens.Count -eq 0) { return }
+
+    $q = (($tokens -join " ") + " photo").Trim()
+    if ($q -and $q.Trim().Length -ge 3) {
+      $candidates.Add($q) | Out-Null
+    }
+  }
+
+  function Get-FallbackCompactQuery([string[]]$visualPool) {
+    $vp = @($visualPool | Where-Object { $_ } | Select-Object -Unique)
+    if (@($vp | Where-Object { $_ -in @("manos","mano","cuaderno") }).Count -gt 0) { return "manos cuaderno photo" }
+    if (@($vp | Where-Object { $_ -in @("camara","cámara","rostro","cara") }).Count -gt 0) { return "persona camara photo" }
+    if (@($vp | Where-Object { $_ -in @("escritorio","oficina","computadora","laptop") }).Count -gt 0) { return "persona escritorio photo" }
+    return "persona escritorio photo"
+  }
+
+  function Compact-VisualQuery([string]$query, [string[]]$visualPool) {
+    $qt = @(
+      (Tokenize $query) |
+      Where-Object {
+        $_ -and
+        ($_ -ne "photo") -and
+        ($VISUAL -contains $_) -and
+        ($ABSTRACT -notcontains $_) -and
+        ($STOP -notcontains $_) -and
+        ($hardDrop -notcontains $_) -and
+        ($_ -notmatch $verbPattern) -and
+        ($_ -notmatch $residualPattern)
+      } |
+      Select-Object -Unique
+    )
+
+    if ($qt.Count -lt 2) {
+      return (Get-FallbackCompactQuery -visualPool $visualPool)
+    }
+
+    $maxTokens = 3
+    if ($qt.Count -ge 4) {
+      $first4 = @($qt | Select-Object -First 4)
+      if ($first4.Count -eq 4 -and @($first4 | Where-Object { $VISUAL -contains $_ }).Count -eq 4) {
+        $maxTokens = 4
+      }
+    }
+
+    $picked = @($qt | Select-Object -First $maxTokens)
+    if ($picked.Count -gt 3 -and @($picked | Where-Object { $VISUAL -contains $_ }).Count -lt $picked.Count) {
+      $picked = @($picked | Select-Object -First 3)
+    }
+
+    if ($picked.Count -lt 2) {
+      return (Get-FallbackCompactQuery -visualPool $visualPool)
+    }
+
+    return ((@($picked | Select-Object -Unique) -join " ") + " photo").Trim()
+  }
+
+  function Get-QueryCategory([string]$query) {
+    $qt = @((Tokenize $query) | Where-Object { $_ -and $_ -ne "photo" } | Select-Object -Unique)
+    if (@($qt | Where-Object { $_ -in @("manos","mano","cuaderno","mesa") }).Count -gt 0) { return "hands" }
+    if (@($qt | Where-Object { $_ -in @("camara","cámara","rostro","cara") }).Count -gt 0) { return "camera" }
+    if (@($qt | Where-Object { $_ -in @("reunion","reunión","equipo","oficina") }).Count -gt 0) { return "team" }
+    if (@($qt | Where-Object { $_ -in @("laptop","computadora","escritorio","oficina") }).Count -gt 0) { return "desk" }
+    return "other"
+  }
 
   foreach ($anchor in $anchors) {
-    $candidates += (Normalize-QueryText ("$anchor photo") 90)
+    if ($subjectTerms.Count -gt 0) {
+      Add-Candidate "$anchor $($subjectTerms -join ' ') photo"
+    }
+    Add-Candidate "$anchor photo"
     if ($topicN) {
-      $candidates += (Normalize-QueryText ("$topicN $anchor photo") 90)
+      Add-Candidate "$topicN $anchor photo"
     }
   }
 
   if ($imgqN) {
-    $candidates += (Normalize-QueryText ("$imgqN photo") 90)
-    if ($topicN) {
-      $candidates += (Normalize-QueryText ("$topicN $imgqN photo") 90)
+    Add-Candidate "$imgqN photo"
+    if ($subjectTerms.Count -gt 0) {
+      Add-Candidate "$imgqN $($subjectTerms -join ' ') photo"
     }
   }
 
-  if ($textN) {
-    $candidates += (Normalize-QueryText ("$textN photo") 90)
-    if ($topicN) {
-      $candidates += (Normalize-QueryText ("$topicN $textN photo") 90)
-    }
-  }
-
-  if ($kwTop4.Count -gt 0) {
-    $kwText = ($kwTop4 -join " ")
-    $candidates += (Normalize-QueryText ("$kwText photo") 90)
-    if ($topicN) {
-      $candidates += (Normalize-QueryText ("$topicN $kwText photo") 90)
-    }
-  }
-
-  if ($topicN -and $kwTop2.Count -gt 0) {
-    $candidates += (Normalize-QueryText ("$topicN $($kwTop2 -join ' ') photo") 90)
+  if ($topicN -and $subjectTerms.Count -gt 0) {
+    Add-Candidate "$topicN $($subjectTerms -join ' ') photo"
   }
 
   if ($topicN) {
-    $candidates += (Normalize-QueryText ("$topicN photo") 90)
+    Add-Candidate "$topicN photo"
   }
 
-  if ($anchors.Count -eq 0 -and $candidates.Count -eq 0) {
-    $fallback = ("stock background scene {0:000} photo" -f ($SceneIndex + 1))
-    if ($topicN) {
-      $fallback = "$topicN $fallback"
+  function Get-RotatedTokens([string[]]$tokens, [int]$take) {
+    $arr = @($tokens | Where-Object { $_ } | Select-Object -Unique)
+    if ($arr.Count -eq 0) { return @() }
+    if ($arr.Count -le $take) { return $arr }
+    $offset = (($SceneIndex % $arr.Count) + $arr.Count) % $arr.Count
+    $rot = @()
+    for ($i = 0; $i -lt $arr.Count; $i++) {
+      $rot += $arr[(($offset + $i) % $arr.Count)]
     }
-    $candidates += (Normalize-QueryText $fallback 90)
+    return @($rot | Select-Object -First $take)
   }
 
-  return @(
-    $candidates |
+  $visualSource = @(
+    @($anchorVisualPool) +
+    @($concreteTerms | Where-Object { $_ -and ($VISUAL -contains $_) }) +
+    @($subjectTerms | Where-Object { $_ -and ($VISUAL -contains $_) })
+  ) | Select-Object -Unique
+
+  $familyHands  = @($visualSource | Where-Object { $_ -in @("manos","mano","cuaderno","mesa") } | Select-Object -Unique)
+  $familyDesk   = @($visualSource | Where-Object { $_ -in @("persona","laptop","computadora","escritorio","oficina") } | Select-Object -Unique)
+  $familyTeam   = @($visualSource | Where-Object { $_ -in @("reunion","reunión","equipo","oficina") } | Select-Object -Unique)
+  $familyCamera = @($visualSource | Where-Object { $_ -in @("persona","camara","cámara","rostro","cara") } | Select-Object -Unique)
+
+  $families = @(
+    [pscustomobject]@{ name = "hands";  tokens = $familyHands  },
+    [pscustomobject]@{ name = "desk";   tokens = $familyDesk   },
+    [pscustomobject]@{ name = "team";   tokens = $familyTeam   },
+    [pscustomobject]@{ name = "camera"; tokens = $familyCamera }
+  )
+  $familyOrder = @("hands","desk","team","camera")
+  $familyOffset = (($SceneIndex % $familyOrder.Count) + $familyOrder.Count) % $familyOrder.Count
+  for ($f = 0; $f -lt $familyOrder.Count; $f++) {
+    $fname = $familyOrder[(($familyOffset + $f) % $familyOrder.Count)]
+    $pool = @(($families | Where-Object { $_.name -eq $fname } | Select-Object -First 1).tokens)
+    if ($pool.Count -lt 2) { continue }
+    $short2 = @(Get-RotatedTokens -tokens $pool -take 2)
+    $short3 = @(Get-RotatedTokens -tokens $pool -take 3)
+    $short4 = @(Get-RotatedTokens -tokens $pool -take 4)
+    if ($short2.Count -ge 2) { Add-Candidate (($short2 -join " ") + " photo") }
+    if ($short3.Count -ge 3) { Add-Candidate (($short3 -join " ") + " photo") }
+    if ($short4.Count -ge 4) { Add-Candidate (($short4 -join " ") + " photo") }
+  }
+
+  $candidateTexts = @($candidates | Select-Object -Unique)
+  $hasCameraCandidate = @(
+    $candidateTexts |
+      Where-Object { (Get-QueryCategory -query $_) -eq "camera" }
+  ).Count -gt 0
+
+  $cameraCycleHit = ((($SceneIndex % 4) + 4) % 4) -eq 1
+
+  if (-not $hasCameraCandidate -and ($hasDiscursiveSignal -or $cameraCycleHit)) {
+    Add-Candidate "persona camara photo"
+  }
+
+  if ($candidates.Count -eq 0) {
+    Add-Candidate ("persona escritorio scene {0:000} photo" -f ($SceneIndex + 1))
+  }
+
+  $uniq = @($candidates | Select-Object -Unique)
+  if ($uniq.Count -le 1) { return $uniq }
+
+  $compacted = @(
+    $uniq |
+      ForEach-Object { Compact-VisualQuery -query $_ -visualPool $anchorVisualPool } |
       Where-Object { $_ -and $_.Trim().Length -ge 3 } |
       Select-Object -Unique
   )
-}
 
+  if ($compacted.Count -eq 0) {
+    return @((Get-FallbackCompactQuery -visualPool $anchorVisualPool))
+  }
+
+  $annotated = @(
+    $compacted |
+      ForEach-Object -Begin { $idx = 0 } -Process {
+        [pscustomobject]@{
+          q   = $_
+          cat = Get-QueryCategory -query $_
+          idx = [int]$idx
+        }
+        $idx++
+      }
+  )
+
+  $byCategory = @{
+    "camera" = @($annotated | Where-Object { $_.cat -eq "camera" })
+    "team"   = @($annotated | Where-Object { $_.cat -eq "team" })
+    "hands"  = @($annotated | Where-Object { $_.cat -eq "hands" })
+    "desk"   = @($annotated | Where-Object { $_.cat -eq "desk" })
+    "other"  = @($annotated | Where-Object { $_.cat -eq "other" })
+  }
+
+  $preferredOrder = @("hands","team","camera","desk","other")
+
+  $finalCandidates = New-Object System.Collections.Generic.List[string]
+  $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+  foreach ($cat in $preferredOrder) {
+    foreach ($row in $byCategory[$cat]) {
+      if ($seen.Add($row.q)) {
+        $finalCandidates.Add($row.q) | Out-Null
+        break
+      }
+    }
+  }
+
+  foreach ($row in $annotated) {
+    if ($seen.Add($row.q)) {
+      $finalCandidates.Add($row.q) | Out-Null
+    }
+    if ($finalCandidates.Count -ge 8) { break }
+  }
+
+  if ($finalCandidates.Count -eq 0) {
+    return @((Get-FallbackCompactQuery -visualPool $anchorVisualPool))
+  }
+
+  return @($finalCandidates | Select-Object -First 8)
+}
 function Resolve-Manifest([string]$Root) {
   $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path
   $candidates = @(
@@ -430,8 +759,9 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
 
   Ensure-Pso -parent $scene -name "assets"
   Ensure-Pso -parent $scene.assets -name "image"
-  Set-Note -obj $scene.assets.image -name "query" -value $q
-  Set-Note -obj $scene.assets.image -name "query_candidates" -value $queryCandidates
+  $imgMeta = Get-SceneImageMetaTarget -Scene $scene
+    Set-Note -obj $imgMeta -name "query" -value $q
+  Set-Note -obj $imgMeta -name "query_candidates" -value $queryCandidates
 
   if (-not $DownloadPixabay) { continue }
 
@@ -469,12 +799,12 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
       }
     }
 
-    Set-Note -obj $scene.assets.image -name "provider" -value "pixabay"
-    Set-Note -obj $scene.assets.image -name "used_query" -value $usedQuery
-    Set-Note -obj $scene.assets.image -name "hits_count" -value $hits.Count
+    Set-Note -obj $imgMeta -name "provider" -value "pixabay"
+    Set-Note -obj $imgMeta -name "used_query" -value $usedQuery
+    Set-Note -obj $imgMeta -name "hits_count" -value $hits.Count
 
     if ($hits.Count -lt 1) {
-      Set-Note -obj $scene.assets.image -name "note" -value "pixabay: 0 hits"
+      Set-Note -obj $imgMeta -name "note" -value "pixabay: 0 hits"
       $withoutHits++
       continue
     }
@@ -487,7 +817,7 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
       $url = [string]$hit.url
     }
     if (-not $url) {
-      Set-Note -obj $scene.assets.image -name "note" -value "pixabay: hit sin .url"
+      Set-Note -obj $imgMeta -name "note" -value "pixabay: hit sin .url"
       $withErrors++
       continue
     }
@@ -500,14 +830,14 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     $outPath = Join-Path $outDir ("scene_{0:000}.jpg" -f ($i + 1))
     & $dl -Url $url -OutPath $outPath | Out-Null
 
-    Set-Note -obj $scene.assets.image -name "path" -value (Resolve-Path -LiteralPath $outPath).Path
-    Set-Note -obj $scene.assets.image -name "picked_index" -value $idx
-    Set-Note -obj $scene.assets.image -name "source_url" -value $url
+    Set-Note -obj $imgMeta -name "path" -value (Resolve-Path -LiteralPath $outPath).Path
+    Set-Note -obj $imgMeta -name "picked_index" -value $idx
+    Set-Note -obj $imgMeta -name "source_url" -value $url
     $downloaded++
   }
   catch {
-    Set-Note -obj $scene.assets.image -name "provider" -value "pixabay"
-    Set-Note -obj $scene.assets.image -name "note" -value ("pixabay error: " + $_.Exception.Message)
+    Set-Note -obj $imgMeta -name "provider" -value "pixabay"
+    Set-Note -obj $imgMeta -name "note" -value ("pixabay error: " + $_.Exception.Message)
     $withErrors++
   }
   finally {

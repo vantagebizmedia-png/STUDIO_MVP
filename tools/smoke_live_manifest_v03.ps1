@@ -60,9 +60,10 @@ for ($i=1; $i -le $scCount; $i++) {
   if ($s.assets -and $s.assets.audio_clip) { $clip = [string]$s.assets.audio_clip }
   if (-not $clip) { Fail "Falta assets.audio_clip en escena index=$($s.index)" }
 
-  $expected = ("artifacts/audio_s{0:d2}.wav" -f $i)
-  if ($clip -ne $expected) {
-    Fail "audio_clip inesperado en escena ${i}: '$clip' != '$expected'"
+  $expectedLegacy = ("artifacts/audio_s{0:d2}.wav" -f $i)
+  $expectedV03    = ("assets/audio_clips/s{0:d2}.wav" -f $i)
+  if (($clip -ne $expectedLegacy) -and ($clip -ne $expectedV03)) {
+    Fail "audio_clip inesperado en escena ${i}: '$clip' != legacy='$expectedLegacy' ni v03='$expectedV03'"
   }
 
   $clipAbs = Join-Path $live $clip

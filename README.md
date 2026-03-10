@@ -1,82 +1,186 @@
-# STUDIO_MVP (v0.3) — Deterministic Video Pipeline (LIVE -> Scenes -> Subtitles -> HANDOFF)
+# STUDIO_MVP
 
-Este repo contiene un pipeline determinista (replay/seed) para generar videos estilo short/reel a partir de un prompt.
-El objetivo del MVP es mantener un baseline estable con smoke tests end-to-end.
+Pipeline determinista para generar videos verticales (9:16) tipo reels/shorts a partir de un guion, con escenas, audio, subtítulos y empaquetado final reproducible.
 
-## Estado actual (mar 2026)
-- ✅ Smoke core v0.3 (tests + demos)
-- ✅ Smoke E2E v0.3: LIVE -> workspace -> scenes_v03 -> subtitles (SRT + burn-in) -> handoff_v03 (ZIP + SHA256 + READY)
+---
 
-## Requisitos
-- Windows + PowerShell 7 (`pwsh`)
-- Python instalado (se usa el python en PATH)
-- FFmpeg accesible en PATH (para render/subtítulos)
+## Objetivo
 
-## Quickstart (Smoke)
-Desde la raíz del repo:
+Convertir un guion en un paquete final listo para publicación, manteniendo:
 
-### 1) Smoke Core
-Ejecuta unit tests + demos:
-- `tools/smoke_v03.ps1`
+- determinismo
+- reproducibilidad
+- control manual del operador
+- zero auto-learning
+- cambios solo por parches/versionado explícito
 
-### 2) Smoke E2E (sin handoff)
-Incluye quality gate: assets por escena + CPS de captions (smoke_quality_live_v03).
-Ejecuta LIVE -> workspace -> scenes -> subtítulos:
-- `tools/smoke_e2e_v03.ps1 -WorkspaceRoot $env:STUDIO_WORKSPACE -MaxScenes 6`
+---
 
-### 3) Smoke E2E (con handoff)
-Genera entrega final con hashes y marker de listo:
-- `tools/smoke_e2e_v03.ps1 -WorkspaceRoot $env:STUDIO_WORKSPACE -MaxScenes 6 -DoHandoff`
+## Estado actual del proyecto
 
-Outputs esperados en:
-`$env:STUDIO_WORKSPACE\runs\smoke_live_latest\handoff_v03\`
-- `video.mp4` (sin música)
+### Ya funciona de forma estable en smoke E2E v0.3
+
+- generación de workspace LIVE estable
+- Scene Builder v03
+- `manifest_v03.json` con `scenes_v03`
+- sincronización de `pack.json`
+- normalización de assets de escena
+- render de `video.mp4`
+- generación y resincronización de subtítulos (`captions_v03.srt`, `subtitles.srt`)
+- burn-in de subtítulos a `video_subs.mp4`
+- outputs asegurados:
+  - `video.mp4`
+  - `video_music_auto.mp4`
+  - `video_final.mp4`
+- handoff final:
+  - `handoff_v03`
+  - `HASHES_SHA256.txt`
+  - `HANDOFF_READY.txt`
+  - `handoff_v03.zip`
+
+### Validado recientemente
+
+Smoke E2E v0.3 limpio con:
+
+- `video.mp4`
+- `video_final.mp4`
+- `captions_v03.srt`
+- `handoff_v03.zip`
+
+---
+
+## Qué NO está completamente resuelto todavía
+
+### 1. Selección visual real por escena
+La estructura ya existe, pero en smoke todavía se observa fallback frecuente de imagen:
+
+- `FALLBACK(artifacts.image)`
+
+Eso significa que el pipeline corre bien, pero la capa de relevancia visual por escena todavía necesita mejora para poblar escenas con imágenes más correctas y menos heredadas.
+
+### 2. Escenas guiadas por guion
+La meta del proyecto sigue siendo:
+
+- que las escenas las determine el guion
+- que la duración por escena sea flexible
+- que un video pueda durar desde 1 minuto hasta 5 minutos o más, según el guion
+
+En el smoke actual se usan parámetros controlados para asegurar repetibilidad de prueba, no para fijar el comportamiento final del producto.
+
+### 3. Calidad visual y estética
+Pendiente de seguir puliendo:
+
+- relevancia de imagen por escena
+- layout visual
+- márgenes seguros
+- fit contain/crop más fino
+- tamaño de texto automático
+- mayor calidad narrativa del script LIVE
+
+### 4. Música automática real
+El sistema ya asegura outputs consistentes, pero cuando no hay música disponible:
 - `video_music_auto.mp4`
 - `video_final.mp4`
-- `handoff_v03.zip`
-- `HASHES_SHA256.txt`
+
+se generan a partir de la base subtitulada. Falta completar la integración final de música automática en el flujo deseado.
+
+---
+
+## Principios fuertes del sistema
+
+1. El sistema debe ser 100% determinista.
+2. No hay autoaprendizaje ni mutaciones automáticas.
+3. Los cambios solo ocurren mediante parches/versionado explícito.
+4. El operador controla el sistema manualmente.
+5. La validación principal se hace con smoke tests reproducibles.
+
+---
+
+## Roadmap vigente
+
+### Prioridad 1
+Scene Builder entre LIVE y EXPORT para que LIVE produzca escenas reales en `manifest_v03.json`:
+
+- `scenes_v03`
+- assets por escena
+- split de guion a N escenas
+- segmentación de audio por escena
+- una imagen por escena
+
+### Prioridad 2
+Subtítulos integrados:
+
+- SRT
+- burn-in
+- sincronización limpia
+
+### Prioridad 3
+Mejorar calidad LIVE:
+
+- guion más estructurado
+- imágenes más relevantes
+- texto que no se salga
+- mejor lectura visual por escena
+
+### Prioridad 4
+Música automática y handoff final:
+
+- `video.mp4` sin música
+- `video_music_auto.mp4`
+- `video_final.mp4`
+- ZIP final
+- hashes
 - `HANDOFF_READY.txt`
 
-## Roadmap (STUDIO_MVP)
+### Prioridad 5
+Mantener determinismo y evitar regresiones:
 
-### Roadmap Status (mar 2026)
-- ✅ Scene Builder (LIVE -> manifest_v03.json con scenes_v03 + assets por escena)
-- ✅ Subtítulos integrados (SRT + burn-in)
-- ✅ Música automática (3 salidas: video.mp4 / video_music_auto.mp4 / video_final.mp4)
-- ✅ Finalize/Handoff (ZIP final + hashes + HANDOFF_READY.txt)
-- ⏳ Calidad LIVE (guion más estructurado, imágenes más relevantes, evitar overflow de texto)
-- ⏳ Estética/Layout (safe margins, auto tamaño texto, fit contain/crop)
-Prioridades (manteniendo baseline + smoke determinista):
+- smoke estándar estable
+- replay estricto
+- compatibilidad de handoff
 
-1) Scene Builder (LIVE -> manifest_v03.json con scenes_v03 + assets por escena)
-- Split guion -> N escenas
-- Segmentación de audio por escena
-- 1 imagen por escena vía Pixabay/stock_query
+---
 
-2) Subtítulos integrados
-- Generación SRT + burn-in (safe margins / outline / tamaño controlado)
+## Estado honesto resumido
 
-3) Calidad LIVE
-- Guion más estructurado
-- Imágenes más relevantes
-- Evitar overflow de texto
+Hoy el proyecto ya no está “roto”.
 
-4) Música automática (3 salidas)
-- `video.mp4` (sin música)
-- `video_music_auto.mp4`
-- `video_final.mp4`
+Hoy el proyecto:
 
-5) Finalize/Handoff
-- ZIP final + hashes + `HANDOFF_READY.txt`
-- Normalizar handoff para integraciones
+- sí genera video
+- sí genera subtítulos
+- sí empaqueta handoff
+- sí pasa smoke E2E
+- sí es utilizable como base técnica
 
-## Notas de ingeniería
-- Determinismo: el sistema debe ser reproducible (replay strict) y no auto-mutar.
-- Cualquier cambio se valida con smoke tests para evitar regresiones.
-- `.gitattributes` fuerza line endings consistentes (LF) en textos del repo.
+Lo que falta no es rehacer el sistema, sino completar bien la capa visual/semántica y seguir refinando el comportamiento guiado por guion.
 
-## Licencia
-Ver `LICENSE`.
+---
 
+## Forma de trabajo
 
+- sin edición manual directa
+- cambios mediante PowerShell
+- reemplazos por bloques enteros
+- validación con smoke reproducible
+- versionado explícito en Git
 
+---
+
+## Comandos de validación habituales
+
+### Smoke E2E
+`pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\smoke_e2e_v03.ps1 -WorkspaceRoot $env:STUDIO_WORKSPACE -MaxScenes 6 -Seed 123`
+
+### Smoke E2E con handoff
+`pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\smoke_e2e_v03.ps1 -WorkspaceRoot $env:STUDIO_WORKSPACE -MaxScenes 6 -Seed 123 -DoHandoff`
+
+---
+
+## Siguiente foco recomendado
+
+1. dejar documentado el estado real
+2. consolidar README
+3. mejorar relevancia visual por escena sin romper smoke
+4. revisar modo LIVE para que use mejor queries + fetch real de imágenes
+5. luego preparar subida privada del repo

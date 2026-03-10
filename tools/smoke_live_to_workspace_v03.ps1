@@ -86,7 +86,34 @@ $aud0 = Get-ChildItem -LiteralPath $srcArtifacts -Filter "audio_*.wav" -File | S
 if (-not $aud0) { throw ("Falta audio_*.wav en: " + $srcArtifacts) }
 Copy-Item -LiteralPath $aud0.FullName -Destination (Join-Path $dstRoot $aud0.Name) -Force
 
+$baseAudAbs = Join-Path $dstRoot $aud0.Name
+$ffprobeOut = & ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $baseAudAbs 2>$null
+if ($LASTEXITCODE -ne 0) {
+  throw ("ffprobe no pudo leer duración de audio base: " + $baseAudAbs)
+}
+
+$ffprobeText = (($ffprobeOut | ForEach-Object { "$_" }) -join "").Trim()
+if ([string]::IsNullOrWhiteSpace($ffprobeText)) {
+  throw ("ffprobe devolvió duración vacía para: " + $baseAudAbs)
+}
+
+$srcAudioSec = 0.0
+if (-not [double]::TryParse($ffprobeText, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$srcAudioSec)) {
+  throw ("No se pudo parsear duración ffprobe='" + $ffprobeText + "'")
+}
+
+$srcAudioMs = [Math]::Max(1000, [int][Math]::Round($srcAudioSec * 1000.0))
+
 # 3) LIVE normalizado
+
+# Limpieza determinista de audio previo del LIVE
+Get-ChildItem -LiteralPath (Join-Path $dstRoot "artifacts") -Filter "audio_s*.wav" -File -ErrorAction SilentlyContinue |
+  Remove-Item -Force -ErrorAction SilentlyContinue
+
+$staleAudioClipsDir = Join-Path $dstRoot "assets\audio_clips"
+if (Test-Path -LiteralPath $staleAudioClipsDir) {
+  Remove-Item -LiteralPath $staleAudioClipsDir -Recurse -Force -ErrorAction SilentlyContinue
+}
 $max = 6
 try {
   if (-not [string]::IsNullOrWhiteSpace($env:STUDIO_SMOKE_MAXSCENES)) { $max = [int]$env:STUDIO_SMOKE_MAXSCENES }
@@ -98,7 +125,7 @@ if ($max -le 4) {
   $totalMs = 120000
 }
 elseif ($max -le 8) {
-  $totalMs = 180000
+  $totalMs = $srcAudioMs
 }
 else {
   $totalMs = 300000
@@ -171,7 +198,27 @@ for ($i=1; $i -le $max; $i++) {
   $clipRel = ("artifacts/audio_s{0:d2}.wav" -f $i)
   $clipAbs = Join-Path $dstRoot $clipRel
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $clipAbs) | Out-Null
-  Copy-Item -LiteralPath $baseAudAbs -Destination $clipAbs -Force
+
+  $clipMs = [Math]::Max(1, ($en - $st))
+  $clipStartSec = ("{0:0.000}" -f ($st / 1000.0))
+  $clipDurSec   = ("{0:0.000}" -f ($clipMs / 1000.0))
+
+  & ffmpeg -hide_banner -loglevel error -y `
+    -ss $clipStartSec `
+    -t $clipDurSec `
+    -i $baseAudAbs `
+    -acodec pcm_s16le `
+    -ar 44100 `
+    -ac 2 `
+    $clipAbs
+
+  if ($LASTEXITCODE -ne 0) {
+    throw ("FFMPEG falló al recortar clip escena={0} start={1}s dur={2}s" -f $i, $clipStartSec, $clipDurSec)
+  }
+
+  if (-not (Test-Path -LiteralPath $clipAbs)) {
+    throw ("No se creó clip de audio: " + $clipAbs)
+  }
 
   $sd = Join-Path $sceneRoot ("scene_{0:d2}" -f $i)
   New-Item -ItemType Directory -Force -Path $sd | Out-Null

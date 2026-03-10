@@ -57,17 +57,53 @@ if (-not (Test-Path -LiteralPath $videoSubs)) {
 Copy-Item -LiteralPath $videoSubs -Destination $videoLegacySub -Force
 
 if ($music) {
-  Write-Host "INFO: hay música detectada, pero este ensure no mezcla audio; conserva salidas existentes." -ForegroundColor Yellow
+  Write-Host "Música detectada. Mezclando audio real..." -ForegroundColor Cyan
 
-  if (-not (Test-Path -LiteralPath $videoMusicAuto)) {
-    Copy-Item -LiteralPath $videoSubs -Destination $videoMusicAuto -Force
-    Write-Host "WARN: video_music_auto.mp4 no existía; copiado desde video_subs.mp4 como fallback" -ForegroundColor Yellow
+  $tmpMusic = Join-Path $live "_tmp_music_auto.mp4"
+  if (Test-Path -LiteralPath $tmpMusic) {
+    Remove-Item -LiteralPath $tmpMusic -Force
   }
 
-  if (-not (Test-Path -LiteralPath $videoFinal)) {
-    Copy-Item -LiteralPath $videoMusicAuto -Destination $videoFinal -Force
-    Write-Host "WARN: video_final.mp4 no existía; copiado desde video_music_auto.mp4" -ForegroundColor Yellow
+  # Mix determinista:
+  # - audio principal del video_subs al frente
+  # - música más baja
+  # - duración final = shortest (la del video)
+  # - reencode video+audio para salida estable
+  $filter = "[1:a]volume=0.12[a1];[0:a][a1]amix=inputs=2:duration=first:dropout_transition=0,volume=2[aout]"
+
+  & ffmpeg -hide_banner -loglevel error -y `
+    -i $videoSubs `
+    -stream_loop -1 -i $music `
+    -filter_complex $filter `
+    -map 0:v:0 `
+    -map "[aout]" `
+    -c:v libx264 `
+    -preset medium `
+    -crf 18 `
+    -pix_fmt yuv420p `
+    -c:a aac `
+    -b:a 192k `
+    -ar 44100 `
+    -ac 2 `
+    -shortest `
+    -movflags +faststart `
+    -map_metadata -1 `
+    -map_chapters -1 `
+    $tmpMusic
+
+  if ($LASTEXITCODE -ne 0) {
+    Fail "ffmpeg falló mezclando música"
   }
+
+  if (-not (Test-Path -LiteralPath $tmpMusic)) {
+    Fail "No se generó salida temporal con música"
+  }
+
+  Move-Item -LiteralPath $tmpMusic -Destination $videoMusicAuto -Force
+  Copy-Item -LiteralPath $videoMusicAuto -Destination $videoFinal -Force
+
+  Write-Host "OK: video_music_auto.mp4 generado con mezcla real" -ForegroundColor Green
+  Write-Host "OK: video_final.mp4 sincronizado desde video_music_auto.mp4" -ForegroundColor Green
 }
 else {
   Write-Host "No hay música. Copiando base subtitulada a video_music_auto.mp4 y video_final.mp4..." -ForegroundColor Yellow

@@ -1,13 +1,5 @@
 # studio/stock_query_pixabay_v03.py
 # Pixabay stock_query v03: 1 imagen por escena (determinista con cache; fallback en replay strict)
-#
-# Reglas de determinismo:
-# - cache_key = sha256("pixabay|q=<q>|seed=<seed>")[:16]
-# - Si cache tiene key -> reusa path (cache_hit True)
-# - Si replay_strict y falta cache -> NO red, placeholder determinista
-# - Si NO replay_strict y hay API key -> consulta Pixabay y elige resultado determinista:
-#     ordenar hits por (id asc) y elegir hits[ seed % len(hits) ]
-# - Si falla Pixabay o no hay key -> placeholder determinista (provider pixabay_stub_*)
 
 from __future__ import annotations
 
@@ -38,7 +30,6 @@ def _get_api_key() -> str:
 
 
 def _pick_url_from_hit(hit: Dict[str, Any]) -> str:
-    # preferir mayor calidad; fallback determinista
     for k in ("largeImageURL", "fullHDURL", "webformatURL", "previewURL"):
         v = hit.get(k)
         if isinstance(v, str) and v.strip():
@@ -47,8 +38,6 @@ def _pick_url_from_hit(hit: Dict[str, Any]) -> str:
 
 
 def _pixabay_search(api_key: str, query: str, timeout_sec: int = 15) -> List[Dict[str, Any]]:
-    # Endpoint oficial Pixabay
-    # Nota: mantenemos params estables; dejamos "per_page" generoso
     base = "https://pixabay.com/api/"
     params = {
         "key": api_key,
@@ -71,11 +60,12 @@ def _pixabay_search(api_key: str, query: str, timeout_sec: int = 15) -> List[Dic
 
     with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
         data = resp.read()
+
     obj = json.loads(data.decode("utf-8", errors="ignore"))
     hits = obj.get("hits")
     if not isinstance(hits, list):
         return []
-    # Solo dicts
+
     out: List[Dict[str, Any]] = []
     for h in hits:
         if isinstance(h, dict):
@@ -103,6 +93,14 @@ def _download(url: str, dst: Path, timeout_sec: int = 30) -> bool:
         return False
 
 
+def _find_existing_asset(out_dir: Path, cache_key: str) -> Optional[Path]:
+    for ext in (".jpg", ".jpeg", ".png", ".webp"):
+        p = out_dir / f"{cache_key}{ext}"
+        if p.exists() and p.stat().st_size > 0:
+            return p
+    return None
+
+
 def resolve_image_for_scene(
     *,
     pack_dir: str,
@@ -118,6 +116,7 @@ def resolve_image_for_scene(
 
     Reglas:
       - Si cache ya tiene key -> cache_hit True y reusa.
+      - Si existe archivo físico previo para el mismo cache_key -> cache_hit True y reusa.
       - Si replay_strict y no hay cache -> fallback determinista (placeholder).
       - Si NO replay_strict:
           - con API key -> Pixabay real
@@ -133,22 +132,45 @@ def resolve_image_for_scene(
 
     cache_key = _stable_key(q, int(seed))
 
-    # 1) Cache hit -> reusa
+    # 1) Cache hit en memoria
     if cache_key in cache and isinstance(cache.get(cache_key), dict) and cache[cache_key].get("path"):
+        cached_rel = str(cache[cache_key]["path"]).strip()
+        if cached_rel:
+            cached_abs = pack / cached_rel
+            if cached_abs.exists() and cached_abs.stat().st_size > 0:
+                return {
+                    "path": cached_rel.replace("\\", "/"),
+                    "cache_hit": True,
+                    "provider": cache[cache_key].get("provider", "pixabay"),
+                    "cache_key": cache_key,
+                }
+
+    # 2) Cache hit en disco aunque no venga en memoria
+    existing = _find_existing_asset(out_dir, cache_key)
+    if existing is not None:
+        rel = str(existing.relative_to(pack)).replace("\\", "/")
+        provider_name = "pixabay"
+        if cache_key in cache and isinstance(cache.get(cache_key), dict):
+            provider_name = str(cache[cache_key].get("provider", "pixabay") or "pixabay")
+        cache[cache_key] = {
+            "path": rel,
+            "provider": provider_name,
+            "query": q,
+        }
         return {
-            "path": cache[cache_key]["path"],
+            "path": rel,
             "cache_hit": True,
-            "provider": cache[cache_key].get("provider", "pixabay"),
+            "provider": provider_name,
             "cache_key": cache_key,
         }
 
-    # 2) Placeholder determinista asegurado
+    # 3) Placeholder determinista
     if not placeholder_path:
         placeholder_path = str((pack / "assets" / "placeholder.jpg").resolve())
+
     ph = Path(placeholder_path)
     _ensure_dir(ph.parent)
     if not ph.exists():
-        # placeholder vacío determinista si no existe
         ph.write_bytes(b"")
 
     def _use_placeholder(provider_name: str) -> Dict[str, Any]:
@@ -156,14 +178,19 @@ def resolve_image_for_scene(
         if not dst.exists():
             shutil.copyfile(ph, dst)
         rel = str(dst.relative_to(pack)).replace("\\", "/")
-        cache[cache_key] = {"path": rel, "provider": provider_name}
-        return {"path": rel, "cache_hit": False, "provider": provider_name, "cache_key": cache_key}
+        cache[cache_key] = {"path": rel, "provider": provider_name, "query": q}
+        return {
+            "path": rel,
+            "cache_hit": False,
+            "provider": provider_name,
+            "cache_key": cache_key,
+        }
 
-    # 3) replay_strict -> NO red
+    # 4) replay strict
     if replay_strict:
         return _use_placeholder("fallback_deterministic")
 
-    # 4) RUN (no strict) -> Pixabay real si hay key
+    # 5) RUN -> Pixabay real
     api_key = _get_api_key()
     if not api_key:
         return _use_placeholder("pixabay_stub_no_key")
@@ -173,12 +200,10 @@ def resolve_image_for_scene(
         if not hits:
             return _use_placeholder("pixabay_no_hits")
 
-        # Orden determinista por id (asc), fallback por string dump si id falta
         def _hit_sort_key(h: Dict[str, Any]) -> Tuple[int, str]:
             hid = h.get("id")
             if isinstance(hid, int):
                 return (hid, "")
-            # fallback determinista
             return (2**31 - 1, json.dumps(h, sort_keys=True, ensure_ascii=True))
 
         hits_sorted = sorted(hits, key=_hit_sort_key)
@@ -189,7 +214,6 @@ def resolve_image_for_scene(
         if not url:
             return _use_placeholder("pixabay_bad_hit")
 
-        # extensión por URL (fallback jpg)
         parsed = urllib.parse.urlparse(url)
         ext = Path(parsed.path).suffix.lower()
         if ext not in (".jpg", ".jpeg", ".png", ".webp"):
@@ -199,7 +223,6 @@ def resolve_image_for_scene(
         if not dst.exists() or dst.stat().st_size <= 0:
             ok = _download(url=url, dst=dst, timeout_sec=30)
             if not ok:
-                # si descarga falla, placeholder (pero guardamos como .jpg)
                 return _use_placeholder("pixabay_download_failed")
 
         rel = str(dst.relative_to(pack)).replace("\\", "/")
@@ -210,7 +233,12 @@ def resolve_image_for_scene(
             "hit_id": hit.get("id"),
             "query": q,
         }
-        return {"path": rel, "cache_hit": False, "provider": "pixabay", "cache_key": cache_key}
+        return {
+            "path": rel,
+            "cache_hit": False,
+            "provider": "pixabay",
+            "cache_key": cache_key,
+        }
 
     except Exception:
         return _use_placeholder("pixabay_error")

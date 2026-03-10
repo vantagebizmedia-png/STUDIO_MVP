@@ -50,8 +50,13 @@ _NOTES_TERMS = {
 }
 
 _SOCIAL_TERMS = {
-    "personas","persona","grupo","equipo","amigos","amigo","reunion","reunión","acompañado","acompanado",
+    "grupo","equipo","amigos","amigo","reunion","reunión","acompañado","acompanado",
     "influencia","positiva","rodeate","rodéate","juntos"
+}
+
+_SELF_DISCIPLINE_TERMS = {
+    "autodisciplina","disciplina","desafio","desafío","desafios","desafíos","reto","retos",
+    "constancia","practica","práctica","esfuerzo","superacion","superación"
 }
 
 _CELEBRATION_TERMS = {
@@ -119,23 +124,44 @@ def _pick_visual_query(*values: Any) -> str:
     if len(concrete) >= 2:
         tokens = concrete
 
-    if _has_any(tokens, _CELEBRATION_TERMS):
+    has_celebration = _has_any(tokens, _CELEBRATION_TERMS)
+    has_notes = _has_any(tokens, _NOTES_TERMS)
+    has_hook = _has_any(tokens, _HOOK_TERMS)
+    has_routine = _has_any(tokens, _ROUTINE_TERMS)
+    has_focus = _has_any(tokens, _FOCUS_TERMS)
+    has_social = _has_any(tokens, _SOCIAL_TERMS)
+
+    if has_celebration:
         return "persona celebrando logro sonrisa"
 
-    if _has_any(tokens, _NOTES_TERMS):
+    if has_notes:
         return "notas recordatorio escritorio"
 
-    if _has_any(tokens, _HOOK_TERMS):
+    if has_hook:
         return "persona mirando camara oficina"
 
-    if _has_any(tokens, _ROUTINE_TERMS):
+    if has_social:
+        return "grupo personas reunion apoyo"
+
+    if has_focus and has_routine:
         return "persona escribiendo agenda escritorio"
 
-    if _has_any(tokens, _FOCUS_TERMS):
+    if has_routine:
+        if any(t in {"lista", "listas", "plan", "planes", "prioridad", "prioridades"} for t in tokens):
+            return "lista tareas escritorio lapiz"
+        if any(t in {"horario", "horarios", "calendario", "tiempo", "bloque", "bloques"} for t in tokens):
+            return "calendario agenda escritorio"
+        return "persona escribiendo agenda escritorio"
+
+    if has_focus:
+        if any(t in {"distraccion", "distracciones", "interrupciones", "silencio"} for t in tokens):
+            return "espacio trabajo ordenado"
+        if any(t in {"ambiente", "ordenado", "orden", "limpio"} for t in tokens):
+            return "laptop escritorio limpio"
         return "persona trabajando escritorio ordenado"
 
-    if _has_any(tokens, _SOCIAL_TERMS):
-        return "grupo personas reunion apoyo"
+    if _has_any(tokens, _SELF_DISCIPLINE_TERMS):
+        return "persona superando desafio"
 
     if any(t in {"reloj","alarma","despertador"} for t in tokens):
         return "reloj despertador agenda"
@@ -170,7 +196,7 @@ def _infer_pixabay_context(scene_text: str, image_query: str, scene_index: int) 
 
     if any(x in text for x in ("agenda", "rutina", "calendario", "horario", "plan", "lista", "escribiendo")):
         category = "business"
-    elif any(x in text for x in ("oficina", "escritorio", "laptop", "computadora", "trabajando", "productividad")):
+    elif any(x in text for x in ("oficina", "escritorio", "laptop", "computadora", "trabajando", "productividad", "espacio", "trabajo", "ordenado")):
         category = "business"
     elif any(x in text for x in ("nota", "notas", "recordatorio", "recordatorios", "papel", "papeles")):
         category = "business"
@@ -316,7 +342,7 @@ def apply_scene_builder_to_manifest(
             sc["image_query"] = _pick_visual_query(sc.get("image_query"), sc.get("script_text"))
 
     for sc in scenes:
-        q = _pick_visual_query(sc.get("image_query"), sc.get("script_text")) or "persona escritorio agenda"
+        q = _pick_visual_query(sc.get("script_text")) or "persona escritorio agenda"
         sc["image_query"] = q
 
         ctx = _infer_pixabay_context(

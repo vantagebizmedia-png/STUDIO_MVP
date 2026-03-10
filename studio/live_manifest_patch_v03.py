@@ -6,7 +6,7 @@
 # - preservar compatibilidad
 # - sanear visual queries para Pixabay
 # - enriquecer contexto visual con orientation/category/lang
-# - generar queries por intención visual, no por arrastre narrativo
+# - generar queries por intención visual controlada
 
 from __future__ import annotations
 
@@ -25,25 +25,37 @@ _STOPWORDS = {
 _ABSTRACT = {
     "disciplina","motivacion","motivación","habito","habitos","hábito","hábitos","constancia","enfoque","claridad",
     "mejora","progreso","resultado","objetivo","objetivos","meta","metas","cambio","crecimiento","avance",
-    "mentalidad","mindset","idea","ideas","estrategia","estrategias","proceso","valor","valores"
+    "mentalidad","mindset","idea","ideas","estrategia","estrategias","proceso","valor","valores","transformar",
+    "transformarán","transformara","vida","lograrlo","ayudaran","ayudarán","comparto","comparto","quieres"
+}
+
+_HOOK_TERMS = {
+    "quieres","quieres?","quieresser","transforma","transformarán","transformara","cambiar","cambio","mejorar",
+    "mejora","vida","hoy","ahora","aqui","aquí","tres","habitos","hábitos","disciplina"
 }
 
 _ROUTINE_TERMS = {
-    "rutina","diaria","agenda","horario","horarios","plan","planifica","planificar","organiza","organizar",
-    "cuaderno","calendario","escribir","escribiendo","lista"
+    "rutina","rutinas","diaria","diarias","agenda","horario","horarios","plan","planes","planifica","planificar",
+    "organiza","organizar","calendario","lista","listas","tiempo","bloque","bloques","prioridad","prioridades",
+    "actividad","actividades","dedica","dedicar","establece","establecer"
 }
 
 _FOCUS_TERMS = {
-    "distraccion","distracciones","enfoque","concentracion","concentración","trabajo","trabajando",
-    "interrupciones","silencio","ordenado","orden","limpio","productividad","laptop","computadora","escritorio","oficina"
+    "distraccion","distracciones","enfoque","concentracion","concentración","interrupciones",
+    "silencio","ordenado","orden","limpio","ambiente","motiva","motive","enfocarte"
+}
+
+_NOTES_TERMS = {
+    "nota","notas","postit","post-it","recordatorio","recordatorios","papel","papeles","pared","visual","visuales"
+}
+
+_SOCIAL_TERMS = {
+    "personas","persona","grupo","equipo","amigos","amigo","reunion","reunión","acompañado","acompanado",
+    "influencia","positiva","rodeate","rodéate","juntos"
 }
 
 _CELEBRATION_TERMS = {
     "celebra","celebrar","celebrando","logro","logros","cumplida","cumplido","avance","éxito","exito","trofeo"
-}
-
-_NOTES_TERMS = {
-    "nota","notas","postit","post-it","recordatorio","recordatorios","papel","papeles","pared"
 }
 
 
@@ -65,6 +77,7 @@ def _tokenize_visual(text: str) -> List[str]:
     t = re.sub(r"\s+", " ", t).strip()
     if not t:
         return []
+
     out: List[str] = []
     for w in t.split(" "):
         w = w.strip("- ").strip()
@@ -112,11 +125,17 @@ def _pick_visual_query(*values: Any) -> str:
     if _has_any(tokens, _NOTES_TERMS):
         return "notas recordatorio escritorio"
 
+    if _has_any(tokens, _HOOK_TERMS):
+        return "persona mirando camara oficina"
+
     if _has_any(tokens, _ROUTINE_TERMS):
         return "persona escribiendo agenda escritorio"
 
     if _has_any(tokens, _FOCUS_TERMS):
         return "persona trabajando escritorio ordenado"
+
+    if _has_any(tokens, _SOCIAL_TERMS):
+        return "grupo personas reunion apoyo"
 
     if any(t in {"reloj","alarma","despertador"} for t in tokens):
         return "reloj despertador agenda"
@@ -131,7 +150,7 @@ def _pick_visual_query(*values: Any) -> str:
         return "manos escribiendo cuaderno escritorio"
 
     if all(t in _ABSTRACT for t in tokens):
-        return "persona escritorio agenda"
+        return "persona mirando camara oficina"
 
     top = tokens[:4]
     if len(top) == 1:
@@ -149,22 +168,25 @@ def _infer_pixabay_context(scene_text: str, image_query: str, scene_index: int) 
     editors_choice = False
     category = "people"
 
-    if any(x in text for x in ("oficina", "escritorio", "laptop", "computadora", "agenda", "rutina", "productividad")):
+    if any(x in text for x in ("agenda", "rutina", "calendario", "horario", "plan", "lista", "escribiendo")):
         category = "business"
+    elif any(x in text for x in ("oficina", "escritorio", "laptop", "computadora", "trabajando", "productividad")):
+        category = "business"
+    elif any(x in text for x in ("nota", "notas", "recordatorio", "recordatorios", "papel", "papeles")):
+        category = "business"
+    elif any(x in text for x in ("celebrando", "logro", "logros", "trofeo", "sonrisa")):
+        category = "people"
+        editors_choice = True
     elif any(x in text for x in ("salud", "bienestar", "ejercicio", "gym", "gimnasio", "pesas")):
         category = "health"
     elif any(x in text for x in ("comida", "cocina", "desayuno", "almuerzo", "cena", "receta")):
         category = "food"
     elif any(x in text for x in ("viaje", "aeropuerto", "maleta", "vacaciones", "turismo")):
         category = "travel"
-    elif any(x in text for x in ("deporte", "correr", "pesas", "entrenamiento")):
+    elif any(x in text for x in ("deporte", "correr", "entrenamiento")):
         category = "sports"
     else:
         category = "people"
-
-    if any(x in text for x in ("celebra", "celebrando", "logro", "logros", "trofeo", "éxito", "exito")):
-        editors_choice = True
-
 
     return {
         "lang": lang,

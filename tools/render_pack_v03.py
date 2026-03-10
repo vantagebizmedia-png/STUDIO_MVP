@@ -75,6 +75,43 @@ def _coerce_int(x: object, default: int = 0) -> int:
         return default
 
 
+def _first_nonempty_str(values: List[object]) -> str:
+    for v in values:
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return ""
+
+
+def _extract_asset_path(value: object) -> str:
+    """
+    Acepta varias formas de asset:
+    - "assets/scenes_v03/scene_001.jpg"
+    - {"path": "assets/scenes_v03/scene_001.jpg"}
+    - [{"path": "assets/scenes_v03/scene_001.jpg", ...}, ...]
+    - [{"url": "...", "path": "..."}]
+    """
+    if isinstance(value, str):
+        return value.strip()
+
+    if isinstance(value, dict):
+        d = dict(value)
+        return _first_nonempty_str([
+            d.get("path"),
+            d.get("file"),
+            d.get("src"),
+            d.get("image"),
+            d.get("audio"),
+        ])
+
+    if isinstance(value, list):
+        for item in value:
+            p = _extract_asset_path(item)
+            if p:
+                return p
+
+    return ""
+
+
 def _scenes_from_manifest(pack_dir: Path, manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Deriva una lista de escenas renderizables desde manifest_v03.json.
@@ -91,13 +128,16 @@ def _scenes_from_manifest(pack_dir: Path, manifest: Dict[str, Any]) -> List[Dict
             idx = _coerce_int(row.get("index", i), i)
             idx1 = idx + 1 if idx <= 0 else idx
             assets = dict(row.get("assets") or {})
-            img_rel = str(assets.get("image") or "")
-            aud_rel = str(assets.get("audio_clip") or "")
-            img = _resolve(pack_dir, img_rel)
-            aud = _resolve(pack_dir, aud_rel)
-            if not img.exists():
+
+            img_rel = _extract_asset_path(assets.get("image"))
+            aud_rel = _extract_asset_path(assets.get("audio_clip"))
+
+            img = _resolve(pack_dir, img_rel) if img_rel else Path("")
+            aud = _resolve(pack_dir, aud_rel) if aud_rel else Path("")
+
+            if not img_rel or not img.exists():
                 img = _scene_dir(pack_dir, idx1) / "image.png"
-            if not aud.exists():
+            if not aud_rel or not aud.exists():
                 aud = _scene_dir(pack_dir, idx1) / "audio.wav"
 
             out.append({
@@ -114,13 +154,16 @@ def _scenes_from_manifest(pack_dir: Path, manifest: Dict[str, Any]) -> List[Dict
                 if idx1 <= 0:
                     continue
                 arts = dict(row.get("artifacts") or {})
-                img_rel = str(arts.get("image") or "")
-                aud_rel = str(arts.get("audio") or "")
-                img = _resolve(pack_dir, img_rel)
-                aud = _resolve(pack_dir, aud_rel)
-                if not img.exists():
+
+                img_rel = _extract_asset_path(arts.get("image"))
+                aud_rel = _extract_asset_path(arts.get("audio"))
+
+                img = _resolve(pack_dir, img_rel) if img_rel else Path("")
+                aud = _resolve(pack_dir, aud_rel) if aud_rel else Path("")
+
+                if not img_rel or not img.exists():
                     img = _scene_dir(pack_dir, idx1) / "image.png"
-                if not aud.exists():
+                if not aud_rel or not aud.exists():
                     aud = _scene_dir(pack_dir, idx1) / "audio.wav"
 
                 out.append({
@@ -239,7 +282,7 @@ def main() -> int:
                 aud = _resolve(pack_dir, str(s.get("audio", "")))
 
                 if not (img.exists() and aud.exists()):
-                    raise SystemExit(f"ERROR: escena {idx} missing: image={img.exists()} audio={aud.exists()}")
+                    raise SystemExit(f"ERROR: escena {idx} missing: image={img.exists()} audio={aud.exists()} img={img} aud={aud}")
 
                 seg = tmp_dir / f"seg_{idx:02d}.mp4"
                 _make_segment(

@@ -32,7 +32,7 @@ $videoBaseFF = $videoBase -replace '\\','/'
 $srtFileFF   = ($srtFile -replace '\\','/') -replace ':','\:'
 $outVideoFF  = $outVideo
 
-$subtitleFilter = "subtitles='$srtFileFF':force_style='Fontsize=42,Outline=2,Shadow=1,MarginV=60,Alignment=2'"
+$subtitleFilter = "subtitles='$srtFileFF':force_style='FontName=Arial,Fontsize=18,Outline=1,Shadow=0,MarginV=110,Alignment=2'"
 
 Write-Host "Aplicando burn-in de subtítulos..."
 Write-Host "LIVE : $live"

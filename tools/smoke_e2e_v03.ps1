@@ -106,6 +106,7 @@ $subsApply      = Join-Path $repo "tools\apply_subtitles_live_v03.ps1"
 $subsSmoke      = Join-Path $repo "tools\smoke_subtitles_live_v03.ps1"
 $qualitySmoke   = Join-Path $repo "tools\smoke_quality_live_v03.ps1"
 $ensureOutputs  = Join-Path $repo "tools\ensure_outputs_live_v03.ps1"
+$refreshAudio   = Join-Path $repo "tools\refresh_live_audio_clips_v03.ps1"
 $finalize       = Join-Path $repo "tools\finalize_handoff_v03.ps1"
 $handoffPack    = Join-Path $repo "tools\handoff_pack_v03.ps1"
 
@@ -126,12 +127,16 @@ Invoke-StepSafe -Label "[1/13] smoke_live_to_workspace_v03.ps1" -FilePath $smoke
 
 Invoke-StepSafe -Label "[2/13] apply_scene_builder_v03.ps1 (SKIP/OK)" -FilePath $sceneBuilder -Arguments @(
   "-WorkspaceRoot", $WorkspaceRoot,
-  "-MinScenes", "8",
-  "-MaxScenes", "$sceneBuilderMax",
-  "-TargetSceneSec", "6",
-  "-MinSceneSec", "4",
-  "-MaxSceneSec", "8",
+  "-MinScenes", "$MaxScenes",
+  "-MaxScenes", "$MaxScenes",
+  "-TargetSceneSec", "3",
+  "-MinSceneSec", "2",
+  "-MaxSceneSec", "5",
   "-Seed", "$Seed"
+)
+
+Invoke-StepSafe -Label "[2.1/13] refresh_live_audio_clips_v03.ps1" -FilePath $refreshAudio -Arguments @(
+  "-LiveDir", $liveDir
 )
 
 Invoke-StepSafe -Label "[3/13] normalize_scene_assets_v03.ps1" -FilePath $normalize -Arguments @(
@@ -171,13 +176,17 @@ if ($DoHandoff) {
 
   Invoke-StepSafe -Label "Running pre-handoff refresh" -FilePath $sceneBuilder -Arguments @(
     "-WorkspaceRoot", $WorkspaceRoot,
-    "-MinScenes", "8",
-    "-MaxScenes", "$sceneBuilderMax",
-    "-TargetSceneSec", "6",
-    "-MinSceneSec", "4",
-    "-MaxSceneSec", "8",
+    "-MinScenes", "$MaxScenes",
+    "-MaxScenes", "$MaxScenes",
+    "-TargetSceneSec", "3",
+    "-MinSceneSec", "2",
+    "-MaxSceneSec", "5",
     "-Seed", "$Seed",
     "-Force"
+  )
+
+  Invoke-StepSafe -Label "Running pre-handoff audio refresh" -FilePath $refreshAudio -Arguments @(
+    "-LiveDir", $liveDir
   )
 
   Invoke-StepSafe -Label "[11/13] finalize_handoff_v03.ps1" -FilePath $finalize -Arguments @(

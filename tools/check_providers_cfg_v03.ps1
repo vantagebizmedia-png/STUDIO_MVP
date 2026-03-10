@@ -38,8 +38,55 @@ foreach ($name in $names) {
     $enabled = [bool]$prov.enabled
   }
 
-  $hits = Select-String -Path $paths -Pattern $name -SimpleMatch -ErrorAction SilentlyContinue
-  $cnt  = if ($hits) { @($hits).Count } else { 0 }
+  $patterns = @($name)
+
+  switch ($name) {
+    "openai_tts" {
+      $patterns = @(
+        "openai_tts",
+        "ProviderVoice(",
+        "tts.speak(",
+        "audio/speech",
+        "gpt-4o-mini-tts",
+        "voice.active_provider",
+        "voice.mode"
+      )
+    }
+    "openai_responses" {
+      $patterns = @(
+        "openai_responses",
+        "/v1/responses",
+        "gpt-4o-mini"
+      )
+    }
+    "pixabay_image" {
+      $patterns = @(
+        "pixabay_image",
+        "pixabay",
+        "stock_query_pixabay_v03.ps1",
+        "PIXABAY_API_KEY"
+      )
+    }
+    "openai_images" {
+      $patterns = @(
+        "openai_images",
+        "/v1/images/generations",
+        "gpt-image-1"
+      )
+    }
+  }
+
+  $hitList = New-Object System.Collections.Generic.List[object]
+  foreach ($pat in $patterns) {
+    $hh = Select-String -Path $paths -Pattern $pat -SimpleMatch -ErrorAction SilentlyContinue
+    if ($hh) {
+      foreach ($one in @($hh)) {
+        $null = $hitList.Add($one)
+      }
+    }
+  }
+
+  $cnt = $hitList.Count
 
   if (-not $enabled) {
     Write-Host ("SKIP (disabled) : {0}  hits={1}" -f $name, $cnt) -ForegroundColor DarkGray

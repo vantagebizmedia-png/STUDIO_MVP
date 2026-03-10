@@ -60,26 +60,38 @@ function Get-SubtitleStyle {
     [Parameter(Mandatory=$true)][int]$VideoHeight
   )
 
-  $fontSize = [int][Math]::Round($VideoHeight * 0.027)
+  $fontSize = [int][Math]::Round($VideoHeight * 0.025)
   if ($fontSize -lt 34) { $fontSize = 34 }
-  if ($fontSize -gt 56) { $fontSize = 56 }
+  if ($fontSize -gt 50) { $fontSize = 50 }
 
-  $marginV = [int][Math]::Round($VideoHeight * 0.075)
-  if ($marginV -lt 70) { $marginV = 70 }
-  if ($marginV -gt 180) { $marginV = 180 }
+  $marginV = [int][Math]::Round($VideoHeight * 0.092)
+  if ($marginV -lt 110) { $marginV = 110 }
+  if ($marginV -gt 220) { $marginV = 220 }
 
-  $outline = 3
+  $marginLR = [int][Math]::Round($VideoWidth * 0.070)
+  if ($marginLR -lt 56) { $marginLR = 56 }
+  if ($marginLR -gt 120) { $marginLR = 120 }
+
+  $outline = 2
   $shadow = 0
   $alignment = 2
   $bold = 1
+  $spacing = 0.2
 
   return [pscustomobject]@{
-    FontSize  = $fontSize
-    MarginV   = $marginV
-    Outline   = $outline
-    Shadow    = $shadow
-    Alignment = $alignment
-    Bold      = $bold
+    FontSize   = $fontSize
+    MarginV    = $marginV
+    MarginL    = $marginLR
+    MarginR    = $marginLR
+    Outline    = $outline
+    Shadow     = $shadow
+    Alignment  = $alignment
+    Bold       = $bold
+    Spacing    = $spacing
+    BorderStyle = 3
+    PrimaryColour = "&H00FFFFFF"
+    OutlineColour = "&H00141414"
+    BackColour    = "&H7A000000"
   }
 }
 
@@ -114,25 +126,39 @@ $subtitleStyle = @(
   "Outline=$($style.Outline)"
   "Shadow=$($style.Shadow)"
   "MarginV=$($style.MarginV)"
+  "MarginL=$($style.MarginL)"
+  "MarginR=$($style.MarginR)"
   "Alignment=$($style.Alignment)"
   "Bold=$($style.Bold)"
+  "Spacing=$($style.Spacing)"
+  "BorderStyle=$($style.BorderStyle)"
+  "PrimaryColour=$($style.PrimaryColour)"
+  "OutlineColour=$($style.OutlineColour)"
+  "BackColour=$($style.BackColour)"
 ) -join ','
 
 $subtitleFilter = "subtitles='$srtFileFF':force_style='$subtitleStyle'"
 
 Write-Host "Aplicando burn-in de subtítulos..." -ForegroundColor Cyan
-Write-Host "LIVE      : $live"
-Write-Host "Base      : $videoBase"
-Write-Host "SRT       : $srtFile"
-Write-Host "Out       : $outVideo"
-Write-Host "VideoW    : $($dims.Width)"
-Write-Host "VideoH    : $($dims.Height)"
-Write-Host "Fontsize  : $($style.FontSize)"
-Write-Host "MarginV   : $($style.MarginV)"
-Write-Host "Outline   : $($style.Outline)"
-Write-Host "Shadow    : $($style.Shadow)"
-Write-Host "Alignment : $($style.Alignment)"
-Write-Host "Bold      : $($style.Bold)"
+Write-Host "LIVE         : $live"
+Write-Host "Base         : $videoBase"
+Write-Host "SRT          : $srtFile"
+Write-Host "Out          : $outVideo"
+Write-Host "VideoW       : $($dims.Width)"
+Write-Host "VideoH       : $($dims.Height)"
+Write-Host "Fontsize     : $($style.FontSize)"
+Write-Host "MarginV      : $($style.MarginV)"
+Write-Host "MarginL      : $($style.MarginL)"
+Write-Host "MarginR      : $($style.MarginR)"
+Write-Host "Outline      : $($style.Outline)"
+Write-Host "Shadow       : $($style.Shadow)"
+Write-Host "Alignment    : $($style.Alignment)"
+Write-Host "Bold         : $($style.Bold)"
+Write-Host "Spacing      : $($style.Spacing)"
+Write-Host "BorderStyle  : $($style.BorderStyle)"
+Write-Host "PrimaryColor : $($style.PrimaryColour)"
+Write-Host "OutlineColor : $($style.OutlineColour)"
+Write-Host "BackColor    : $($style.BackColour)"
 
 if (Test-Path -LiteralPath $outVideo) {
   Remove-Item -LiteralPath $outVideo -Force -ErrorAction SilentlyContinue

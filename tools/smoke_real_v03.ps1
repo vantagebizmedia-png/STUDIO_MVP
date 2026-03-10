@@ -26,16 +26,61 @@ if ([string]::IsNullOrWhiteSpace($env:PIXABAY_API_KEY)) {
   Fail "Falta PIXABAY_API_KEY en el entorno"
 }
 
-$liveAbs = [System.IO.Path]::GetFullPath((Join-Path $repo $LiveDir))
+$requestedLiveAbs = [System.IO.Path]::GetFullPath((Join-Path $repo $LiveDir))
+$configDefaultLiveAbs = [System.IO.Path]::GetFullPath((Join-Path $repo ".\_v03_from_config\artifacts"))
+
+$configJson = Get-Content -LiteralPath $configAbs -Raw -Encoding UTF8 | ConvertFrom-Json
+
+$configWorkDir = $null
+$configPipeWorkDir = $null
+
+$propWorkDir = $configJson.PSObject.Properties["work_dir"]
+if ($null -ne $propWorkDir) {
+  $configWorkDir = [string]$propWorkDir.Value
+}
+
+$propPipe = $configJson.PSObject.Properties["pipe"]
+if ($null -ne $propPipe -and $null -ne $propPipe.Value) {
+  $pipeObj = $propPipe.Value
+  $propPipeWorkDir = $pipeObj.PSObject.Properties["work_dir"]
+  if ($null -ne $propPipeWorkDir) {
+    $configPipeWorkDir = [string]$propPipeWorkDir.Value
+  }
+}
+
+$candidateLiveAbs = New-Object System.Collections.Generic.List[string]
+$candidateLiveAbs.Add($requestedLiveAbs)
+$candidateLiveAbs.Add($configDefaultLiveAbs)
+
+if (-not [string]::IsNullOrWhiteSpace($configWorkDir)) {
+  $candidateLiveAbs.Add([System.IO.Path]::GetFullPath((Join-Path $repo $configWorkDir)))
+}
+
+if (-not [string]::IsNullOrWhiteSpace($configPipeWorkDir)) {
+  $candidateLiveAbs.Add([System.IO.Path]::GetFullPath((Join-Path $repo $configPipeWorkDir)))
+}
+
+$uniqueCandidateLiveAbs = @()
+foreach ($p in $candidateLiveAbs) {
+  if (-not [string]::IsNullOrWhiteSpace($p) -and ($uniqueCandidateLiveAbs -notcontains $p)) {
+    $uniqueCandidateLiveAbs += $p
+  }
+}
 
 Write-Host "== SMOKE REAL V0.3 ==" -ForegroundColor Cyan
-Write-Host "Repo      : $repo"
-Write-Host "Config    : $configAbs"
-Write-Host "LiveDir   : $liveAbs"
-Write-Host "WithMusic : $WithMusic"
+Write-Host "Repo              : $repo"
+Write-Host "Config            : $configAbs"
+Write-Host "LiveDir(requested): $requestedLiveAbs"
+Write-Host "WithMusic         : $WithMusic"
+Write-Host ""
+Write-Host "== CANDIDATOS LIVE DIR ==" -ForegroundColor Cyan
+$uniqueCandidateLiveAbs | ForEach-Object { Write-Host $_ }
 
-if (Test-Path -LiteralPath $liveAbs) {
-  Remove-Item -LiteralPath $liveAbs -Recurse -Force
+foreach ($dir in $uniqueCandidateLiveAbs) {
+  if (Test-Path -LiteralPath $dir) {
+    Remove-Item -LiteralPath $dir -Recurse -Force
+    Write-Host "REMOVED => $dir" -ForegroundColor DarkGray
+  }
 }
 
 $env:STUDIO_ALLOW_LIVE = "1"
@@ -48,6 +93,40 @@ try {
 finally {
   Remove-Item Env:STUDIO_ALLOW_LIVE -ErrorAction SilentlyContinue
 }
+
+$liveAbs = $null
+foreach ($dir in $uniqueCandidateLiveAbs) {
+  $manifestProbe = Join-Path $dir "manifest_v03.json"
+  if (Test-Path -LiteralPath $manifestProbe) {
+    $liveAbs = $dir
+    break
+  }
+}
+
+if ([string]::IsNullOrWhiteSpace($liveAbs)) {
+  Write-Host ""
+  Write-Host "== DEBUG: MANIFEST NO ENCONTRADO EN CANDIDATOS ==" -ForegroundColor Yellow
+  foreach ($dir in $uniqueCandidateLiveAbs) {
+    $manifestProbe = Join-Path $dir "manifest_v03.json"
+    if (Test-Path -LiteralPath $dir) {
+      Write-Host "DIR EXISTS   => $dir" -ForegroundColor Yellow
+      if (Test-Path -LiteralPath $manifestProbe) {
+        Write-Host "MANIFEST OK  => $manifestProbe" -ForegroundColor Green
+      }
+      else {
+        Write-Host "MANIFEST MISS=> $manifestProbe" -ForegroundColor Yellow
+      }
+    }
+    else {
+      Write-Host "DIR MISSING  => $dir" -ForegroundColor Yellow
+    }
+  }
+  Fail "No existe manifest_v03.json en ninguno de los LiveDir candidatos"
+}
+
+Write-Host ""
+Write-Host "== LIVE DIR RESUELTO ==" -ForegroundColor Cyan
+Write-Host $liveAbs -ForegroundColor Green
 
 $manifestPath = Join-Path $liveAbs "manifest_v03.json"
 $packJsonPath = Join-Path $liveAbs "pack.json"
@@ -165,12 +244,12 @@ Write-Host "== HANDOFF PACK ==" -ForegroundColor Cyan
 & pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\handoff_pack_v03.ps1 -InDir $handoffDir -OutZip $handoffZip
 if ($LASTEXITCODE -ne 0) { Fail "handoff_pack_v03.ps1 falló" }
 
-if (-not (Test-Path -LiteralPath $videoBase))   { Fail "Falta video.mp4" }
-if (-not (Test-Path -LiteralPath $videoSubs))   { Fail "Falta video_subs.mp4" }
-if (-not (Test-Path -LiteralPath $videoMusic))  { Fail "Falta video_music_auto.mp4" }
-if (-not (Test-Path -LiteralPath $videoFinal))  { Fail "Falta video_final.mp4" }
-if (-not (Test-Path -LiteralPath $captionsPath)){ Fail "Falta captions_v03.srt" }
-if (-not (Test-Path -LiteralPath $handoffZip))  { Fail "Falta handoff_v03.zip" }
+if (-not (Test-Path -LiteralPath $videoBase))    { Fail "Falta video.mp4" }
+if (-not (Test-Path -LiteralPath $videoSubs))    { Fail "Falta video_subs.mp4" }
+if (-not (Test-Path -LiteralPath $videoMusic))   { Fail "Falta video_music_auto.mp4" }
+if (-not (Test-Path -LiteralPath $videoFinal))   { Fail "Falta video_final.mp4" }
+if (-not (Test-Path -LiteralPath $captionsPath)) { Fail "Falta captions_v03.srt" }
+if (-not (Test-Path -LiteralPath $handoffZip))   { Fail "Falta handoff_v03.zip" }
 
 Write-Host ""
 Write-Host "== RESUMEN FINAL ==" -ForegroundColor Green

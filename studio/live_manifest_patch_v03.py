@@ -130,15 +130,22 @@ def _pick_visual_query(*values: Any) -> str:
     has_routine = _has_any(tokens, _ROUTINE_TERMS)
     has_focus = _has_any(tokens, _FOCUS_TERMS)
     has_social = _has_any(tokens, _SOCIAL_TERMS)
+    has_self_discipline = _has_any(tokens, _SELF_DISCIPLINE_TERMS)
 
-    if has_celebration:
-        return "persona celebrando logro sonrisa"
-
-    if has_notes:
-        return "notas recordatorio escritorio"
+    celebration_closure = any(
+        t in {
+            "celebra", "celebrar", "celebrando", "celebracion", "celebración",
+            "logro", "logros", "recompensa", "recompensarte", "premio",
+            "motivacion", "motivación", "meta", "metas", "exito", "éxito"
+        }
+        for t in tokens
+    )
 
     if has_hook:
         return "persona mirando camara oficina"
+
+    if has_notes:
+        return "notas recordatorio escritorio"
 
     if has_social:
         return "grupo personas reunion apoyo"
@@ -160,19 +167,22 @@ def _pick_visual_query(*values: Any) -> str:
             return "laptop escritorio limpio"
         return "persona trabajando escritorio ordenado"
 
-    if _has_any(tokens, _SELF_DISCIPLINE_TERMS):
+    if has_celebration and celebration_closure:
+        return "persona celebrando logro sonrisa"
+
+    if has_self_discipline:
         return "persona superando desafio"
 
-    if any(t in {"reloj","alarma","despertador"} for t in tokens):
+    if any(t in {"reloj", "alarma", "despertador"} for t in tokens):
         return "reloj despertador agenda"
 
-    if any(t in {"camara","cámara","rostro","cara"} for t in tokens):
+    if any(t in {"camara", "cámara", "rostro", "cara"} for t in tokens):
         return "persona mirando camara oficina"
 
-    if any(t in {"laptop","computadora","oficina","escritorio"} for t in tokens):
+    if any(t in {"laptop", "computadora", "oficina", "escritorio"} for t in tokens):
         return "persona trabajando laptop oficina"
 
-    if any(t in {"cuaderno","mano","manos","lapiz","lápiz"} for t in tokens):
+    if any(t in {"cuaderno", "mano", "manos", "lapiz", "lápiz"} for t in tokens):
         return "manos escribiendo cuaderno escritorio"
 
     if all(t in _ABSTRACT for t in tokens):

@@ -6,6 +6,7 @@
 # - preservar compatibilidad
 # - sanear visual queries para Pixabay
 # - enriquecer contexto visual con orientation/category/lang
+# - generar queries por intención visual, no por arrastre narrativo
 
 from __future__ import annotations
 
@@ -27,13 +28,23 @@ _ABSTRACT = {
     "mentalidad","mindset","idea","ideas","estrategia","estrategias","proceso","valor","valores"
 }
 
-_VISUAL_ANCHORS = (
-    "persona escritorio agenda",
-    "persona trabajando laptop",
-    "persona oficina fondo neutro",
-    "persona manos cuaderno",
-    "persona celebrando logro"
-)
+_ROUTINE_TERMS = {
+    "rutina","diaria","agenda","horario","horarios","plan","planifica","planificar","organiza","organizar",
+    "cuaderno","calendario","escribir","escribiendo","lista"
+}
+
+_FOCUS_TERMS = {
+    "distraccion","distracciones","enfoque","concentracion","concentración","trabajo","trabajando",
+    "interrupciones","silencio","ordenado","orden","limpio","productividad","laptop","computadora","escritorio","oficina"
+}
+
+_CELEBRATION_TERMS = {
+    "celebra","celebrar","celebrando","logro","logros","cumplida","cumplido","avance","éxito","exito","trofeo"
+}
+
+_NOTES_TERMS = {
+    "nota","notas","postit","post-it","recordatorio","recordatorios","papel","papeles","pared"
+}
 
 
 def _safe_int(x: Any, default: int = 0) -> int:
@@ -65,52 +76,68 @@ def _tokenize_visual(text: str) -> List[str]:
     return out
 
 
-def _clean_visual_query(*values: Any) -> str:
+def _scene_terms(*values: Any) -> List[str]:
     tokens: List[str] = []
-
     for value in values:
         s = _norm_text(value)
         if not s:
             continue
-
         s = re.sub(r"\b(escena|narracion|narración|onscreen|stock_query)\b[: ]*", " ", s, flags=re.IGNORECASE)
         s = re.sub(r"\s+", " ", s).strip()
-
         for w in _tokenize_visual(s):
             if w in _STOPWORDS:
                 continue
             if w not in tokens:
                 tokens.append(w)
+    return tokens
 
-    while tokens and tokens[-1] in _STOPWORDS:
-        tokens.pop()
+
+def _has_any(tokens: List[str], pool: set[str]) -> bool:
+    return any(t in pool for t in tokens)
+
+
+def _pick_visual_query(*values: Any) -> str:
+    tokens = _scene_terms(*values)
 
     if not tokens:
-        return "persona escritorio"
+        return "persona escritorio agenda"
 
     concrete = [w for w in tokens if w not in _ABSTRACT]
-
     if len(concrete) >= 2:
         tokens = concrete
 
-    tokens = tokens[:6]
+    if _has_any(tokens, _CELEBRATION_TERMS):
+        return "persona celebrando logro sonrisa"
 
-    q = " ".join(tokens).strip()
+    if _has_any(tokens, _NOTES_TERMS):
+        return "notas recordatorio escritorio"
 
-    if not q:
-        return "persona escritorio"
+    if _has_any(tokens, _ROUTINE_TERMS):
+        return "persona escribiendo agenda escritorio"
 
-    if len(tokens) == 1:
-        if tokens[0] in {"camara", "cámara", "rostro", "cara"}:
-            return "persona camara"
-        if tokens[0] in {"oficina", "escritorio", "laptop", "computadora"}:
-            return "persona escritorio"
-        return f"persona {tokens[0]}".strip()
+    if _has_any(tokens, _FOCUS_TERMS):
+        return "persona trabajando escritorio ordenado"
+
+    if any(t in {"reloj","alarma","despertador"} for t in tokens):
+        return "reloj despertador agenda"
+
+    if any(t in {"camara","cámara","rostro","cara"} for t in tokens):
+        return "persona mirando camara oficina"
+
+    if any(t in {"laptop","computadora","oficina","escritorio"} for t in tokens):
+        return "persona trabajando laptop oficina"
+
+    if any(t in {"cuaderno","mano","manos","lapiz","lápiz"} for t in tokens):
+        return "manos escribiendo cuaderno escritorio"
 
     if all(t in _ABSTRACT for t in tokens):
-        return _VISUAL_ANCHORS[0]
+        return "persona escritorio agenda"
 
-    return q
+    top = tokens[:4]
+    if len(top) == 1:
+        return ("persona " + top[0]).strip()
+
+    return " ".join(top).strip() or "persona escritorio agenda"
 
 
 def _infer_pixabay_context(scene_text: str, image_query: str, scene_index: int) -> Dict[str, Any]:
@@ -124,28 +151,20 @@ def _infer_pixabay_context(scene_text: str, image_query: str, scene_index: int) 
 
     if any(x in text for x in ("oficina", "escritorio", "laptop", "computadora", "agenda", "rutina", "productividad")):
         category = "business"
-
     elif any(x in text for x in ("salud", "bienestar", "ejercicio", "gym", "gimnasio", "pesas")):
         category = "health"
-
     elif any(x in text for x in ("comida", "cocina", "desayuno", "almuerzo", "cena", "receta")):
         category = "food"
-
     elif any(x in text for x in ("viaje", "aeropuerto", "maleta", "vacaciones", "turismo")):
         category = "travel"
-
-    elif any(x in text for x in ("familia", "pareja", "amigos", "equipo", "reunion", "reunión")):
-        category = "people"
-
     elif any(x in text for x in ("deporte", "correr", "pesas", "entrenamiento")):
         category = "sports"
+    else:
+        category = "people"
 
     if any(x in text for x in ("celebra", "celebrando", "logro", "logros", "trofeo", "éxito", "exito")):
         editors_choice = True
 
-    # ligero patrón determinista para diversificar sin romper baseline
-    if ((int(scene_index) % 4) == 0) and category in {"people", "business"}:
-        editors_choice = True
 
     return {
         "lang": lang,
@@ -211,7 +230,7 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
         image_rel = _norm_text(arts.get("image"))
 
         scene_text = narration or onscreen or stock_query or f"Escena {i+1:02d}"
-        image_query = _clean_visual_query(stock_query, narration, onscreen)
+        image_query = _pick_visual_query(stock_query, narration, onscreen)
 
         out.append(
             {
@@ -242,14 +261,6 @@ def apply_scene_builder_to_manifest(
     pack_dir: str,
     max_scenes: int,
 ) -> Dict[str, Any]:
-    """
-    Modifica manifest in-place y retorna:
-      - manifest["scenes_v03"] = [...]  (fuente de verdad v0.3)
-      - manifest["scenes"] se preserva
-      - manifest["stock_cache"] determinista
-      - por escena: assets.image + assets.image_meta
-    """
-
     script_text = (
         manifest.get("script_text")
         or manifest.get("script")
@@ -271,10 +282,8 @@ def apply_scene_builder_to_manifest(
         stock_cache = {}
         manifest["stock_cache"] = stock_cache
 
-    # PRIORIDAD 1: derivar desde scenes legacy ya bien construidas
     scenes = _build_from_legacy_scenes(manifest, total_ms)
 
-    # PRIORIDAD 2: fallback al builder textual
     if not scenes:
         scenes = build_scenes_v03(
             script_text=str(script_text or ""),
@@ -282,10 +291,10 @@ def apply_scene_builder_to_manifest(
             total_audio_ms=int(total_ms or 0),
         )
         for sc in scenes:
-            sc["image_query"] = _clean_visual_query(sc.get("image_query"), sc.get("script_text"))
+            sc["image_query"] = _pick_visual_query(sc.get("image_query"), sc.get("script_text"))
 
     for sc in scenes:
-        q = _clean_visual_query(sc.get("image_query"), sc.get("script_text")) or "persona escritorio"
+        q = _pick_visual_query(sc.get("image_query"), sc.get("script_text")) or "persona escritorio agenda"
         sc["image_query"] = q
 
         ctx = _infer_pixabay_context(

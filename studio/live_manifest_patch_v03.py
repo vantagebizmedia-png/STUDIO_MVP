@@ -351,8 +351,14 @@ def apply_scene_builder_to_manifest(
         for sc in scenes:
             sc["image_query"] = _pick_visual_query(sc.get("image_query"), sc.get("script_text"))
 
+    used_assets: Dict[str, Any] = {
+        "paths": set(),
+        "source_urls": set(),
+        "hit_ids": set(),
+    }
+
     for sc in scenes:
-        q = _pick_visual_query(sc.get("script_text")) or "persona escritorio agenda"
+        q = _pick_visual_query(sc.get("image_query"), sc.get("script_text")) or "persona escritorio agenda"
         sc["image_query"] = q
 
         ctx = _infer_pixabay_context(
@@ -373,6 +379,7 @@ def apply_scene_builder_to_manifest(
             category=str(ctx["category"]),
             min_width=int(ctx["min_width"]),
             editors_choice=bool(ctx["editors_choice"]),
+            used_assets=used_assets,
         )
 
         assets = sc.get("assets")
@@ -381,7 +388,8 @@ def apply_scene_builder_to_manifest(
             sc["assets"] = assets
 
         assets["image"] = r["path"]
-        assets["image_meta"] = {
+
+        image_meta = {
             "provider": r["provider"],
             "cache_hit": r["cache_hit"],
             "cache_key": r["cache_key"],
@@ -392,6 +400,14 @@ def apply_scene_builder_to_manifest(
             "min_width": int(ctx["min_width"]),
             "editors_choice": bool(ctx["editors_choice"]),
         }
+
+        if r.get("source_url"):
+            image_meta["source_url"] = r["source_url"]
+
+        if r.get("hit_id") not in (None, ""):
+            image_meta["hit_id"] = r["hit_id"]
+
+        assets["image_meta"] = image_meta
 
     manifest["scenes_v03"] = scenes
     manifest["scene_builder_v03"] = {
@@ -404,3 +420,5 @@ def apply_scene_builder_to_manifest(
         manifest["scenes"] = scenes
 
     return manifest
+
+

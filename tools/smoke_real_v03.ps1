@@ -323,6 +323,64 @@ $outManifest = $m | ConvertTo-Json -Depth 50
 [System.IO.File]::WriteAllText($manifestPath, ($outManifest -replace "`r`n","`n"), $utf8NoBom)
 Write-Host "OK: manifest_v03 enriquecido desde scenes_v03 + stock_cache" -ForegroundColor DarkGray
 
+function Test-UniquePixabayScenesLocal {
+  param(
+    [AllowNull()]$Scenes
+  )
+
+  $seenIds  = @{}
+  $seenUrls = @{}
+  $dupes    = New-Object System.Collections.Generic.List[string]
+  $sceneNum = 0
+
+  foreach ($sc in @($Scenes)) {
+    $sceneNum++
+    $meta = Get-PropSafeLocal -Obj $sc -Name "meta"
+
+    $provider = [string](Get-PropSafeLocal -Obj $meta -Name "provider")
+    if ($provider -ne "pixabay") { continue }
+
+    $sceneId = [string](Get-PropSafeLocal -Obj $sc -Name "id")
+    if ([string]::IsNullOrWhiteSpace($sceneId)) {
+      $sceneId = ("scene_{0:00}" -f $sceneNum)
+    }
+
+    $hitId = [string](Get-PropSafeLocal -Obj $meta -Name "hit_id")
+    $sourceUrl = [string](Get-PropSafeLocal -Obj $meta -Name "source_url")
+
+    if (-not [string]::IsNullOrWhiteSpace($hitId)) {
+      if ($seenIds.ContainsKey($hitId)) {
+        [void]$dupes.Add(("dup hit_id '{0}' => {1} y {2}" -f $hitId, $seenIds[$hitId], $sceneId))
+      }
+      else {
+        $seenIds[$hitId] = $sceneId
+      }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($sourceUrl)) {
+      if ($seenUrls.ContainsKey($sourceUrl)) {
+        [void]$dupes.Add(("dup source_url => {0} y {1}" -f $seenUrls[$sourceUrl], $sceneId))
+      }
+      else {
+        $seenUrls[$sourceUrl] = $sceneId
+      }
+    }
+  }
+
+  return @($dupes)
+}
+
+Write-Host ""
+Write-Host "== VALIDATE PIXABAY DIVERSITY ==" -ForegroundColor Cyan
+
+$pixabayDupes = @(Test-UniquePixabayScenesLocal -Scenes $scenes)
+if ($pixabayDupes.Count -gt 0) {
+  $pixabayDupes | ForEach-Object { Write-Host $_ -ForegroundColor Yellow }
+  Fail "Se detectaron escenas Pixabay duplicadas por hit_id/source_url"
+}
+
+Write-Host "OK: sin duplicados de Pixabay por hit_id/source_url" -ForegroundColor Green
+
 $packScenes = @()
 foreach ($sc in $scenes) {
   $imgRel = Get-SceneImageRelLocal -Scene $sc

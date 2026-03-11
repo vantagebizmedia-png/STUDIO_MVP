@@ -916,13 +916,16 @@ if (-not (Test-Path -LiteralPath $fallbackAbs)) {
   throw "No existe fallback de imagen: $fallbackRel"
 }
 
+$usedPixabayIds  = New-Object 'System.Collections.Generic.HashSet[string]'
+$usedPixabayUrls = New-Object 'System.Collections.Generic.HashSet[string]'
+
 for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   $scene = $m.scenes_v03[$i]
 
   if (-not $scene.assets) {
     $scene | Add-Member -Force -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{
       audio_clip = ""
-      image      = @([pscustomobject]@{ path = "" })
+      image      = ""
     })
   }
 
@@ -946,18 +949,18 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
     New-Item -ItemType Directory -Force -Path $legacySceneDir | Out-Null
   }
 
-  if (-not ($scene.assets.PSObject.Properties.Name -contains "image") -or -not $scene.assets.image) {
-    $scene.assets | Add-Member -Force -NotePropertyName image -NotePropertyValue @([pscustomobject]@{ path = "" })
+  if (-not ($scene.assets.PSObject.Properties.Name -contains "image")) {
+    $scene.assets | Add-Member -Force -NotePropertyName image -NotePropertyValue ""
   }
-  elseif ($scene.assets.image -is [string]) {
-    $scene.assets.image = @([pscustomobject]@{ path = [string]$scene.assets.image })
+  elseif ($scene.assets.image -isnot [string]) {
+    $scene.assets.image = [string]$scene.assets.image
   }
 
   if ($scene.assets.PSObject.Properties.Name -contains "video") {
     $scene.PSObject.Properties.Remove("assets") | Out-Null
     $newAssets = [pscustomobject]@{
       audio_clip = $clipRel
-      image      = @([pscustomobject]@{ path = "" })
+      image      = ""
     }
     $scene | Add-Member -Force -NotePropertyName assets -NotePropertyValue $newAssets
   }
@@ -967,8 +970,47 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   $outRel  = ("assets/scenes_v03/{0}" -f $outName)
   $legacyImgAbs = Join-Path $legacySceneDir "image.png"
 
-  $sceneTextRaw = [string]$scene.text
-  $q = Get-PixabaySafeQuery -Text $sceneTextRaw -MaxChars 100
+  $sceneTextRaw = ""
+  if (($scene.PSObject.Properties.Name -contains "text") -and $scene.text) {
+    $sceneTextRaw = [string]$scene.text
+  }
+
+  $sceneScriptText = ""
+  if (($scene.PSObject.Properties.Name -contains "script_text") -and $scene.script_text) {
+    $sceneScriptText = [string]$scene.script_text
+  }
+
+  $sceneImageQuery = ""
+  if (($scene.PSObject.Properties.Name -contains "image_query") -and $scene.image_query) {
+    $sceneImageQuery = [string]$scene.image_query
+  }
+
+  $querySource = "fallback"
+  $queryInput  = "motivacion"
+
+  if (-not [string]::IsNullOrWhiteSpace($sceneImageQuery)) {
+    $queryInput  = $sceneImageQuery
+    $querySource = "image_query"
+  }
+  elseif (-not [string]::IsNullOrWhiteSpace($sceneScriptText)) {
+    $queryInput  = $sceneScriptText
+    $querySource = "script_text"
+  }
+  elseif (-not [string]::IsNullOrWhiteSpace($sceneTextRaw)) {
+    $queryInput  = $sceneTextRaw
+    $querySource = "text"
+  }
+
+  $q = Get-PixabaySafeQuery -Text $queryInput -MaxChars 100
+
+  if (-not ($scene.PSObject.Properties.Name -contains "meta") -or -not $scene.meta) {
+    $scene | Add-Member -Force -NotePropertyName meta -NotePropertyValue ([pscustomobject]@{})
+  }
+
+  $scene | Add-Member -Force -NotePropertyName query -NotePropertyValue $q
+  $scene.meta | Add-Member -Force -NotePropertyName query_source -NotePropertyValue $querySource
+  $scene.meta | Add-Member -Force -NotePropertyName query_input -NotePropertyValue $queryInput
+  $scene.meta | Add-Member -Force -NotePropertyName used_query -NotePropertyValue $q
 
   $canPixabay = $false
   if (-not $SkipPixabay) {
@@ -984,6 +1026,7 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   }
 
   $picked = $null
+  $pickedId = ""
   $pickedIndex = -1
   $hitsCount = 0
   $cacheJson = Join-Path $cacheDir ("pixabay_scene_{0:000}.json" -f ($i + 1))
@@ -1023,8 +1066,54 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
       $hitsCount = @($hits).Count
 
       if ($hitsCount -gt 0) {
-        $pickedIndex = ($Seed + $i) % $hitsCount
-        $picked = [string]$hits[$pickedIndex].url
+        $startIndex = ($Seed + $i) % $hitsCount
+
+        for ($step = 0; $step -lt $hitsCount; $step++) {
+          $candidateIndex = ($startIndex + $step) % $hitsCount
+          $candidateHit = $hits[$candidateIndex]
+
+          if ($null -eq $candidateHit) { continue }
+
+          $candidateUrl = ""
+          if (($candidateHit.PSObject.Properties.Name -contains "url") -and $candidateHit.url) {
+            $candidateUrl = [string]$candidateHit.url
+          }
+
+          if ([string]::IsNullOrWhiteSpace($candidateUrl)) { continue }
+
+          $candidateId = ""
+          if (($candidateHit.PSObject.Properties.Name -contains "id") -and $null -ne $candidateHit.id) {
+            $candidateId = [string]$candidateHit.id
+          }
+
+          $alreadyUsed = $false
+          if (-not [string]::IsNullOrWhiteSpace($candidateId) -and $usedPixabayIds.Contains($candidateId)) {
+            $alreadyUsed = $true
+          }
+          if ($usedPixabayUrls.Contains($candidateUrl)) {
+            $alreadyUsed = $true
+          }
+
+          if (-not $alreadyUsed) {
+            $picked = $candidateUrl
+            $pickedId = $candidateId
+            $pickedIndex = $candidateIndex
+            break
+          }
+        }
+
+        if (-not $picked) {
+          $fallbackHit = $hits[$startIndex]
+          if ($null -ne $fallbackHit) {
+            if (($fallbackHit.PSObject.Properties.Name -contains "url") -and $fallbackHit.url) {
+              $picked = [string]$fallbackHit.url
+            }
+            if (($fallbackHit.PSObject.Properties.Name -contains "id") -and $null -ne $fallbackHit.id) {
+              $pickedId = [string]$fallbackHit.id
+            }
+            $pickedIndex = $startIndex
+          }
+        }
       }
       else {
         Write-Host ("WARN: scene[{0}] Pixabay respondió 0 hits para query='{1}'" -f $i, $q) -ForegroundColor Yellow
@@ -1032,6 +1121,7 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
     }
     catch {
       $picked = $null
+      $pickedId = ""
       $pickedIndex = -1
       $hitsCount = 0
       Write-Host ("WARN: scene[{0}] Pixabay query failed -> fallback ({1})" -f $i, $_.Exception.Message) -ForegroundColor Yellow
@@ -1042,20 +1132,24 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   if ($picked) {
     try {
       pwsh -NoProfile -ExecutionPolicy Bypass -File $dlTool -Url $picked -OutPath $outAbs | Out-Null
-      $scene.assets.image = @(
-        [pscustomobject]@{
-          path         = $outRel
-          provider     = "pixabay"
-          used_query   = $q
-          hits_count   = $hitsCount
-          picked_index = $pickedIndex
-          source_url   = $picked
-          note         = ""
-        }
-      )
+
+      $scene.assets.image = $outRel
+      $scene.meta | Add-Member -Force -NotePropertyName provider -NotePropertyValue "pixabay"
+      $scene.meta | Add-Member -Force -NotePropertyName hits_count -NotePropertyValue $hitsCount
+      $scene.meta | Add-Member -Force -NotePropertyName picked_index -NotePropertyValue $pickedIndex
+      $scene.meta | Add-Member -Force -NotePropertyName hit_id -NotePropertyValue $pickedId
+      $scene.meta | Add-Member -Force -NotePropertyName source_url -NotePropertyValue $picked
+      $scene.meta | Add-Member -Force -NotePropertyName note -NotePropertyValue ""
+
       Copy-Item -LiteralPath $outAbs -Destination $legacyImgAbs -Force
+
+      if (-not [string]::IsNullOrWhiteSpace($pickedId)) {
+        [void]$usedPixabayIds.Add($pickedId)
+      }
+      [void]$usedPixabayUrls.Add($picked)
+
       $ok = $true
-      Write-Host ("OK: scene[{0}] image=PIXABAY -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray
+      Write-Host ("OK: scene[{0}] image=PIXABAY -> {1} | query={2} | source={3} | hit={4}" -f $i, $outRel, $q, $querySource, $pickedId) -ForegroundColor DarkGray
     }
     catch {
       $ok = $false
@@ -1065,28 +1159,24 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
 
   if (-not $ok) {
     Copy-Item -LiteralPath $fallbackAbs -Destination $outAbs -Force
-    $scene.assets.image = @(
-      [pscustomobject]@{
-        path         = $outRel
-        provider     = ($(if ($SkipPixabay) { "fallback_skip_pixabay" } else { "fallback_artifacts_image" }))
-        used_query   = $q
-        hits_count   = $hitsCount
-        picked_index = $pickedIndex
-        source_url   = ""
-        note         = ($(if ($SkipPixabay) { "fallback: SkipPixabay=True" } elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) { "fallback: missing PIXABAY_API_KEY" } else { "fallback: artifacts.image" }))
-      }
-    )
+    $scene.assets.image = $outRel
+    $scene.meta | Add-Member -Force -NotePropertyName provider -NotePropertyValue ($(if ($SkipPixabay) { "fallback_skip_pixabay" } elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) { "fallback_missing_pixabay_key" } else { "fallback_artifacts_image" }))
+    $scene.meta | Add-Member -Force -NotePropertyName hits_count -NotePropertyValue $hitsCount
+    $scene.meta | Add-Member -Force -NotePropertyName picked_index -NotePropertyValue $pickedIndex
+    $scene.meta | Add-Member -Force -NotePropertyName hit_id -NotePropertyValue $pickedId
+    $scene.meta | Add-Member -Force -NotePropertyName source_url -NotePropertyValue ""
+    $scene.meta | Add-Member -Force -NotePropertyName note -NotePropertyValue ($(if ($SkipPixabay) { "fallback: SkipPixabay=True" } elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) { "fallback: missing PIXABAY_API_KEY" } else { "fallback: artifacts.image" }))
 
     Copy-Item -LiteralPath $outAbs -Destination $legacyImgAbs -Force
 
     if ($SkipPixabay) {
-      Write-Host ("OK: scene[{0}] image=FALLBACK(SkipPixabay) -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray
+      Write-Host ("OK: scene[{0}] image=FALLBACK(SkipPixabay) -> {1} | query={2}" -f $i, $outRel, $q) -ForegroundColor DarkGray
     }
     elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) {
-      Write-Host ("OK: scene[{0}] image=FALLBACK(missing PIXABAY_API_KEY) -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray
+      Write-Host ("OK: scene[{0}] image=FALLBACK(missing PIXABAY_API_KEY) -> {1} | query={2}" -f $i, $outRel, $q) -ForegroundColor DarkGray
     }
     else {
-      Write-Host ("OK: scene[{0}] image=FALLBACK(artifacts.image) -> {1} | legacy={2}" -f $i, $outRel, $legacyImgAbs) -ForegroundColor DarkGray
+      Write-Host ("OK: scene[{0}] image=FALLBACK(artifacts.image) -> {1} | query={2}" -f $i, $outRel, $q) -ForegroundColor DarkGray
     }
   }
 }

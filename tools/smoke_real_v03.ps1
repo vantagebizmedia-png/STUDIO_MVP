@@ -146,16 +146,187 @@ if (-not (Test-Path -LiteralPath $manifestPath)) {
 Write-Host ""
 Write-Host "== PACK.JSON DESDE scenes_v03 ==" -ForegroundColor Cyan
 
+function Get-PropSafeLocal {
+  param(
+    [AllowNull()]$Obj,
+    [Parameter(Mandatory=$true)][string]$Name
+  )
+
+  if ($null -eq $Obj) { return $null }
+
+  $prop = $Obj.PSObject.Properties[$Name]
+  if ($null -eq $prop) { return $null }
+
+  return $prop.Value
+}
+
+function Normalize-RealSmokeQuery {
+  param(
+    [AllowNull()][string]$Text,
+    [int]$MaxChars = 100
+  )
+
+  $fallback = "motivacion"
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $fallback }
+
+  $q = $Text.Trim().ToLowerInvariant()
+  $q = $q -replace '[\r\n\t]+', ' '
+  $q = $q -replace '[^a-zA-Z0-9áéíóúüñÁÉÍÓÚÜÑ ]+', ' '
+  $q = $q -replace '\s+', ' '
+  $q = $q.Trim()
+
+  if ([string]::IsNullOrWhiteSpace($q)) { return $fallback }
+
+  if ($q.Length -gt $MaxChars) {
+    $q = $q.Substring(0, $MaxChars)
+    $q = $q -replace '\s+\S*$', ''
+    $q = $q.Trim()
+  }
+
+  if ([string]::IsNullOrWhiteSpace($q)) { return $fallback }
+  return $q
+}
+
+function Get-SceneImageRelLocal {
+  param(
+    [AllowNull()]$Scene
+  )
+
+  $assets = Get-PropSafeLocal -Obj $Scene -Name "assets"
+  if ($null -eq $assets) { return "" }
+
+  $img = Get-PropSafeLocal -Obj $assets -Name "image"
+  if ($img -is [string]) {
+    return [string]$img
+  }
+
+  if (($img -is [System.Collections.IEnumerable]) -and -not ($img -is [string])) {
+    $arr = @($img)
+    if ($arr.Count -gt 0) {
+      $first = $arr[0]
+      $p = Get-PropSafeLocal -Obj $first -Name "path"
+      if (-not [string]::IsNullOrWhiteSpace([string]$p)) {
+        return [string]$p
+      }
+    }
+  }
+
+  $p2 = Get-PropSafeLocal -Obj $img -Name "path"
+  if (-not [string]::IsNullOrWhiteSpace([string]$p2)) {
+    return [string]$p2
+  }
+
+  return ""
+}
+
+function Get-SceneAudioRelLocal {
+  param(
+    [AllowNull()]$Scene
+  )
+
+  $assets = Get-PropSafeLocal -Obj $Scene -Name "assets"
+  if ($null -eq $assets) { return "" }
+
+  $aud = Get-PropSafeLocal -Obj $assets -Name "audio_clip"
+  if ([string]::IsNullOrWhiteSpace([string]$aud)) { return "" }
+
+  return [string]$aud
+}
+
+function Find-StockCacheEntryLocal {
+  param(
+    [AllowNull()]$StockCache,
+    [string]$ImagePath
+  )
+
+  if ($null -eq $StockCache) { return $null }
+  if ([string]::IsNullOrWhiteSpace($ImagePath)) { return $null }
+
+  foreach ($prop in $StockCache.PSObject.Properties) {
+    $entry = $prop.Value
+    if ($null -eq $entry) { continue }
+
+    $entryPath = Get-PropSafeLocal -Obj $entry -Name "path"
+    if ([string]$entryPath -eq $ImagePath) {
+      return $entry
+    }
+  }
+
+  return $null
+}
+
 $m = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $scenes = @($m.scenes_v03)
 if ($scenes.Count -lt 1) {
   Fail "manifest_v03.json no tiene scenes_v03"
 }
 
+$stockCache = Get-PropSafeLocal -Obj $m -Name "stock_cache"
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+foreach ($sc in $scenes) {
+  $imageQuery = [string](Get-PropSafeLocal -Obj $sc -Name "image_query")
+  $scriptText = [string](Get-PropSafeLocal -Obj $sc -Name "script_text")
+  $sceneText  = [string](Get-PropSafeLocal -Obj $sc -Name "text")
+
+  $querySource = "fallback"
+  $queryInput  = "motivacion"
+
+  if (-not [string]::IsNullOrWhiteSpace($imageQuery)) {
+    $queryInput  = $imageQuery
+    $querySource = "image_query"
+  }
+  elseif (-not [string]::IsNullOrWhiteSpace($scriptText)) {
+    $queryInput  = $scriptText
+    $querySource = "script_text"
+  }
+  elseif (-not [string]::IsNullOrWhiteSpace($sceneText)) {
+    $queryInput  = $sceneText
+    $querySource = "text"
+  }
+
+  $query = Normalize-RealSmokeQuery -Text $queryInput -MaxChars 100
+
+  if (-not ($sc.PSObject.Properties.Name -contains "query")) {
+    $sc | Add-Member -Force -NotePropertyName query -NotePropertyValue $query
+  }
+  else {
+    $sc.query = $query
+  }
+
+  if (-not ($sc.PSObject.Properties.Name -contains "meta") -or -not $sc.meta) {
+    $sc | Add-Member -Force -NotePropertyName meta -NotePropertyValue ([pscustomobject]@{})
+  }
+
+  $imgRel = Get-SceneImageRelLocal -Scene $sc
+  $cacheEntry = Find-StockCacheEntryLocal -StockCache $stockCache -ImagePath $imgRel
+
+  $provider  = [string](Get-PropSafeLocal -Obj $cacheEntry -Name "provider")
+  $hitId     = Get-PropSafeLocal -Obj $cacheEntry -Name "hit_id"
+  $sourceUrl = [string](Get-PropSafeLocal -Obj $cacheEntry -Name "source_url")
+
+  if ([string]::IsNullOrWhiteSpace($provider) -and -not [string]::IsNullOrWhiteSpace($imgRel)) {
+    if ($imgRel -like "assets/images/*") {
+      $provider = "pixabay"
+    }
+  }
+
+  $sc.meta | Add-Member -Force -NotePropertyName query_source -NotePropertyValue $querySource
+  $sc.meta | Add-Member -Force -NotePropertyName query_input  -NotePropertyValue $queryInput
+  $sc.meta | Add-Member -Force -NotePropertyName used_query   -NotePropertyValue $query
+  $sc.meta | Add-Member -Force -NotePropertyName provider     -NotePropertyValue $provider
+  $sc.meta | Add-Member -Force -NotePropertyName hit_id       -NotePropertyValue $hitId
+  $sc.meta | Add-Member -Force -NotePropertyName source_url   -NotePropertyValue $sourceUrl
+}
+
+$outManifest = $m | ConvertTo-Json -Depth 50
+[System.IO.File]::WriteAllText($manifestPath, ($outManifest -replace "`r`n","`n"), $utf8NoBom)
+Write-Host "OK: manifest_v03 enriquecido desde scenes_v03 + stock_cache" -ForegroundColor DarkGray
+
 $packScenes = @()
 foreach ($sc in $scenes) {
-  $imgRel = [string]$sc.assets.image
-  $audRel = [string]$sc.assets.audio_clip
+  $imgRel = Get-SceneImageRelLocal -Scene $sc
+  $audRel = Get-SceneAudioRelLocal -Scene $sc
 
   if ([string]::IsNullOrWhiteSpace($imgRel)) { Fail "Escena sin assets.image" }
   if ([string]::IsNullOrWhiteSpace($audRel)) { Fail "Escena sin assets.audio_clip" }
@@ -163,10 +334,11 @@ foreach ($sc in $scenes) {
   $imgAbs = Join-Path $liveAbs ($imgRel -replace '/', '\')
   $audAbs = Join-Path $liveAbs ($audRel -replace '/', '\')
 
-  if (-not (Test-Path -LiteralPath $imgAbs)) { Fail "No existe imagen: $imgAbs" }
-  if (-not (Test-Path -LiteralPath $audAbs)) { Fail "No existe audio: $audAbs" }
+  if (-not (Test-Path -LiteralPath $imgAbs)) { Fail "No existe imagen: $imgRel" }
+  if (-not (Test-Path -LiteralPath $audAbs)) { Fail "No existe audio_clip: $audRel" }
 
   $packScenes += [pscustomobject]@{
+    id    = [string]$sc.id
     index = ([int]$sc.index + 1)
     image = $imgRel
     audio = $audRel
@@ -178,7 +350,6 @@ $packObj = [pscustomobject]@{
   scenes  = $packScenes
 }
 
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $json = $packObj | ConvertTo-Json -Depth 20
 [System.IO.File]::WriteAllText($packJsonPath, ($json -replace "`r`n","`n"), $utf8NoBom)
 

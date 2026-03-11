@@ -14,8 +14,7 @@ from typing import Dict, Any, List
 import re
 
 from studio.scene_builder_v03 import build_scenes_v03
-from studio.stock_query_pixabay_v03 import resolve_image_for_scene
-
+from studio.stock_query_pixabay_v03 import resolve_image_for_scene, resolve_video_for_scene
 
 _STOPWORDS = {
     "a","al","con","de","del","el","en","la","las","lo","los","para","por","sin","un","una","unos","unas","y","o",
@@ -286,9 +285,14 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
 
         audio_rel = _norm_text(arts.get("audio"))
         image_rel = _norm_text(arts.get("image"))
+        video_rel = _norm_text(arts.get("video"))
 
         scene_text = narration or onscreen or stock_query or f"Escena {i+1:02d}"
         image_query = _pick_visual_query(stock_query, narration, onscreen)
+
+        visual_kind = "video" if (video_rel and not image_rel) else "image"
+        visual_source_kind = "stock_video" if visual_kind == "video" else "stock_image"
+        visual_capability = visual_source_kind
 
         out.append(
             {
@@ -299,8 +303,12 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
                 "duration_ms": int(max(0, end_ms - start_ms)),
                 "script_text": scene_text,
                 "image_query": image_query,
+                "visual_kind": visual_kind,
+                "visual_source_kind": visual_source_kind,
+                "visual_capability": visual_capability,
                 "assets": {
                     "image": image_rel or None,
+                    "video": video_rel or None,
                     "audio_clip": audio_rel or None,
                 },
             }
@@ -311,7 +319,6 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
         out[-1]["duration_ms"] = int(max(0, total_ms - _safe_int(out[-1]["start_ms"], 0)))
 
     return out
-
 
 def apply_scene_builder_to_manifest(
     manifest: Dict[str, Any],
@@ -367,47 +374,113 @@ def apply_scene_builder_to_manifest(
             scene_index=_safe_int(sc.get("index"), 0),
         )
 
-        r = resolve_image_for_scene(
-            pack_dir=pack_dir,
-            query=q,
-            seed=seed,
-            replay_strict=replay_strict,
-            cache=stock_cache,
-            placeholder_path=None,
-            lang=str(ctx["lang"]),
-            orientation=str(ctx["orientation"]),
-            category=str(ctx["category"]),
-            min_width=int(ctx["min_width"]),
-            editors_choice=bool(ctx["editors_choice"]),
-            used_assets=used_assets,
-        )
-
         assets = sc.get("assets")
         if not isinstance(assets, dict):
             assets = {}
             sc["assets"] = assets
 
-        assets["image"] = r["path"]
+        requested_capability = _norm_text(sc.get("visual_capability")).lower()
+        if requested_capability not in {"stock_image", "stock_video"}:
+            requested_kind = _norm_text(sc.get("visual_kind")).lower()
+            requested_capability = "stock_video" if requested_kind == "video" else "stock_image"
 
-        image_meta = {
-            "provider": r["provider"],
-            "cache_hit": r["cache_hit"],
-            "cache_key": r["cache_key"],
-            "query": q,
-            "lang": str(ctx["lang"]),
-            "orientation": str(ctx["orientation"]),
-            "category": str(ctx["category"]),
-            "min_width": int(ctx["min_width"]),
-            "editors_choice": bool(ctx["editors_choice"]),
-        }
+        if requested_capability == "stock_video":
+            r = resolve_video_for_scene(
+                pack_dir=pack_dir,
+                query=q,
+                seed=seed,
+                replay_strict=replay_strict,
+                cache=stock_cache,
+                placeholder_path=None,
+                lang=str(ctx["lang"]),
+                orientation=str(ctx["orientation"]),
+                category=str(ctx["category"]),
+                min_width=int(ctx["min_width"]),
+                editors_choice=bool(ctx["editors_choice"]),
+                used_assets=used_assets,
+            )
+        else:
+            r = resolve_image_for_scene(
+                pack_dir=pack_dir,
+                query=q,
+                seed=seed,
+                replay_strict=replay_strict,
+                cache=stock_cache,
+                placeholder_path=None,
+                lang=str(ctx["lang"]),
+                orientation=str(ctx["orientation"]),
+                category=str(ctx["category"]),
+                min_width=int(ctx["min_width"]),
+                editors_choice=bool(ctx["editors_choice"]),
+                used_assets=used_assets,
+            )
 
-        if r.get("source_url"):
-            image_meta["source_url"] = r["source_url"]
+        actual_kind = _norm_text(r.get("media_kind") or "image").lower()
+        actual_source_kind = _norm_text(r.get("source_kind")).lower()
 
-        if r.get("hit_id") not in (None, ""):
-            image_meta["hit_id"] = r["hit_id"]
+        if actual_kind == "video":
+            assets["video"] = r["path"]
+            assets["image"] = None
 
-        assets["image_meta"] = image_meta
+            sc["visual_kind"] = "video"
+            sc["visual_source_kind"] = actual_source_kind or "stock_video"
+            sc["visual_capability"] = "stock_video"
+
+            if "image_meta" in assets:
+                del assets["image_meta"]
+
+            video_meta = {
+                "provider": r["provider"],
+                "cache_hit": r["cache_hit"],
+                "cache_key": r["cache_key"],
+                "query": q,
+                "lang": str(ctx["lang"]),
+                "orientation": str(ctx["orientation"]),
+                "category": str(ctx["category"]),
+                "min_width": int(ctx["min_width"]),
+                "editors_choice": bool(ctx["editors_choice"]),
+            }
+
+            if r.get("source_url"):
+                video_meta["source_url"] = r["source_url"]
+            if r.get("thumbnail_url"):
+                video_meta["thumbnail_url"] = r["thumbnail_url"]
+            if r.get("hit_id") not in (None, ""):
+                video_meta["hit_id"] = r["hit_id"]
+            if r.get("duration_sec") not in (None, ""):
+                video_meta["duration_sec"] = _safe_int(r.get("duration_sec"), 0)
+
+            assets["video_meta"] = video_meta
+        else:
+            assets["image"] = r["path"]
+            assets["video"] = None
+
+            sc["visual_kind"] = "image"
+            sc["visual_source_kind"] = actual_source_kind or "stock_image"
+            sc["visual_capability"] = "stock_image"
+
+            if "video_meta" in assets:
+                del assets["video_meta"]
+
+            image_meta = {
+                "provider": r["provider"],
+                "cache_hit": r["cache_hit"],
+                "cache_key": r["cache_key"],
+                "query": q,
+                "lang": str(ctx["lang"]),
+                "orientation": str(ctx["orientation"]),
+                "category": str(ctx["category"]),
+                "min_width": int(ctx["min_width"]),
+                "editors_choice": bool(ctx["editors_choice"]),
+            }
+
+            if r.get("source_url"):
+                image_meta["source_url"] = r["source_url"]
+
+            if r.get("hit_id") not in (None, ""):
+                image_meta["hit_id"] = r["hit_id"]
+
+            assets["image_meta"] = image_meta
 
     manifest["scenes_v03"] = scenes
     manifest["scene_builder_v03"] = {
@@ -420,5 +493,4 @@ def apply_scene_builder_to_manifest(
         manifest["scenes"] = scenes
 
     return manifest
-
 

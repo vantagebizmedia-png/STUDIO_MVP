@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Mandatory=$false)][string]$WorkspaceRoot,
   [Parameter(Mandatory=$false)][string]$PackDir,
 
@@ -20,7 +20,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 chcp 65001 | Out-Null
 
-$repo = (Resolve-Path ".").Path
+$repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
 function Normalize-ToArray {
   param($Value)
@@ -32,6 +32,144 @@ function Normalize-ToArray {
   }
 
   return @($Value)
+}
+
+function Resolve-CanonicalPath {
+  param(
+    [string]$PathValue,
+    [string]$Label
+  )
+
+  if ([string]::IsNullOrWhiteSpace($PathValue)) { return "" }
+
+  if (-not (Test-Path -LiteralPath $PathValue)) {
+    throw ("No existe {0}: {1}" -f $Label, $PathValue)
+  }
+
+  return (Resolve-Path -LiteralPath $PathValue).Path
+}
+
+function Test-IsLivePackDir {
+  param([string]$DirPath)
+
+  if ([string]::IsNullOrWhiteSpace($DirPath)) { return $false }
+
+  $manifestCandidate = Join-Path $DirPath "manifest_v03.json"
+  return (Test-Path -LiteralPath $manifestCandidate)
+}
+
+function Get-WorkspaceRootFromLiveDir {
+  param([string]$LiveDir)
+
+  if ([string]::IsNullOrWhiteSpace($LiveDir)) { return "" }
+
+  try {
+    $livePath = (Resolve-Path -LiteralPath $LiveDir).Path
+    $parentDir = Split-Path $livePath -Parent
+    if ([string]::IsNullOrWhiteSpace($parentDir)) { return "" }
+
+    $parentLeaf = Split-Path $parentDir -Leaf
+    if ($parentLeaf -ine "runs") { return "" }
+
+    $workspaceDir = Split-Path $parentDir -Parent
+    if ([string]::IsNullOrWhiteSpace($workspaceDir)) { return "" }
+    if (-not (Test-Path -LiteralPath $workspaceDir)) { return "" }
+
+    return (Resolve-Path -LiteralPath $workspaceDir).Path
+  }
+  catch {
+    return ""
+  }
+}
+
+function Resolve-LiveContext {
+  param(
+    [string]$WorkspaceRootValue,
+    [string]$PackDirValue
+  )
+
+  if ([string]::IsNullOrWhiteSpace($WorkspaceRootValue) -and [string]::IsNullOrWhiteSpace($PackDirValue)) {
+    throw "Falta -WorkspaceRoot o -PackDir"
+  }
+
+  $resolvedWorkspace = ""
+  $resolvedPack = ""
+  $resolvedLive = ""
+
+  if (-not [string]::IsNullOrWhiteSpace($PackDirValue)) {
+    $packCandidate = Resolve-CanonicalPath -PathValue $PackDirValue -Label "PackDir"
+
+    if (Test-IsLivePackDir -DirPath $packCandidate) {
+      $resolvedPack = $packCandidate
+      $resolvedLive = $packCandidate
+    }
+    else {
+      $packCandidateLive = Join-Path $packCandidate "runs\smoke_live_latest"
+      if (Test-IsLivePackDir -DirPath $packCandidateLive) {
+        $resolvedWorkspace = $packCandidate
+        $resolvedPack = (Resolve-Path -LiteralPath $packCandidateLive).Path
+        $resolvedLive = $resolvedPack
+      }
+      else {
+        throw ("PackDir no apunta a un LIVE valido ni a un workspace con runs\smoke_live_latest: {0}" -f $packCandidate)
+      }
+    }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($WorkspaceRootValue)) {
+    $workspaceCandidate = Resolve-CanonicalPath -PathValue $WorkspaceRootValue -Label "WorkspaceRoot"
+    $workspaceProvidedLive = ""
+
+    if (Test-IsLivePackDir -DirPath $workspaceCandidate) {
+      $workspaceProvidedLive = $workspaceCandidate
+    }
+    else {
+      $workspaceCandidateLive = Join-Path $workspaceCandidate "runs\smoke_live_latest"
+      if (Test-IsLivePackDir -DirPath $workspaceCandidateLive) {
+        $workspaceProvidedLive = (Resolve-Path -LiteralPath $workspaceCandidateLive).Path
+      }
+      else {
+        throw ("WorkspaceRoot no contiene un LIVE valido: {0}" -f $workspaceCandidate)
+      }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($resolvedLive)) {
+      if (-not $resolvedLive.Equals($workspaceProvidedLive, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw ("WorkspaceRoot y PackDir apuntan a LIVE distintos. WorkspaceRoot='{0}' PackDir='{1}'" -f $workspaceProvidedLive, $resolvedLive)
+      }
+    }
+    else {
+      $resolvedLive = $workspaceProvidedLive
+      if ([string]::IsNullOrWhiteSpace($resolvedPack)) {
+        $resolvedPack = $workspaceProvidedLive
+      }
+    }
+
+    if (-not (Test-IsLivePackDir -DirPath $workspaceCandidate)) {
+      $resolvedWorkspace = $workspaceCandidate
+    }
+    elseif ([string]::IsNullOrWhiteSpace($resolvedWorkspace)) {
+      $resolvedWorkspace = Get-WorkspaceRootFromLiveDir -LiveDir $workspaceProvidedLive
+    }
+  }
+
+  if ([string]::IsNullOrWhiteSpace($resolvedLive)) {
+    throw "No se pudo resolver LiveDir"
+  }
+
+  if ([string]::IsNullOrWhiteSpace($resolvedPack)) {
+    $resolvedPack = $resolvedLive
+  }
+
+  if ([string]::IsNullOrWhiteSpace($resolvedWorkspace)) {
+    $resolvedWorkspace = Get-WorkspaceRootFromLiveDir -LiveDir $resolvedLive
+  }
+
+  return [pscustomobject]@{
+    WorkspaceRoot = $resolvedWorkspace
+    PackDir       = $resolvedPack
+    LiveDir       = $resolvedLive
+  }
 }
 
 function Get-PixabaySafeQuery {
@@ -576,13 +714,20 @@ function Ensure-Scenes {
   if (@($sc).Count -lt $SceneCount) {
     for ($i = @($sc).Count; $i -lt $SceneCount; $i++) {
       $obj = [pscustomobject]@{
-        id       = ("scene_{0:000}" -f ($i + 1))
-        start_ms = 0
-        end_ms   = 0
-        text     = ""
-        assets   = [pscustomobject]@{
+        id                 = ("scene_{0:000}" -f ($i + 1))
+        start_ms           = 0
+        end_ms             = 0
+        duration_ms        = 0
+        text               = ""
+        script_text        = ""
+        image_query        = ""
+        visual_kind        = "image"
+        visual_source_kind = "fallback_image"
+        visual_capability  = "stock_image"
+        assets             = [pscustomobject]@{
           audio_clip = ""
-          image      = @([pscustomobject]@{ path = "" })
+          image      = ""
+          video      = ""
         }
       }
       $sc += $obj
@@ -600,21 +745,25 @@ function Ensure-Scenes {
     if ($i -eq ($SceneCount - 1)) { $en = $TotalAudioMs }
     $cur = $en
 
-    if (-not ($sceneObj.PSObject.Properties.Name -contains "id")) {
-      $sceneObj | Add-Member -Force -NotePropertyName id -NotePropertyValue ("scene_{0:000}" -f ($i + 1))
-    }
-    elseif ([string]::IsNullOrWhiteSpace([string]$sceneObj.id)) {
-      $sceneObj.id = ("scene_{0:000}" -f ($i + 1))
-    }
+    $sceneObj | Add-Member -Force -NotePropertyName id -NotePropertyValue ("scene_{0:000}" -f ($i + 1))
 
     if (-not ($sceneObj.PSObject.Properties.Name -contains "text")) {
       $sceneObj | Add-Member -Force -NotePropertyName text -NotePropertyValue ""
     }
 
+    if (-not ($sceneObj.PSObject.Properties.Name -contains "script_text")) {
+      $sceneObj | Add-Member -Force -NotePropertyName script_text -NotePropertyValue ""
+    }
+
+    if (-not ($sceneObj.PSObject.Properties.Name -contains "image_query")) {
+      $sceneObj | Add-Member -Force -NotePropertyName image_query -NotePropertyValue ""
+    }
+
     if (-not ($sceneObj.PSObject.Properties.Name -contains "assets") -or -not $sceneObj.assets) {
       $sceneObj | Add-Member -Force -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{
         audio_clip = ""
-        image      = @([pscustomobject]@{ path = "" })
+        image      = ""
+        video      = ""
       })
     }
 
@@ -622,19 +771,100 @@ function Ensure-Scenes {
       $sceneObj.assets | Add-Member -Force -NotePropertyName audio_clip -NotePropertyValue ""
     }
 
-    if (-not ($sceneObj.assets.PSObject.Properties.Name -contains "image") -or -not $sceneObj.assets.image) {
-      $sceneObj.assets | Add-Member -Force -NotePropertyName image -NotePropertyValue @([pscustomobject]@{ path = "" })
+    if (-not ($sceneObj.assets.PSObject.Properties.Name -contains "image")) {
+      $sceneObj.assets | Add-Member -Force -NotePropertyName image -NotePropertyValue ""
     }
-    elseif ($sceneObj.assets.image -is [string]) {
-      $sceneObj.assets.image = @([pscustomobject]@{ path = [string]$sceneObj.assets.image })
+    elseif ($sceneObj.assets.image -isnot [string]) {
+      $sceneObj.assets.image = [string](Get-AssetPathValue -AssetsObj $sceneObj.assets -Key "image")
     }
 
-    $sceneObj.start_ms = [int]$st
-    $sceneObj.end_ms   = [int]$en
+    if (-not ($sceneObj.assets.PSObject.Properties.Name -contains "video")) {
+      $sceneObj.assets | Add-Member -Force -NotePropertyName video -NotePropertyValue ""
+    }
+    elseif ($sceneObj.assets.video -isnot [string]) {
+      $sceneObj.assets.video = [string](Get-AssetPathValue -AssetsObj $sceneObj.assets -Key "video")
+    }
+
+    $vk = "image"
+    if (-not [string]::IsNullOrWhiteSpace([string]$sceneObj.assets.video) -and [string]::IsNullOrWhiteSpace([string]$sceneObj.assets.image)) {
+      $vk = "video"
+    }
+
+    $sceneObj | Add-Member -Force -NotePropertyName visual_kind -NotePropertyValue $vk
+    $sceneObj | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })
+    $sceneObj | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })
+
+    $sceneObj | Add-Member -Force -NotePropertyName start_ms -NotePropertyValue ([int]$st)
+    $sceneObj | Add-Member -Force -NotePropertyName end_ms -NotePropertyValue ([int]$en)
+    $sceneObj | Add-Member -Force -NotePropertyName duration_ms -NotePropertyValue ([int]($en - $st))
+
     $sceneObj.assets.audio_clip = ("artifacts/audio_s{0:d2}.wav" -f ($i + 1))
   }
 
   $ManifestObj.scenes_v03 = @($sc)
+}
+
+function Ensure-VisualCapabilityFields {
+  param(
+    [Parameter(Mandatory=$true)]$ManifestObj
+  )
+
+  $scenes = @($ManifestObj.scenes_v03)
+  foreach ($scene in $scenes) {
+    if (-not $scene) { continue }
+
+    if (-not ($scene.PSObject.Properties.Name -contains "assets") -or -not $scene.assets) {
+      $scene | Add-Member -Force -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{
+        audio_clip = ""
+        image      = ""
+        video      = ""
+      })
+    }
+
+    if (-not ($scene.assets.PSObject.Properties.Name -contains "video")) {
+      $scene.assets | Add-Member -Force -NotePropertyName video -NotePropertyValue ""
+    }
+    elseif ($scene.assets.video -isnot [string]) {
+      try {
+        $scene.assets.video = [string]$scene.assets.video
+      }
+      catch {
+        $scene.assets.video = ""
+      }
+    }
+
+    if (-not ($scene.assets.PSObject.Properties.Name -contains "image")) {
+      $scene.assets | Add-Member -Force -NotePropertyName image -NotePropertyValue ""
+    }
+    elseif ($scene.assets.image -isnot [string]) {
+      try {
+        $scene.assets.image = [string]$scene.assets.image
+      }
+      catch {
+        $scene.assets.image = ""
+      }
+    }
+
+    $vk = ""
+    if ($scene.PSObject.Properties.Name -contains "visual_kind") {
+      try { $vk = ([string]$scene.visual_kind).Trim().ToLowerInvariant() } catch { $vk = "" }
+    }
+
+    if ($vk -notin @("image","video")) {
+      if (-not [string]::IsNullOrWhiteSpace([string]$scene.assets.video) -and [string]::IsNullOrWhiteSpace([string]$scene.assets.image)) {
+        $vk = "video"
+      }
+      else {
+        $vk = "image"
+      }
+    }
+
+    $scene | Add-Member -Force -NotePropertyName visual_kind -NotePropertyValue $vk
+    $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })
+    $scene | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })
+  }
+
+  $ManifestObj.scenes_v03 = @($scenes)
 }
 
 function Sync-PackCompat {
@@ -675,29 +905,94 @@ function Sync-PackCompat {
     }
     catch { $audioPath = "" }
 
+    $sceneId = ""
+    try { $sceneId = [string]$scene.id } catch { $sceneId = "" }
+
+    $sceneText = ""
+    try { $sceneText = [string]$scene.text } catch { $sceneText = "" }
+
+    $sceneStart = 0
+    try { $sceneStart = [int]$scene.start_ms } catch { $sceneStart = 0 }
+
+    $sceneEnd = 0
+    try { $sceneEnd = [int]$scene.end_ms } catch { $sceneEnd = 0 }
+
     $packCompatScenes += [pscustomobject]@{
-      id         = [string]$scene.id
-      index      = [int](([string]$scene.id -replace '[^\d]',''))
-      text       = [string]$scene.text
-      narration  = [string]$scene.text
-      onscreen   = [string]$scene.text
-      audio_text = [string]$scene.text
+      id         = $sceneId
+      index      = [int](($sceneId -replace '[^\d]',''))
+      text       = $sceneText
+      narration  = $sceneText
+      onscreen   = $sceneText
+      audio_text = $sceneText
       image      = $imgPath
       audio      = $audioPath
-      start_ms   = [int]$scene.start_ms
-      end_ms     = [int]$scene.end_ms
+      start_ms   = $sceneStart
+      end_ms     = $sceneEnd
     }
+  }
+
+  $manifestScript = ""
+  try {
+    if ($ManifestObj.PSObject.Properties["script"] -and $ManifestObj.script) {
+      $manifestScript = [string]$ManifestObj.script
+    }
+    elseif ($ManifestObj.PSObject.Properties["text"] -and $ManifestObj.text) {
+      if ($ManifestObj.text -is [string]) {
+        $manifestScript = [string]$ManifestObj.text
+      }
+      elseif ($ManifestObj.text.PSObject.Properties["script"] -and $ManifestObj.text.script) {
+        $manifestScript = [string]$ManifestObj.text.script
+      }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($manifestScript)) {
+      $parts = @()
+      foreach ($scene in @($ManifestObj.scenes_v03)) {
+        try {
+          if ($scene.PSObject.Properties["text"] -and -not [string]::IsNullOrWhiteSpace([string]$scene.text)) {
+            $parts += [string]$scene.text
+          }
+        }
+        catch { }
+      }
+
+      if ($parts.Count -gt 0) {
+        $manifestScript = ($parts -join " ").Trim()
+      }
+    }
+  }
+  catch {
+    $manifestScript = ""
+  }
+
+  $artifactImage = ""
+  $artifactAudio = ""
+
+  try {
+    if ($ManifestObj.PSObject.Properties["artifacts"] -and $ManifestObj.artifacts) {
+      if ($ManifestObj.artifacts.PSObject.Properties["image"] -and $ManifestObj.artifacts.image) {
+        $artifactImage = [string]$ManifestObj.artifacts.image
+      }
+
+      if ($ManifestObj.artifacts.PSObject.Properties["audio"] -and $ManifestObj.artifacts.audio) {
+        $artifactAudio = [string]$ManifestObj.artifacts.audio
+      }
+    }
+  }
+  catch {
+    $artifactImage = ""
+    $artifactAudio = ""
   }
 
   $packCompat = [pscustomobject]@{
     version = "v03"
-    script = [string]$ManifestObj.script
+    script = $manifestScript
     scenes = $packCompatScenes
     scenes_v03 = $ManifestObj.scenes_v03
     audio_clips = $ManifestObj.audio_clips
     artifacts = [pscustomobject]@{
-      image = [string]$ManifestObj.artifacts.image
-      audio = [string]$ManifestObj.artifacts.audio
+      image = $artifactImage
+      audio = $artifactAudio
     }
   }
 
@@ -706,487 +1001,49 @@ function Sync-PackCompat {
   [System.IO.File]::WriteAllText($packJsonPath, ($packCompat | ConvertTo-Json -Depth 50), $utf8NoBomPack)
 }
 
-
-
-if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -eq 0) {
-  if (-not $PackDir -or $PackDir.Trim().Length -eq 0) {
-    throw "Falta -WorkspaceRoot o -PackDir"
-  }
-
-  $PackDir = (Resolve-Path $PackDir).Path
-  $WorkspaceRoot = (Resolve-Path (Join-Path $PackDir "..\..")).Path
-}
-
-$live = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
-if (-not (Test-Path -LiteralPath $live)) { throw "No existe LIVE: $live" }
-
-$manifest = Join-Path $live "manifest_v03.json"
-if (-not (Test-Path -LiteralPath $manifest)) { throw "Falta manifest_v03.json en LIVE: $manifest" }
-
-$mRaw = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8
-$m = $mRaw | ConvertFrom-Json
-
-if (-not $m.scenes_v03) {
-  $m | Add-Member -NotePropertyName scenes_v03 -NotePropertyValue @()
-}
-
-$AudioClipsChanged = $false
-$AudioClipsCreatedFallback = $false
-
-$hasProp = ($m.PSObject.Properties.Name -contains "audio_clips")
-$ac = $null
-if ($hasProp) { $ac = $m.audio_clips }
-
-$acArr = @(Normalize-ToArray -Value $ac)
-
-if (-not $hasProp -or $null -eq $ac -or @($acArr).Count -eq 0) {
-  $acArr = @([pscustomobject]@{
-    id       = "clip_001"
-    start_ms = 0
-    end_ms   = 20000
-    text     = ""
-    path     = "artifacts/audio_s01.wav"
-  })
-  $AudioClipsChanged = $true
-  $AudioClipsCreatedFallback = $true
-}
-else {
-  if (-not (($ac -is [System.Collections.IEnumerable]) -and -not ($ac -is [string]))) {
-    $AudioClipsChanged = $true
-  }
-}
-
-$m | Add-Member -Force -NotePropertyName audio_clips -NotePropertyValue @($acArr)
-
-if ($AudioClipsCreatedFallback) {
-  Write-Host "WARN: manifest sin audio_clips -> fallback determinista clip_001 (0..20000ms)" -ForegroundColor DarkYellow
-}
-elseif ($AudioClipsChanged) {
-  Write-Host "OK: audio_clips normalizado a array (sin cambiar contenido)" -ForegroundColor DarkGray
-}
-
-if (-not $m.artifacts -or -not $m.artifacts.image) {
-  throw "manifest sin artifacts.image (fallback requerido): $manifest"
-}
+$liveForCompat = ""
 
 try {
-  if (-not $m.artifacts.audio -or [string]::IsNullOrWhiteSpace([string]$m.artifacts.audio)) {
-    throw "artifacts.audio vacío"
+  if (Get-Variable -Name live -ErrorAction SilentlyContinue) {
+    $liveForCompat = [string]$live
   }
 }
-catch {
-  throw "manifest sin artifacts.audio (base audio requerido): $manifest"
-}
+catch { $liveForCompat = "" }
 
-$totalAudioMs = Get-TotalAudioMs -AudioClips $m.audio_clips
-
-$scriptText = ""
-try {
-  if ($m.script) { $scriptText = [string]$m.script }
-  elseif ($m.text -and $m.text.script) { $scriptText = [string]$m.text.script }
-}
-catch {
-  $scriptText = ""
-}
-
-$scriptParts = @(Split-ScriptSentences -Text $scriptText)
-
-$desiredScenes = Get-DynamicSceneCount `
-  -ScriptParts $scriptParts `
-  -TotalAudioMs $totalAudioMs `
-  -ConfiguredMinScenes $MinScenes `
-  -ConfiguredMaxScenes $MaxScenes `
-  -SceneTargetSec $TargetSceneSec `
-  -SceneMinSec $MinSceneSec `
-  -SceneMaxSec $MaxSceneSec
-
-$sceneMode = "audio_fallback"
-if (@($scriptParts).Count -gt 0) {
-  $sceneMode = "script_driven"
-}
-
-$effectiveMinSceneSec = $MinSceneSec
-$effectiveMaxSceneSec = $MaxSceneSec
-
-if ($sceneMode -eq "script_driven" -and $desiredScenes -gt 0) {
-  $avgSceneSec = [int][Math]::Ceiling($totalAudioMs / [double](1000 * $desiredScenes))
-  $scriptAdaptiveMax = [Math]::Max($MaxSceneSec, ($avgSceneSec + 2))
-
-  if ($scriptAdaptiveMax -lt $effectiveMinSceneSec) {
-    $scriptAdaptiveMax = $effectiveMinSceneSec
-  }
-
-  $effectiveMaxSceneSec = $scriptAdaptiveMax
-}
-if (-not $Force) {
-  if (ScenesHaveValidImages -ManifestObj $m -LiveDir $live -ExpectedCount $desiredScenes) {
-    $outSkip = $m | ConvertTo-Json -Depth 50
-    $utf8NoBomSkip = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($manifest, $outSkip, $utf8NoBomSkip)
-
-    Sync-PackCompat -ManifestObj $m -LiveDir $live
-
-    if ($AudioClipsChanged) {
-      Write-Host "OK: manifest actualizado (audio_clips) antes de SKIP" -ForegroundColor DarkGray
-    }
-    else {
-      Write-Host "OK: manifest preservado antes de SKIP" -ForegroundColor DarkGray
-    }
-
-    Write-Host ("OK: pack.json resincronizado desde scenes_v03 antes de SKIP. scenes={0}" -f @($m.scenes_v03).Count) -ForegroundColor DarkGray
-    Write-Host ("SKIP: scene_builder v03 (ya hay scenes+images válidos). scenes={0} desired={1} totalAudioMs={2}" -f @($m.scenes_v03).Count, $desiredScenes, $totalAudioMs) -ForegroundColor DarkGray
-    exit 0
-  }
-}
-
-Ensure-Scenes `
-  -ManifestObj $m `
-  -SceneCount $desiredScenes `
-  -TotalAudioMs $totalAudioMs `
-  -SceneMinSec $effectiveMinSceneSec `
-  -SceneMaxSec $effectiveMaxSceneSec `
-  -SeedValue $Seed
-
-if (@($scriptParts).Count -gt 0) {
-  $sceneTexts = @(Build-SceneTexts -Parts $scriptParts -SceneCount @($m.scenes_v03).Count)
-
-  for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
-    $txt = ""
-    if ($i -lt @($sceneTexts).Count) { $txt = [string]$sceneTexts[$i] }
-    $m.scenes_v03[$i].text = $txt.Trim()
-  }
-}
-
-$cacheDir = Join-Path $live "cache_v03"
-if (-not (Test-Path -LiteralPath $cacheDir)) {
-  New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
-}
-
-$pixQuery = Join-Path $repo "tools\stock_query_pixabay_v03.ps1"
-$dlTool   = Join-Path $repo "tools\download_file_v03.ps1"
-
-$pixabayKey = ""
-if (-not [string]::IsNullOrWhiteSpace($env:PIXABAY_API_KEY)) {
-  $pixabayKey = [string]$env:PIXABAY_API_KEY
-}
-elseif (-not [string]::IsNullOrWhiteSpace($env:OPENAI_STUDIO_PIXABAY_API_KEY)) {
-  $pixabayKey = [string]$env:OPENAI_STUDIO_PIXABAY_API_KEY
-  $env:PIXABAY_API_KEY = $pixabayKey
-  Write-Host "INFO: PIXABAY_API_KEY cargada desde OPENAI_STUDIO_PIXABAY_API_KEY" -ForegroundColor DarkYellow
-}
-
-if (-not [string]::IsNullOrWhiteSpace($pixabayKey)) {
-  $k = $pixabayKey.Trim()
-  if ($k -match 'PON_AQUI|YOUR_KEY|API_KEY|TU_KEY|PIXABAY_KEY|PLACEHOLDER') {
-    Write-Host "WARN: PIXABAY_API_KEY parece placeholder; se desactiva Pixabay para evitar falso positivo" -ForegroundColor Yellow
-    $pixabayKey = ""
-    $env:PIXABAY_API_KEY = ""
-  }
-}
-
-$assetsDir = Join-Path $live "assets\scenes_v03"
-if (-not (Test-Path -LiteralPath $assetsDir)) {
-  New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
-}
-
-# Compat legacy para finalize_pack_v03.ps1 / render_pack_v03.py
-$legacyScenesDir = Join-Path $live "artifacts\scenes"
-if (-not (Test-Path -LiteralPath $legacyScenesDir)) {
-  New-Item -ItemType Directory -Force -Path $legacyScenesDir | Out-Null
-}
-
-# Asegurar clips físicos por escena para que smoke_live_manifest_v03 no falle
-$baseAudioRel = [string]$m.artifacts.audio
-$baseAudioAbs = Join-Path $live $baseAudioRel
-if (-not (Test-Path -LiteralPath $baseAudioAbs)) {
-  throw "No existe audio base para escenas: $baseAudioRel"
-}
-
-$audioClipsDir = Join-Path $live "assets\audio_clips"
-if (-not (Test-Path -LiteralPath $audioClipsDir)) {
-  New-Item -ItemType Directory -Force -Path $audioClipsDir | Out-Null
-}
-
-$fallbackRel = [string]$m.artifacts.image
-$fallbackAbs = Join-Path $live $fallbackRel
-if (-not (Test-Path -LiteralPath $fallbackAbs)) {
-  $fallbackAbs = Join-Path $live "image_9bfb2d47.png"
-}
-if (-not (Test-Path -LiteralPath $fallbackAbs)) {
-  throw "No existe fallback de imagen: $fallbackRel"
-}
-
-$usedPixabayIds  = New-Object 'System.Collections.Generic.HashSet[string]'
-$usedPixabayUrls = New-Object 'System.Collections.Generic.HashSet[string]'
-
-for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
-  $scene = $m.scenes_v03[$i]
-
-  if (-not $scene.assets) {
-    $scene | Add-Member -Force -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{
-      audio_clip = ""
-      image      = ""
-    })
-  }
-
-  $clipName = ("s{0:d2}.wav" -f ($i + 1))
-  $clipAbs  = Join-Path $audioClipsDir $clipName
-  $clipRel  = ("assets/audio_clips/{0}" -f $clipName)
-
-  if (-not (Test-Path -LiteralPath $clipAbs)) {
-    Copy-Item -LiteralPath $baseAudioAbs -Destination $clipAbs -Force
-  }
-
-  if (-not ($scene.assets.PSObject.Properties.Name -contains "audio_clip")) {
-    $scene.assets | Add-Member -Force -NotePropertyName audio_clip -NotePropertyValue $clipRel
-  }
-  else {
-    $scene.assets.audio_clip = $clipRel
-  }
-
-  $legacySceneDir = Join-Path $legacyScenesDir ("scene_{0:00}" -f ($i + 1))
-  if (-not (Test-Path -LiteralPath $legacySceneDir)) {
-    New-Item -ItemType Directory -Force -Path $legacySceneDir | Out-Null
-  }
-
-  if (-not ($scene.assets.PSObject.Properties.Name -contains "image")) {
-    $scene.assets | Add-Member -Force -NotePropertyName image -NotePropertyValue ""
-  }
-  elseif ($scene.assets.image -isnot [string]) {
-    $scene.assets.image = [string]$scene.assets.image
-  }
-
-  if ($scene.assets.PSObject.Properties.Name -contains "video") {
-    $scene.PSObject.Properties.Remove("assets") | Out-Null
-    $newAssets = [pscustomobject]@{
-      audio_clip = $clipRel
-      image      = ""
-    }
-    $scene | Add-Member -Force -NotePropertyName assets -NotePropertyValue $newAssets
-  }
-
-  $outName = ("scene_{0:000}.jpg" -f ($i + 1))
-  $outAbs  = Join-Path $assetsDir $outName
-  $outRel  = ("assets/scenes_v03/{0}" -f $outName)
-  $legacyImgAbs = Join-Path $legacySceneDir "image.png"
-
-  $sceneTextRaw = ""
-  if (($scene.PSObject.Properties.Name -contains "text") -and $scene.text) {
-    $sceneTextRaw = [string]$scene.text
-  }
-
-  $sceneScriptText = ""
-  if (($scene.PSObject.Properties.Name -contains "script_text") -and $scene.script_text) {
-    $sceneScriptText = [string]$scene.script_text
-  }
-
-  $sceneImageQuery = ""
-  if (($scene.PSObject.Properties.Name -contains "image_query") -and $scene.image_query) {
-    $sceneImageQuery = [string]$scene.image_query
-  }
-
-  $querySource = "fallback"
-  $queryInput  = "motivacion"
-
-  if (-not [string]::IsNullOrWhiteSpace($sceneImageQuery)) {
-    $queryInput  = $sceneImageQuery
-    $querySource = "image_query"
-  }
-  elseif (-not [string]::IsNullOrWhiteSpace($sceneScriptText)) {
-    $queryInput  = $sceneScriptText
-    $querySource = "script_text"
-  }
-  elseif (-not [string]::IsNullOrWhiteSpace($sceneTextRaw)) {
-    $queryInput  = $sceneTextRaw
-    $querySource = "text"
-  }
-
-  $q = Get-PixabaySafeQuery -Text $queryInput -MaxChars 100
-
-  if (-not ($scene.PSObject.Properties.Name -contains "meta") -or -not $scene.meta) {
-    $scene | Add-Member -Force -NotePropertyName meta -NotePropertyValue ([pscustomobject]@{})
-  }
-
-  $scene | Add-Member -Force -NotePropertyName query -NotePropertyValue $q
-  $scene.meta | Add-Member -Force -NotePropertyName query_source -NotePropertyValue $querySource
-  $scene.meta | Add-Member -Force -NotePropertyName query_input -NotePropertyValue $queryInput
-  $scene.meta | Add-Member -Force -NotePropertyName used_query -NotePropertyValue $q
-
-  $canPixabay = $false
-  if (-not $SkipPixabay) {
-    if (-not [string]::IsNullOrWhiteSpace($pixabayKey) -and (Test-Path -LiteralPath $pixQuery) -and (Test-Path -LiteralPath $dlTool)) {
-      $canPixabay = $true
-    }
-    else {
-      Write-Host ("INFO: scene[{0}] Pixabay image branch skipped: missing API key or tools" -f $i) -ForegroundColor DarkYellow
-    }
-  }
-  else {
-    Write-Host ("INFO: scene[{0}] Pixabay image branch skipped: SkipPixabay=True" -f $i) -ForegroundColor DarkYellow
-  }
-
-  $picked = $null
-  $pickedId = ""
-  $pickedIndex = -1
-  $hitsCount = 0
-  $duplicateExhausted = $false
-  $cacheJson = Join-Path $cacheDir ("pixabay_scene_{0:000}.json" -f ($i + 1))
-
-  if ($canPixabay) {
-    try {
-      if (-not (Test-Path -LiteralPath $cacheJson)) {
-        $env:PIXABAY_API_KEY = $pixabayKey
-
-        $pixOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $pixQuery `
-          -Query $q `
-          -OutJsonPath $cacheJson `
-          -Seed $Seed 2>&1
-
-        $pixExit = $LASTEXITCODE
-
-        if ($pixExit -ne 0) {
-          $pixMsg = (($pixOutput | ForEach-Object { "$_" }) -join " | ").Trim()
-          if ([string]::IsNullOrWhiteSpace($pixMsg)) {
-            $pixMsg = "sin output del subprocess"
-          }
-          throw "stock_query_pixabay_v03.ps1 falló. exit=$pixExit query='$q' detail=$pixMsg"
-        }
-
-        if (-not (Test-Path -LiteralPath $cacheJson)) {
-          $pixMsg = (($pixOutput | ForEach-Object { "$_" }) -join " | ").Trim()
-          if ([string]::IsNullOrWhiteSpace($pixMsg)) {
-            $pixMsg = "sin output del subprocess"
-          }
-          throw "stock_query_pixabay_v03.ps1 terminó sin crear JSON. query='$q' out='$cacheJson' detail=$pixMsg"
-        }
-      }
-
-      $cj = Get-Content -LiteralPath $cacheJson -Raw -Encoding UTF8 | ConvertFrom-Json
-      $hits = @()
-      if ($cj -and $cj.hits) { $hits = @($cj.hits) }
-      $hitsCount = @($hits).Count
-
-      if ($hitsCount -gt 0) {
-        $startIndex = ($Seed + $i) % $hitsCount
-
-        for ($step = 0; $step -lt $hitsCount; $step++) {
-          $candidateIndex = ($startIndex + $step) % $hitsCount
-          $candidateHit = $hits[$candidateIndex]
-
-          if ($null -eq $candidateHit) { continue }
-
-          $candidateUrl = ""
-          if (($candidateHit.PSObject.Properties.Name -contains "url") -and $candidateHit.url) {
-            $candidateUrl = [string]$candidateHit.url
-          }
-          elseif (($candidateHit.PSObject.Properties.Name -contains "source_url") -and $candidateHit.source_url) {
-            $candidateUrl = [string]$candidateHit.source_url
-          }
-
-          if ([string]::IsNullOrWhiteSpace($candidateUrl)) { continue }
-
-          $candidateId = ""
-          if (($candidateHit.PSObject.Properties.Name -contains "hit_id") -and $null -ne $candidateHit.hit_id) {
-            $candidateId = [string]$candidateHit.hit_id
-          }
-          elseif (($candidateHit.PSObject.Properties.Name -contains "id") -and $null -ne $candidateHit.id) {
-            $candidateId = [string]$candidateHit.id
-          }
-
-          $alreadyUsed = $false
-          if (-not [string]::IsNullOrWhiteSpace($candidateId) -and $usedPixabayIds.Contains($candidateId)) {
-            $alreadyUsed = $true
-          }
-          if ($usedPixabayUrls.Contains($candidateUrl)) {
-            $alreadyUsed = $true
-          }
-
-          if (-not $alreadyUsed) {
-            $picked = $candidateUrl
-            $pickedId = $candidateId
-            $pickedIndex = $candidateIndex
-            break
-          }
-        }
-
-        if (-not $picked) {
-          $duplicateExhausted = $true
-          Write-Host ("WARN: scene[{0}] Pixabay sin hit unico disponible para query='{1}' -> fallback" -f $i, $q) -ForegroundColor Yellow
-        }
-      }
-      else {
-        Write-Host ("WARN: scene[{0}] Pixabay respondió 0 hits para query='{1}'" -f $i, $q) -ForegroundColor Yellow
+if ([string]::IsNullOrWhiteSpace($liveForCompat)) {
+  try {
+    if (Get-Variable -Name PackDir -ErrorAction SilentlyContinue) {
+      if (-not [string]::IsNullOrWhiteSpace([string]$PackDir)) {
+        $liveForCompat = [string]$PackDir
       }
     }
-    catch {
-      $picked = $null
-      $pickedId = ""
-      $pickedIndex = -1
-      $hitsCount = 0
-      $duplicateExhausted = $false
-      Write-Host ("WARN: scene[{0}] Pixabay query failed -> fallback ({1})" -f $i, $_.Exception.Message) -ForegroundColor Yellow
-    }
   }
-
-  $ok = $false
-  if ($picked) {
-    try {
-      pwsh -NoProfile -ExecutionPolicy Bypass -File $dlTool -Url $picked -OutPath $outAbs | Out-Null
-
-      $scene.assets.image = $outRel
-      $scene.meta | Add-Member -Force -NotePropertyName provider -NotePropertyValue "pixabay"
-      $scene.meta | Add-Member -Force -NotePropertyName hits_count -NotePropertyValue $hitsCount
-      $scene.meta | Add-Member -Force -NotePropertyName picked_index -NotePropertyValue $pickedIndex
-      $scene.meta | Add-Member -Force -NotePropertyName hit_id -NotePropertyValue $pickedId
-      $scene.meta | Add-Member -Force -NotePropertyName source_url -NotePropertyValue $picked
-      $scene.meta | Add-Member -Force -NotePropertyName note -NotePropertyValue ""
-
-      Copy-Item -LiteralPath $outAbs -Destination $legacyImgAbs -Force
-
-      if (-not [string]::IsNullOrWhiteSpace($pickedId)) {
-        [void]$usedPixabayIds.Add($pickedId)
-      }
-      [void]$usedPixabayUrls.Add($picked)
-
-      $ok = $true
-      Write-Host ("OK: scene[{0}] image=PIXABAY -> {1} | query={2} | source={3} | hit={4}" -f $i, $outRel, $q, $querySource, $pickedId) -ForegroundColor DarkGray
-    }
-    catch {
-      $ok = $false
-      Write-Host ("WARN: scene[{0}] Pixabay download failed -> fallback ({1})" -f $i, $_.Exception.Message) -ForegroundColor Yellow
-    }
-  }
-
-  if (-not $ok) {
-    Copy-Item -LiteralPath $fallbackAbs -Destination $outAbs -Force
-    $scene.assets.image = $outRel
-    $scene.meta | Add-Member -Force -NotePropertyName provider -NotePropertyValue ($(if ($SkipPixabay) { "fallback_skip_pixabay" } elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) { "fallback_missing_pixabay_key" } else { "fallback_artifacts_image" }))
-    $scene.meta | Add-Member -Force -NotePropertyName hits_count -NotePropertyValue $hitsCount
-    $scene.meta | Add-Member -Force -NotePropertyName picked_index -NotePropertyValue $pickedIndex
-    $scene.meta | Add-Member -Force -NotePropertyName hit_id -NotePropertyValue $pickedId
-    $scene.meta | Add-Member -Force -NotePropertyName source_url -NotePropertyValue ""
-    $scene.meta | Add-Member -Force -NotePropertyName note -NotePropertyValue ($(if ($SkipPixabay) { "fallback: SkipPixabay=True" } elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) { "fallback: missing PIXABAY_API_KEY" } elseif ($duplicateExhausted) { "fallback: duplicate pixabay hits exhausted" } else { "fallback: artifacts.image" }))
-
-    Copy-Item -LiteralPath $outAbs -Destination $legacyImgAbs -Force
-
-    if ($SkipPixabay) {
-      Write-Host ("OK: scene[{0}] image=FALLBACK(SkipPixabay) -> {1} | query={2}" -f $i, $outRel, $q) -ForegroundColor DarkGray
-    }
-    elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) {
-      Write-Host ("OK: scene[{0}] image=FALLBACK(missing PIXABAY_API_KEY) -> {1} | query={2}" -f $i, $outRel, $q) -ForegroundColor DarkGray
-    }
-    else {
-      Write-Host ("OK: scene[{0}] image=FALLBACK(artifacts.image) -> {1} | query={2}" -f $i, $outRel, $q) -ForegroundColor DarkGray
-    }
-  }
+  catch { $liveForCompat = "" }
 }
 
-$out = $m | ConvertTo-Json -Depth 50
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($manifest, $out, $utf8NoBom)
+if ([string]::IsNullOrWhiteSpace($liveForCompat)) {
+  try {
+    if (Get-Variable -Name WorkspaceRoot -ErrorAction SilentlyContinue) {
+      if (-not [string]::IsNullOrWhiteSpace([string]$WorkspaceRoot)) {
+        $liveForCompat = Join-Path ([string]$WorkspaceRoot) "runs\smoke_live_latest"
+      }
+    }
+  }
+  catch { $liveForCompat = "" }
+}
 
-Sync-PackCompat -ManifestObj $m -LiveDir $live
-Write-Host ("OK: pack.json resincronizado desde scenes_v03. scenes={0}" -f @($m.scenes_v03).Count) -ForegroundColor DarkGray
+if (-not [string]::IsNullOrWhiteSpace($liveForCompat)) {
+  $manifestCompatPath = Join-Path $liveForCompat "manifest_v03.json"
+  if (Test-Path -LiteralPath $manifestCompatPath) {
+    $manifestCompatObj = Get-Content -LiteralPath $manifestCompatPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Ensure-VisualCapabilityFields -ManifestObj $manifestCompatObj
+
+    $utf8NoBomManifest = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($manifestCompatPath, ($manifestCompatObj | ConvertTo-Json -Depth 50), $utf8NoBomManifest)
+
+    Sync-PackCompat -ManifestObj $manifestCompatObj -LiveDir $liveForCompat
+  }
+}
 
 if (-not $SkipEnrich) {
   try {
@@ -1236,4 +1093,50 @@ else {
   Write-Host "SKIP: enrich_scenes_queries_v03 (SkipEnrich=True)" -ForegroundColor DarkGray
 }
 
-Write-Host ("OK: scene_builder v03 aplicado. scenes={0} totalAudioMs={1} targetSceneSec={2} minSceneSec={3} maxSceneSec={4} minScenes={5} maxScenes={6} live={7} force={8} skipPixabay={9} skipEnrich={10} mode={11} scriptParts={12} effectiveMinSceneSec={13} effectiveMaxSceneSec={14}" -f @($m.scenes_v03).Count, $totalAudioMs, $TargetSceneSec, $MinSceneSec, $MaxSceneSec, $MinScenes, $MaxScenes, $live, [bool]$Force, [bool]$SkipPixabay, [bool]$SkipEnrich, $sceneMode, @($scriptParts).Count, $effectiveMinSceneSec, $effectiveMaxSceneSec) -ForegroundColor Green
+$liveForLog = ""
+
+try {
+  if (Get-Variable -Name live -ErrorAction SilentlyContinue) {
+    $liveForLog = [string]$live
+  }
+}
+catch { $liveForLog = "" }
+
+if ([string]::IsNullOrWhiteSpace($liveForLog)) {
+  try {
+    if (Get-Variable -Name PackDir -ErrorAction SilentlyContinue) {
+      if (-not [string]::IsNullOrWhiteSpace([string]$PackDir)) {
+        $liveForLog = [string]$PackDir
+      }
+    }
+  }
+  catch { $liveForLog = "" }
+}
+
+if ([string]::IsNullOrWhiteSpace($liveForLog)) {
+  try {
+    if (Get-Variable -Name WorkspaceRoot -ErrorAction SilentlyContinue) {
+      if (-not [string]::IsNullOrWhiteSpace([string]$WorkspaceRoot)) {
+        $liveForLog = Join-Path ([string]$WorkspaceRoot) "runs\smoke_live_latest"
+      }
+    }
+  }
+  catch { $liveForLog = "" }
+}
+
+$finalSceneCount = 0
+try {
+  if (-not [string]::IsNullOrWhiteSpace($liveForLog)) {
+    $manifestFinalPath = Join-Path $liveForLog "manifest_v03.json"
+    if (Test-Path -LiteralPath $manifestFinalPath) {
+      $manifestFinalObj = Get-Content -LiteralPath $manifestFinalPath -Raw -Encoding UTF8 | ConvertFrom-Json
+      $finalSceneCount = @($manifestFinalObj.scenes_v03).Count
+    }
+  }
+}
+catch {
+  $finalSceneCount = 0
+}
+
+Write-Host ("OK: scene_builder v03 aplicado. scenes={0} live={1}" -f $finalSceneCount, $liveForLog) -ForegroundColor Green
+

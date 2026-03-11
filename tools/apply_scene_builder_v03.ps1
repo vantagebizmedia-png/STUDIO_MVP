@@ -1029,6 +1029,7 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
   $pickedId = ""
   $pickedIndex = -1
   $hitsCount = 0
+  $duplicateExhausted = $false
   $cacheJson = Join-Path $cacheDir ("pixabay_scene_{0:000}.json" -f ($i + 1))
 
   if ($canPixabay) {
@@ -1109,24 +1110,8 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
         }
 
         if (-not $picked) {
-          $fallbackHit = $hits[$startIndex]
-          if ($null -ne $fallbackHit) {
-            if (($fallbackHit.PSObject.Properties.Name -contains "url") -and $fallbackHit.url) {
-              $picked = [string]$fallbackHit.url
-            }
-            elseif (($fallbackHit.PSObject.Properties.Name -contains "source_url") -and $fallbackHit.source_url) {
-              $picked = [string]$fallbackHit.source_url
-            }
-
-            if (($fallbackHit.PSObject.Properties.Name -contains "hit_id") -and $null -ne $fallbackHit.hit_id) {
-              $pickedId = [string]$fallbackHit.hit_id
-            }
-            elseif (($fallbackHit.PSObject.Properties.Name -contains "id") -and $null -ne $fallbackHit.id) {
-              $pickedId = [string]$fallbackHit.id
-            }
-
-            $pickedIndex = $startIndex
-          }
+          $duplicateExhausted = $true
+          Write-Host ("WARN: scene[{0}] Pixabay sin hit unico disponible para query='{1}' -> fallback" -f $i, $q) -ForegroundColor Yellow
         }
       }
       else {
@@ -1138,6 +1123,7 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
       $pickedId = ""
       $pickedIndex = -1
       $hitsCount = 0
+      $duplicateExhausted = $false
       Write-Host ("WARN: scene[{0}] Pixabay query failed -> fallback ({1})" -f $i, $_.Exception.Message) -ForegroundColor Yellow
     }
   }
@@ -1179,7 +1165,7 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
     $scene.meta | Add-Member -Force -NotePropertyName picked_index -NotePropertyValue $pickedIndex
     $scene.meta | Add-Member -Force -NotePropertyName hit_id -NotePropertyValue $pickedId
     $scene.meta | Add-Member -Force -NotePropertyName source_url -NotePropertyValue ""
-    $scene.meta | Add-Member -Force -NotePropertyName note -NotePropertyValue ($(if ($SkipPixabay) { "fallback: SkipPixabay=True" } elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) { "fallback: missing PIXABAY_API_KEY" } else { "fallback: artifacts.image" }))
+    $scene.meta | Add-Member -Force -NotePropertyName note -NotePropertyValue ($(if ($SkipPixabay) { "fallback: SkipPixabay=True" } elseif ([string]::IsNullOrWhiteSpace($pixabayKey)) { "fallback: missing PIXABAY_API_KEY" } elseif ($duplicateExhausted) { "fallback: duplicate pixabay hits exhausted" } else { "fallback: artifacts.image" }))
 
     Copy-Item -LiteralPath $outAbs -Destination $legacyImgAbs -Force
 

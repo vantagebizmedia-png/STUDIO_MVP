@@ -1078,11 +1078,17 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
           if (($candidateHit.PSObject.Properties.Name -contains "url") -and $candidateHit.url) {
             $candidateUrl = [string]$candidateHit.url
           }
+          elseif (($candidateHit.PSObject.Properties.Name -contains "source_url") -and $candidateHit.source_url) {
+            $candidateUrl = [string]$candidateHit.source_url
+          }
 
           if ([string]::IsNullOrWhiteSpace($candidateUrl)) { continue }
 
           $candidateId = ""
-          if (($candidateHit.PSObject.Properties.Name -contains "id") -and $null -ne $candidateHit.id) {
+          if (($candidateHit.PSObject.Properties.Name -contains "hit_id") -and $null -ne $candidateHit.hit_id) {
+            $candidateId = [string]$candidateHit.hit_id
+          }
+          elseif (($candidateHit.PSObject.Properties.Name -contains "id") -and $null -ne $candidateHit.id) {
             $candidateId = [string]$candidateHit.id
           }
 
@@ -1108,9 +1114,17 @@ for ($i = 0; $i -lt @($m.scenes_v03).Count; $i++) {
             if (($fallbackHit.PSObject.Properties.Name -contains "url") -and $fallbackHit.url) {
               $picked = [string]$fallbackHit.url
             }
-            if (($fallbackHit.PSObject.Properties.Name -contains "id") -and $null -ne $fallbackHit.id) {
+            elseif (($fallbackHit.PSObject.Properties.Name -contains "source_url") -and $fallbackHit.source_url) {
+              $picked = [string]$fallbackHit.source_url
+            }
+
+            if (($fallbackHit.PSObject.Properties.Name -contains "hit_id") -and $null -ne $fallbackHit.hit_id) {
+              $pickedId = [string]$fallbackHit.hit_id
+            }
+            elseif (($fallbackHit.PSObject.Properties.Name -contains "id") -and $null -ne $fallbackHit.id) {
               $pickedId = [string]$fallbackHit.id
             }
+
             $pickedIndex = $startIndex
           }
         }

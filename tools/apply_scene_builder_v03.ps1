@@ -881,17 +881,18 @@ function Sync-PackCompat {
       if ($scene.assets -and $scene.assets.image) {
         if (($scene.assets.image -is [System.Collections.IEnumerable]) -and -not ($scene.assets.image -is [string])) {
           $firstImg = @($scene.assets.image)[0]
-          if ($firstImg) {
-            if ($firstImg -is [string]) {
-              $imgPath = [string]$firstImg
-            }
-            elseif ($firstImg.PSObject.Properties["path"] -and $firstImg.path) {
-              $imgPath = [string]$firstImg.path
-            }
+          if ($firstImg -is [string]) {
+            $imgPath = [string]$firstImg
+          }
+          elseif ($firstImg -and $firstImg.PSObject.Properties["path"] -and $firstImg.path) {
+            $imgPath = [string]$firstImg.path
           }
         }
         elseif ($scene.assets.image -is [string]) {
           $imgPath = [string]$scene.assets.image
+        }
+        else {
+          $imgPath = [string](Get-AssetPathValue -AssetsObj $scene.assets -Key "image")
         }
       }
     }
@@ -984,8 +985,57 @@ function Sync-PackCompat {
     $artifactAudio = ""
   }
 
+  $totalAudioMs = 0
+  $sceneBuilderMaxScenes = @($ManifestObj.scenes_v03).Count
+  $sceneBuilderNote = "synced_by_apply_scene_builder_v03_packcompat"
+
+  try {
+    if ($ManifestObj.PSObject.Properties["scene_builder_v03"] -and $ManifestObj.scene_builder_v03) {
+      $sb = $ManifestObj.scene_builder_v03
+
+      if ($sb.PSObject.Properties["total_audio_ms"] -and $null -ne $sb.total_audio_ms) {
+        $totalAudioMs = [int]$sb.total_audio_ms
+      }
+
+      if ($sb.PSObject.Properties["max_scenes"] -and $null -ne $sb.max_scenes) {
+        $sceneBuilderMaxScenes = [int]$sb.max_scenes
+      }
+
+      if ($sb.PSObject.Properties["note"] -and -not [string]::IsNullOrWhiteSpace([string]$sb.note)) {
+        $sceneBuilderNote = [string]$sb.note
+      }
+    }
+  }
+  catch { }
+
+  if ($totalAudioMs -le 0) {
+    try {
+      if ($ManifestObj.PSObject.Properties["total_audio_ms"] -and $null -ne $ManifestObj.total_audio_ms) {
+        $totalAudioMs = [int]$ManifestObj.total_audio_ms
+      }
+    }
+    catch { $totalAudioMs = 0 }
+  }
+
+  if ($totalAudioMs -le 0) {
+    foreach ($scene in @($ManifestObj.scenes_v03)) {
+      try {
+        $e = [int]$scene.end_ms
+        if ($e -gt $totalAudioMs) { $totalAudioMs = $e }
+      }
+      catch { }
+    }
+  }
+
+  $sceneBuilderMeta = [pscustomobject]@{
+    max_scenes     = [int]$sceneBuilderMaxScenes
+    total_audio_ms = [int]$totalAudioMs
+    note           = [string]$sceneBuilderNote
+  }
+
   $packCompat = [pscustomobject]@{
     version = "v03"
+    total_audio_ms = [int]$totalAudioMs
     script = $manifestScript
     scenes = $packCompatScenes
     scenes_v03 = $ManifestObj.scenes_v03
@@ -994,13 +1044,13 @@ function Sync-PackCompat {
       image = $artifactImage
       audio = $artifactAudio
     }
+    scene_builder_v03 = $sceneBuilderMeta
   }
 
   $packJsonPath = Join-Path $LiveDir "pack.json"
-  $utf8NoBomPack = [System.Text.UTF8Encoding]::new($false)
-  [System.IO.File]::WriteAllText($packJsonPath, ($packCompat | ConvertTo-Json -Depth 50), $utf8NoBomPack)
+  $utf8BomPack = [System.Text.UTF8Encoding]::new($true)
+  [System.IO.File]::WriteAllText($packJsonPath, ($packCompat | ConvertTo-Json -Depth 50), $utf8BomPack)
 }
-
 $liveForCompat = ""
 
 try {

@@ -140,6 +140,42 @@ New-Item -ItemType Directory -Force -Path $sceneRoot | Out-Null
 $scenes = @()
 $audioClips = @()
 
+# Script dummy más rico y determinista para alimentar mejor el scene builder
+$scriptLines = @(
+  "Inicio directo con una idea clara para captar atención desde el primer segundo.",
+  "Presentamos el tema principal con una frase simple y fácil de recordar.",
+  "Abrimos una promesa concreta para mantener el interés en la siguiente escena.",
+  "Introducimos el contexto con lenguaje breve, claro y visual.",
+  "Marcamos el problema central que el video busca resolver.",
+  "Conectamos el problema con una situación cotidiana y reconocible.",
+  "Mostramos una consecuencia práctica de no actuar a tiempo.",
+  "Cambiamos el ritmo con una frase corta que funcione como micro hook.",
+  "Explicamos el primer punto con enfoque directo y sin rodeos.",
+  "Añadimos un ejemplo breve para darle más fuerza a la idea.",
+  "Subimos un poco la intensidad narrativa con una afirmación concreta.",
+  "Pasamos al segundo punto manteniendo continuidad visual.",
+  "Aterrizamos el concepto con una imagen mental sencilla.",
+  "Reforzamos el beneficio principal con una frase positiva.",
+  "Introducimos una transición natural hacia la siguiente mini idea.",
+  "Describimos una acción práctica que la audiencia puede imaginar fácil.",
+  "Damos una razón clara para seguir viendo el contenido completo.",
+  "Insertamos una línea corta pensada para un cambio visual rápido.",
+  "Presentamos otro ángulo del mismo tema para evitar monotonía.",
+  "Añadimos una micro conclusión parcial antes del último tramo.",
+  "Hacemos una pausa conceptual con una frase breve y contundente.",
+  "Volvemos al hilo principal con una explicación concreta.",
+  "Resumimos lo importante en palabras simples y memorables.",
+  "Empujamos la narrativa hacia el cierre con una idea útil.",
+  "Reforzamos el valor práctico de todo lo mostrado hasta aquí.",
+  "Introducimos el cierre con tono más concluyente.",
+  "Recordamos el mensaje central con una formulación compacta.",
+  "Añadimos una última imagen mental para fortalecer retención.",
+  "Cerramos con una frase de impulso orientada a acción.",
+  "Terminamos con un cierre limpio, directo y fácil de reutilizar en export."
+)
+
+$scriptText = ($scriptLines -join " ")
+
 # Reparto no uniforme pero determinista
 $weights = @()
 for ($i = 1; $i -le $max; $i++) {
@@ -186,9 +222,11 @@ if ($sumDur -ne $totalMs) {
   $durations[$durations.Count - 1] = [int]($durations[$durations.Count - 1] + $delta)
 }
 
+$bucketSize = [Math]::Max(1, [int][Math]::Ceiling(@($scriptLines).Count / [double]$max))
+
 $cur = 0
 
-for ($i=1; $i -le $max; $i++) {
+for ($i = 1; $i -le $max; $i++) {
   $dur = [int]$durations[$i - 1]
   $st = $cur
   $en = $cur + $dur
@@ -220,81 +258,117 @@ for ($i=1; $i -le $max; $i++) {
     throw ("No se creó clip de audio: " + $clipAbs)
   }
 
-  $sd = Join-Path $sceneRoot ("scene_{0:d2}" -f $i)
+  $sceneDirRel = ("artifacts/scenes/scene_{0:d2}" -f $i)
+  $sd = Join-Path $dstRoot ($sceneDirRel -replace '/', '\')
   New-Item -ItemType Directory -Force -Path $sd | Out-Null
-  $imgAbs = Join-Path $sd "image.png"
+
+  $imgRel = ($sceneDirRel + "/image.png")
+  $imgAbs = Join-Path $dstRoot ($imgRel -replace '/', '\')
   Copy-Item -LiteralPath $baseImgAbs -Destination $imgAbs -Force
 
+  $lineStart = ($i - 1) * $bucketSize
+  $lineEnd = [Math]::Min(@($scriptLines).Count - 1, $lineStart + $bucketSize - 1)
+
+  $sceneTextLines = @()
+  for ($k = $lineStart; $k -le $lineEnd; $k++) {
+    if ($k -ge 0 -and $k -lt @($scriptLines).Count) {
+      $sceneTextLines += [string]$scriptLines[$k]
+    }
+  }
+
+  if (@($sceneTextLines).Count -eq 0) {
+    $fallbackIdx = [Math]::Min(($i - 1), (@($scriptLines).Count - 1))
+    $sceneTextLines = @([string]$scriptLines[$fallbackIdx])
+  }
+
+  $sceneText = (($sceneTextLines -join " ") -replace "\s+", " ").Trim()
+  if ([string]::IsNullOrWhiteSpace($sceneText)) {
+    $sceneText = ("Escena {0:d2}" -f $i)
+  }
+
+  $imageQuery = $sceneText
+  if ($imageQuery.Length -gt 120) {
+    $imageQuery = $imageQuery.Substring(0, 120)
+    $imageQuery = $imageQuery -replace '\s+\S*$', ''
+    $imageQuery = $imageQuery.Trim()
+  }
+  if ([string]::IsNullOrWhiteSpace($imageQuery)) {
+    $imageQuery = ("escena {0:d2}" -f $i)
+  }
+
   $audioClips += [pscustomobject]@{
-    id       = ("clip_{0:d3}" -f $i)
-    start_ms = $st
-    end_ms   = $en
-    text     = ""
-    path     = $clipRel
+    id       = ("clip_{0:000}" -f $i)
+    start_ms = [int]$st
+    end_ms   = [int]$en
+    text     = [string]$sceneText
+    path     = [string]$clipRel
   }
 
   $scenes += [pscustomobject]@{
-    id       = ("scene_{0:000}" -f $i)
-    index    = $i
-    start_ms = $st
-    end_ms   = $en
-    text     = ("Escena {0:d2}" -f $i)
-    assets   = [pscustomobject]@{
-      audio_clip = $clipRel
-      image      = @([pscustomobject]@{ path = $imgAbs })
+    id                 = ("scene_{0:000}" -f $i)
+    index              = [int]($i - 1)
+    start_ms           = [int]$st
+    end_ms             = [int]$en
+    duration_ms        = [int]($en - $st)
+    text               = [string]$sceneText
+    script_text        = [string]$sceneText
+    image_query        = [string]$imageQuery
+    query              = [string]$imageQuery
+    visual_kind        = "image"
+    visual_source_kind = "stock_image"
+    visual_capability  = "stock_image"
+    meta               = [pscustomobject]@{
+      provider    = "smoke_live_workspace_copy"
+      query       = [string]$imageQuery
+      source_kind = "deterministic_fixture"
+      note        = "generated_by_smoke_live_to_workspace_v03"
+    }
+    assets             = [pscustomobject]@{
+      audio_clip = [string]$clipRel
+      image      = [string]$imgRel
+      video      = ""
+      image_meta = [pscustomobject]@{
+        provider   = "smoke_live_workspace_copy"
+        cache_hit  = $false
+        cache_key  = ""
+        query      = [string]$imageQuery
+        source_kind = "deterministic_fixture"
+      }
     }
   }
 }
 
-# Script dummy más rico y determinista para alimentar mejor el scene builder
-$scriptLines = @(
-  "Inicio directo con una idea clara para captar atención desde el primer segundo.",
-  "Presentamos el tema principal con una frase simple y fácil de recordar.",
-  "Abrimos una promesa concreta para mantener el interés en la siguiente escena.",
-  "Introducimos el contexto con lenguaje breve, claro y visual.",
-  "Marcamos el problema central que el video busca resolver.",
-  "Conectamos el problema con una situación cotidiana y reconocible.",
-  "Mostramos una consecuencia práctica de no actuar a tiempo.",
-  "Cambiamos el ritmo con una frase corta que funcione como micro hook.",
-  "Explicamos el primer punto con enfoque directo y sin rodeos.",
-  "Añadimos un ejemplo breve para darle más fuerza a la idea.",
-  "Subimos un poco la intensidad narrativa con una afirmación concreta.",
-  "Pasamos al segundo punto manteniendo continuidad visual.",
-  "Aterrizamos el concepto con una imagen mental sencilla.",
-  "Reforzamos el beneficio principal con una frase positiva.",
-  "Introducimos una transición natural hacia la siguiente mini idea.",
-  "Describimos una acción práctica que la audiencia puede imaginar fácil.",
-  "Damos una razón clara para seguir viendo el contenido completo.",
-  "Insertamos una línea corta pensada para un cambio visual rápido.",
-  "Presentamos otro ángulo del mismo tema para evitar monotonía.",
-  "Añadimos una micro conclusión parcial antes del último tramo.",
-  "Hacemos una pausa conceptual con una frase breve y contundente.",
-  "Volvemos al hilo principal con una explicación concreta.",
-  "Resumimos lo importante en palabras simples y memorables.",
-  "Empujamos la narrativa hacia el cierre con una idea útil.",
-  "Reforzamos el valor práctico de todo lo mostrado hasta aquí.",
-  "Introducimos el cierre con tono más concluyente.",
-  "Recordamos el mensaje central con una formulación compacta.",
-  "Añadimos una última imagen mental para fortalecer retención.",
-  "Cerramos con una frase de impulso orientada a acción.",
-  "Terminamos con un cierre limpio, directo y fácil de reutilizar en export."
-)
+$sceneBuilderMeta = [pscustomobject]@{
+  max_scenes     = [int]$max
+  total_audio_ms = [int]$totalMs
+  note           = "generated_by_smoke_live_to_workspace_v03_dynamic_duration"
+}
 
-$scriptText = ($scriptLines -join " ")
+$legacyScenes = @()
+foreach ($scene in $scenes) {
+  $legacyScenes += [pscustomobject]@{
+    id       = [string]$scene.id
+    index    = [int]$scene.index
+    text     = [string]$scene.script_text
+    image    = [string]$scene.assets.image
+    audio    = [string]$scene.assets.audio_clip
+    start_ms = [int]$scene.start_ms
+    end_ms   = [int]$scene.end_ms
+  }
+}
 
 $mfOut = [pscustomobject]@{
-  version = "v03"
-  artifacts = [pscustomobject]@{
+  version          = "v03"
+  total_audio_ms   = [int]$totalMs
+  artifacts        = [pscustomobject]@{
     image = $img0.Name
     audio = $aud0.Name
   }
-  script = $scriptText
-  audio_clips = $audioClips
-  scene_builder_v03 = [pscustomobject]@{
-    total_audio_ms = $totalMs
-    note = "normalized_by_smoke_live_to_workspace_v03_dynamic_duration"
-  }
-  scenes_v03 = $scenes
+  script           = $scriptText
+  audio_clips      = $audioClips
+  scene_builder_v03 = $sceneBuilderMeta
+  scenes_v03       = $scenes
+  scenes           = $legacyScenes
 }
 
 $utf8NoBom = [Text.UTF8Encoding]::new($false)
@@ -304,47 +378,18 @@ $mfPath = Join-Path $dstRoot "manifest_v03.json"
 [IO.File]::WriteAllText($mfPath, ($mfOut | ConvertTo-Json -Depth 50), $utf8NoBom)
 
 # pack.json compat para render_pack_v03.py / finalize_pack_v03.ps1
-$packCompatScenes = @()
-foreach ($scene in $scenes) {
-  $imgPath = ""
-  try {
-    if ($scene.assets -and $scene.assets.image) {
-      if (($scene.assets.image -is [System.Collections.IEnumerable]) -and -not ($scene.assets.image -is [string])) {
-        $imgPath = [string]$scene.assets.image[0].path
-      }
-      elseif ($scene.assets.image -is [string]) {
-        $imgPath = [string]$scene.assets.image
-      }
-    }
-  } catch { $imgPath = "" }
-
-  $audioPath = ""
-  try {
-    if ($scene.assets -and $scene.assets.audio_clip) {
-      $audioPath = [string]$scene.assets.audio_clip
-    }
-  } catch { $audioPath = "" }
-
-  $packCompatScenes += [pscustomobject]@{
-    id = [string]$scene.id
-    text = [string]$scene.text
-    image = $imgPath
-    audio = $audioPath
-    start_ms = [int]$scene.start_ms
-    end_ms = [int]$scene.end_ms
-  }
-}
-
 $packCompat = [pscustomobject]@{
-  version = "v03"
-  script = $scriptText
-  scenes = $packCompatScenes
-  scenes_v03 = $scenes
-  audio_clips = $audioClips
-  artifacts = [pscustomobject]@{
+  version          = "v03"
+  total_audio_ms   = [int]$totalMs
+  script           = $scriptText
+  scenes           = $legacyScenes
+  scenes_v03       = $scenes
+  audio_clips      = $audioClips
+  artifacts        = [pscustomobject]@{
     image = $img0.Name
     audio = $aud0.Name
   }
+  scene_builder_v03 = $sceneBuilderMeta
 }
 
 $packJsonPath = Join-Path $dstRoot "pack.json"

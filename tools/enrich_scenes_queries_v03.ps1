@@ -866,7 +866,10 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     $outPath = Join-Path $outDir ("scene_{0:000}.jpg" -f ($i + 1))
     & $dl -Url $url -OutPath $outPath | Out-Null
 
-    Set-Note -obj $imgMeta -name "path" -value (Resolve-Path -LiteralPath $outPath).Path
+    $resolvedOutPath = (Resolve-Path -LiteralPath $outPath).Path
+    $scene.assets.image = [string]$resolvedOutPath
+
+    Set-Note -obj $imgMeta -name "path" -value $resolvedOutPath
     Set-Note -obj $imgMeta -name "picked_index" -value $idx
     Set-Note -obj $imgMeta -name "source_url" -value $url
     $downloaded++

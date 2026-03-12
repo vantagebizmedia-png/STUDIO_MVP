@@ -969,183 +969,17 @@ function Sync-PackCompat {
     [Parameter(Mandatory=$true)][string]$LiveDir
   )
 
-  $packCompatScenes = @()
-
-  foreach ($scene in @($ManifestObj.scenes_v03)) {
-    $imgPath = ""
-    try {
-      if ($scene.assets -and $scene.assets.image) {
-        if (($scene.assets.image -is [System.Collections.IEnumerable]) -and -not ($scene.assets.image -is [string])) {
-          $firstImg = @($scene.assets.image)[0]
-          if ($firstImg -is [string]) {
-            $imgPath = [string]$firstImg
-          }
-          elseif ($firstImg -and $firstImg.PSObject.Properties["path"] -and $firstImg.path) {
-            $imgPath = [string]$firstImg.path
-          }
-        }
-        elseif ($scene.assets.image -is [string]) {
-          $imgPath = [string]$scene.assets.image
-        }
-        else {
-          $imgPath = [string](Get-AssetPathValue -AssetsObj $scene.assets -Key "image")
-        }
-      }
-    }
-    catch { $imgPath = "" }
-
-    $audioPath = ""
-    try {
-      if ($scene.assets -and $scene.assets.audio_clip) {
-        $audioPath = [string]$scene.assets.audio_clip
-      }
-    }
-    catch { $audioPath = "" }
-
-    $sceneId = ""
-    try { $sceneId = [string]$scene.id } catch { $sceneId = "" }
-
-    $sceneText = ""
-    try { $sceneText = [string]$scene.text } catch { $sceneText = "" }
-
-    $sceneStart = 0
-    try { $sceneStart = [int]$scene.start_ms } catch { $sceneStart = 0 }
-
-    $sceneEnd = 0
-    try { $sceneEnd = [int]$scene.end_ms } catch { $sceneEnd = 0 }
-
-    $packCompatScenes += [pscustomobject]@{
-      id         = $sceneId
-      index      = [int](($sceneId -replace '[^\d]',''))
-      text       = $sceneText
-      narration  = $sceneText
-      onscreen   = $sceneText
-      audio_text = $sceneText
-      image      = $imgPath
-      audio      = $audioPath
-      start_ms   = $sceneStart
-      end_ms     = $sceneEnd
-    }
+  $toolPath = Join-Path $PSScriptRoot "write_pack_compat_v03.ps1"
+  if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+    throw ("No existe tool compartida de pack compat: {0}" -f $toolPath)
   }
 
-  $manifestScript = ""
-  try {
-    if ($ManifestObj.PSObject.Properties["script"] -and $ManifestObj.script) {
-      $manifestScript = [string]$ManifestObj.script
-    }
-    elseif ($ManifestObj.PSObject.Properties["text"] -and $ManifestObj.text) {
-      if ($ManifestObj.text -is [string]) {
-        $manifestScript = [string]$ManifestObj.text
-      }
-      elseif ($ManifestObj.text.PSObject.Properties["script"] -and $ManifestObj.text.script) {
-        $manifestScript = [string]$ManifestObj.text.script
-      }
-    }
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File $toolPath -LiveDir $LiveDir | Out-Null
+  $packCompatExit = $LASTEXITCODE
 
-    if ([string]::IsNullOrWhiteSpace($manifestScript)) {
-      $parts = @()
-      foreach ($scene in @($ManifestObj.scenes_v03)) {
-        try {
-          if ($scene.PSObject.Properties["text"] -and -not [string]::IsNullOrWhiteSpace([string]$scene.text)) {
-            $parts += [string]$scene.text
-          }
-        }
-        catch { }
-      }
-
-      if ($parts.Count -gt 0) {
-        $manifestScript = ($parts -join " ").Trim()
-      }
-    }
+  if ($packCompatExit -ne 0) {
+    throw ("write_pack_compat_v03.ps1 devolvió exit code {0}" -f $packCompatExit)
   }
-  catch {
-    $manifestScript = ""
-  }
-
-  $artifactImage = ""
-  $artifactAudio = ""
-
-  try {
-    if ($ManifestObj.PSObject.Properties["artifacts"] -and $ManifestObj.artifacts) {
-      if ($ManifestObj.artifacts.PSObject.Properties["image"] -and $ManifestObj.artifacts.image) {
-        $artifactImage = [string]$ManifestObj.artifacts.image
-      }
-
-      if ($ManifestObj.artifacts.PSObject.Properties["audio"] -and $ManifestObj.artifacts.audio) {
-        $artifactAudio = [string]$ManifestObj.artifacts.audio
-      }
-    }
-  }
-  catch {
-    $artifactImage = ""
-    $artifactAudio = ""
-  }
-
-  $totalAudioMs = 0
-  $sceneBuilderMaxScenes = @($ManifestObj.scenes_v03).Count
-  $sceneBuilderNote = "synced_by_apply_scene_builder_v03_packcompat"
-
-  try {
-    if ($ManifestObj.PSObject.Properties["scene_builder_v03"] -and $ManifestObj.scene_builder_v03) {
-      $sb = $ManifestObj.scene_builder_v03
-
-      if ($sb.PSObject.Properties["total_audio_ms"] -and $null -ne $sb.total_audio_ms) {
-        $totalAudioMs = [int]$sb.total_audio_ms
-      }
-
-      if ($sb.PSObject.Properties["max_scenes"] -and $null -ne $sb.max_scenes) {
-        $sceneBuilderMaxScenes = [int]$sb.max_scenes
-      }
-
-      if ($sb.PSObject.Properties["note"] -and -not [string]::IsNullOrWhiteSpace([string]$sb.note)) {
-        $sceneBuilderNote = [string]$sb.note
-      }
-    }
-  }
-  catch { }
-
-  if ($totalAudioMs -le 0) {
-    try {
-      if ($ManifestObj.PSObject.Properties["total_audio_ms"] -and $null -ne $ManifestObj.total_audio_ms) {
-        $totalAudioMs = [int]$ManifestObj.total_audio_ms
-      }
-    }
-    catch { $totalAudioMs = 0 }
-  }
-
-  if ($totalAudioMs -le 0) {
-    foreach ($scene in @($ManifestObj.scenes_v03)) {
-      try {
-        $e = [int]$scene.end_ms
-        if ($e -gt $totalAudioMs) { $totalAudioMs = $e }
-      }
-      catch { }
-    }
-  }
-
-  $sceneBuilderMeta = [pscustomobject]@{
-    max_scenes     = [int]$sceneBuilderMaxScenes
-    total_audio_ms = [int]$totalAudioMs
-    note           = [string]$sceneBuilderNote
-  }
-
-  $packCompat = [pscustomobject]@{
-    version = "v03"
-    total_audio_ms = [int]$totalAudioMs
-    script = $manifestScript
-    scenes = $packCompatScenes
-    scenes_v03 = $ManifestObj.scenes_v03
-    audio_clips = $ManifestObj.audio_clips
-    artifacts = [pscustomobject]@{
-      image = $artifactImage
-      audio = $artifactAudio
-    }
-    scene_builder_v03 = $sceneBuilderMeta
-  }
-
-  $packJsonPath = Join-Path $LiveDir "pack.json"
-  $utf8NoBomPack = [System.Text.UTF8Encoding]::new($false)
-  [System.IO.File]::WriteAllText($packJsonPath, ($packCompat | ConvertTo-Json -Depth 50), $utf8NoBomPack)
 }
 $resolvedContext = Resolve-LiveContext -WorkspaceRootValue $WorkspaceRoot -PackDirValue $PackDir
 $resolvedWorkspaceRoot = [string]$resolvedContext.WorkspaceRoot
@@ -1224,4 +1058,3 @@ catch {
 }
 
 Write-Host ("OK: scene_builder v03 aplicado. scenes={0} live={1}" -f $finalSceneCount, $liveForLog) -ForegroundColor Green
-

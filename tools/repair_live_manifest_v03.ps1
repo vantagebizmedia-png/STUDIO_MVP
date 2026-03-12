@@ -651,24 +651,20 @@ $manifest | Add-Member -Force -NotePropertyName artifacts -NotePropertyValue ([p
   audio = [string]$artifactAudio
 })
 
-$packCompat = [pscustomobject]@{
-  version          = "v03"
-  total_audio_ms   = [int]$totalAudioMs
-  script           = [string]$scriptValue
-  scenes           = @($legacyScenes)
-  scenes_v03       = @($scenes)
-  audio_clips      = @($audioClips)
-  artifacts        = [pscustomobject]@{
-    image = [string]$artifactImage
-    audio = [string]$artifactAudio
-  }
-  scene_builder_v03 = $sceneBuilderMeta
-}
-
-$packJsonPath = Join-Path $live "pack.json"
+$packSyncTool = Join-Path $PSScriptRoot "write_pack_compat_v03.ps1"
 
 Write-JsonUtf8NoBom -Path $manifestPath -Object $manifest
-Write-JsonUtf8NoBom -Path $packJsonPath -Object $packCompat
+
+if (-not (Test-Path -LiteralPath $packSyncTool -PathType Leaf)) {
+  throw ("No existe tool compartida de pack compat: {0}" -f $packSyncTool)
+}
+
+& pwsh -NoProfile -ExecutionPolicy Bypass -File $packSyncTool -LiveDir $live | Out-Null
+$packSyncExit = $LASTEXITCODE
+
+if ($packSyncExit -ne 0) {
+  throw ("write_pack_compat_v03.ps1 devolvió exit code {0}" -f $packSyncExit)
+}
 
 Write-Host ("OK: repair_live_manifest_v03 aplicado. live={0}" -f $live) -ForegroundColor Green
 Write-Host ("  scenes={0} total_audio_ms={1} warnings={2}" -f @($scenes).Count, $totalAudioMs, $warnings.Count) -ForegroundColor Green

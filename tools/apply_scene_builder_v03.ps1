@@ -769,7 +769,7 @@ function Ensure-Scenes {
     $sceneObj | Add-Member -Force -NotePropertyName end_ms -NotePropertyValue ([int]$en)
     $sceneObj | Add-Member -Force -NotePropertyName duration_ms -NotePropertyValue ([int]($en - $st))
 
-    $sceneObj.assets.audio_clip = ("artifacts/audio_s{0:d2}.wav" -f ($i + 1))
+    $sceneObj.assets.audio_clip = ("assets/audio_clips/s{0:d2}.wav" -f ($i + 1))
   }
 
   $ManifestObj.scenes_v03 = @($sc)

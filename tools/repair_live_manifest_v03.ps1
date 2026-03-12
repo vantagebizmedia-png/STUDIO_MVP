@@ -418,8 +418,8 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
 
   $resolvedAudio = Resolve-ExistingFileRelative -BaseDir $live -Candidates @(
     [string]$scene.assets.audio_clip,
-    ("artifacts/audio_s{0:d2}.wav" -f $ord),
     ("assets/audio_clips/s{0:d2}.wav" -f $ord),
+    ("artifacts/audio_s{0:d2}.wav" -f $ord),
     ($sceneDirRel + "/audio.wav")
   )
 

@@ -252,6 +252,32 @@ if ($renderItem.Length -lt 10000) {
   throw "Render de video-case demasiado pequeño: $($renderItem.Length) bytes"
 }
 
+if (-not (Test-Path -LiteralPath $renderStdOut -PathType Leaf)) {
+  throw "No existe stdout log del renderer: $renderStdOut"
+}
+
+$stdoutText = [System.IO.File]::ReadAllText($renderStdOut)
+
+if ([string]::IsNullOrWhiteSpace($stdoutText)) {
+  throw "stdout log del renderer quedó vacío"
+}
+
+$scene01ExpectedVideo = $videoPath
+$scene01UnexpectedImage = $imagePath
+$scene02ExpectedImage = Join-Path $OutputLiveDir "artifacts\scenes\scene_02\image.png"
+
+if ($stdoutText.IndexOf($scene01ExpectedVideo, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+  throw "stdout log no muestra uso de video.mp4 para scene_01: $scene01ExpectedVideo"
+}
+
+if ($stdoutText.IndexOf($scene01UnexpectedImage, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+  throw "stdout log muestra image.png de scene_01 cuando debía usar video.mp4: $scene01UnexpectedImage"
+}
+
+if ($stdoutText.IndexOf($scene02ExpectedImage, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+  throw "stdout log no muestra image.png esperado para scene_02: $scene02ExpectedImage"
+}
+
 Write-Host "OK: smoke video-case v03 completado" -ForegroundColor Green
 Write-Host ("LIVE={0}" -f $OutputLiveDir) -ForegroundColor DarkGray
 Write-Host ("VIDEO_ASSET={0}" -f $videoPath) -ForegroundColor DarkGray

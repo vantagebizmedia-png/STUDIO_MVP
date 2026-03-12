@@ -240,11 +240,10 @@ for ($i = 0; $i -lt $scCount; $i++) {
     Fail "$sceneLabel falta assets.audio_clip"
   }
 
-  $expectedLegacy = ("artifacts/audio_s{0:d2}.wav" -f $ord)
-  $expectedV03    = ("assets/audio_clips/s{0:d2}.wav" -f $ord)
+  $expectedV03 = ("assets/audio_clips/s{0:d2}.wav" -f $ord)
 
-  if (($clip -ne $expectedLegacy) -and ($clip -ne $expectedV03)) {
-    Fail "$sceneLabel audio_clip inesperado: '$clip' != legacy='$expectedLegacy' ni v03='$expectedV03'"
+  if ($clip -ne $expectedV03) {
+    Fail "$sceneLabel audio_clip inesperado: '$clip' != v03='$expectedV03'"
   }
 
   $clipAbs = Resolve-LivePath -BaseDir $live -Value $clip

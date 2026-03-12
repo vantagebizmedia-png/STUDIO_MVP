@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Mandatory=$true)][string]$LiveDir,
   [int]$MaxScenes = 6
 )
@@ -10,71 +10,306 @@ function Fail([string]$msg) {
   throw "SMOKE FAIL: $msg"
 }
 
-$live = (Resolve-Path -LiteralPath $LiveDir).Path
-$mfPath = Join-Path $live "manifest_v03.json"
-if (-not (Test-Path -LiteralPath $mfPath)) { Fail "No existe manifest_v03.json en LIVE: $live" }
+function Get-IntOrZero {
+  param($Value)
 
-$mf = Get-Content -LiteralPath $mfPath -Raw | ConvertFrom-Json
-if (-not $mf.scenes_v03) { Fail "manifest_v03.json no tiene scenes_v03" }
+  try { return [int]$Value }
+  catch { return 0 }
+}
+
+function Get-StringOrEmpty {
+  param($Value)
+
+  if ($null -eq $Value) { return "" }
+
+  try { return ([string]$Value).Trim() }
+  catch { return "" }
+}
+
+function Resolve-AssetValue {
+  param($Value)
+
+  if ($null -eq $Value) { return "" }
+
+  if ($Value -is [string]) {
+    return ([string]$Value).Trim()
+  }
+
+  if ($Value -is [System.Collections.IDictionary]) {
+    try {
+      if ($Value.Contains("path") -and $Value["path"]) {
+        return ([string]$Value["path"]).Trim()
+      }
+    }
+    catch { }
+
+    return ""
+  }
+
+  try {
+    if ($Value.PSObject.Properties["path"] -and $Value.path) {
+      return ([string]$Value.path).Trim()
+    }
+  }
+  catch { }
+
+  if (($Value -is [System.Collections.IEnumerable]) -and -not ($Value -is [string])) {
+    $arr = @($Value)
+    if ($arr.Count -gt 0) {
+      return (Resolve-AssetValue -Value $arr[0])
+    }
+  }
+
+  return ""
+}
+
+function Get-AssetPathValue {
+  param(
+    $AssetsObj,
+    [string]$Key
+  )
+
+  if (-not $AssetsObj) { return "" }
+  if ([string]::IsNullOrWhiteSpace($Key)) { return "" }
+
+  $prop = $null
+  try { $prop = $AssetsObj.PSObject.Properties[$Key] }
+  catch { $prop = $null }
+
+  if (-not $prop) { return "" }
+
+  return (Resolve-AssetValue -Value $prop.Value)
+}
+
+function Resolve-LivePath {
+  param(
+    [Parameter(Mandatory=$true)][string]$BaseDir,
+    [string]$Value
+  )
+
+  $p = Get-StringOrEmpty -Value $Value
+  if ([string]::IsNullOrWhiteSpace($p)) { return "" }
+
+  try {
+    if ([System.IO.Path]::IsPathRooted($p)) {
+      return $p
+    }
+  }
+  catch { }
+
+  return (Join-Path $BaseDir $p)
+}
+
+$live = (Resolve-Path -LiteralPath $LiveDir).Path
+
+$mfPath = Join-Path $live "manifest_v03.json"
+if (-not (Test-Path -LiteralPath $mfPath -PathType Leaf)) {
+  Fail "No existe manifest_v03.json en LIVE: $live"
+}
+
+$pkPath = Join-Path $live "pack.json"
+if (-not (Test-Path -LiteralPath $pkPath -PathType Leaf)) {
+  Fail "No existe pack.json en LIVE: $live"
+}
+
+$mf = Get-Content -LiteralPath $mfPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$pk = Get-Content -LiteralPath $pkPath -Raw -Encoding UTF8 | ConvertFrom-Json
+
+if (-not ($mf.PSObject.Properties.Name -contains "scenes_v03") -or -not $mf.scenes_v03) {
+  Fail "manifest_v03.json no tiene scenes_v03"
+}
+
+if (-not ($pk.PSObject.Properties.Name -contains "scenes") -or -not $pk.scenes) {
+  Fail "pack.json no tiene scenes"
+}
 
 $scenes = @($mf.scenes_v03)
+$pkScenes = @($pk.scenes)
+
 $scCount = $scenes.Count
 if ($scCount -lt 1) { Fail "scenes_v03 vacío" }
 if ($scCount -gt $MaxScenes) { Fail "scenes_v03=$scCount supera MaxScenes=$MaxScenes" }
 
-# --- total_ms (compat): prefer top-level total_audio_ms, fallback a scene_builder_v03.total_audio_ms ---
+if ($pkScenes.Count -ne $scCount) {
+  Fail "pack scenes=$($pkScenes.Count) != manifest scenes_v03=$scCount"
+}
+
 $total = $null
 if ($mf.PSObject.Properties.Name -contains "total_audio_ms") {
   $total = [int]$mf.total_audio_ms
-} elseif ($mf.scene_builder_v03 -and ($mf.scene_builder_v03.PSObject.Properties.Name -contains "total_audio_ms")) {
+}
+elseif ($mf.scene_builder_v03 -and ($mf.scene_builder_v03.PSObject.Properties.Name -contains "total_audio_ms")) {
   $total = [int]$mf.scene_builder_v03.total_audio_ms
-} else {
+}
+else {
   Fail "No existe total_audio_ms ni scene_builder_v03.total_audio_ms"
 }
 
-if ($total -le 0) { Fail "total_audio_ms inválido: $total" }
+if ([int]$total -le 0) {
+  Fail "total_audio_ms inválido: $total"
+}
 
-# --- Check coherencia de timings ---
+if ($pk.PSObject.Properties.Name -contains "total_audio_ms") {
+  $packTotal = Get-IntOrZero -Value $pk.total_audio_ms
+  if ($packTotal -gt 0 -and $packTotal -ne [int]$total) {
+    Fail "pack total_audio_ms=$packTotal != manifest total_audio_ms=$total"
+  }
+}
+
+$topAudioClips = @()
+try {
+  if ($mf.PSObject.Properties.Name -contains "audio_clips" -and $mf.audio_clips) {
+    $topAudioClips = @($mf.audio_clips)
+  }
+}
+catch {
+  $topAudioClips = @()
+}
+
+if ($topAudioClips.Count -gt 0 -and $topAudioClips.Count -ne $scCount) {
+  Fail "audio_clips.count=$($topAudioClips.Count) != scenes_v03=$scCount"
+}
+
 $lastEnd = 0
-for ($i=0; $i -lt $scCount; $i++) {
-  $s = $scenes[$i]
-  $st = [int]($s.start_ms)
-  $en = [int]($s.end_ms)
 
-  if ($st -lt 0 -or $en -lt 0) { Fail "timing negativo en escena i=${i}: ${st}..${en}" }
-  if ($en -lt $st) { Fail "end_ms < start_ms en escena i=${i}: ${st}..${en}" }
-  if ($st -lt $lastEnd) { Fail "start_ms no monótono en escena i=${i}: prevEnd=$lastEnd start=${st}" }
+for ($i = 0; $i -lt $scCount; $i++) {
+  $ord = $i + 1
+  $expectedId = ("scene_{0:000}" -f $ord)
+  $sceneLabel = ("scene_{0:d2}" -f $ord)
+
+  $s = $scenes[$i]
+  $p = $pkScenes[$i]
+
+  $sceneId = Get-StringOrEmpty -Value $s.id
+  $packId  = Get-StringOrEmpty -Value $p.id
+
+  if ($sceneId -ne $expectedId) {
+    Fail "$sceneLabel manifest id inválido: '$sceneId' != '$expectedId'"
+  }
+
+  if ($packId -ne $expectedId) {
+    Fail "$sceneLabel pack id inválido: '$packId' != '$expectedId'"
+  }
+
+  $manifestIndex = Get-IntOrZero -Value $s.index
+  $packIndex = Get-IntOrZero -Value $p.index
+
+  if ($manifestIndex -ne ($ord - 1)) {
+    Fail "$sceneLabel manifest index inválido: $manifestIndex != $(($ord - 1))"
+  }
+
+  if ($packIndex -ne $ord) {
+    Fail "$sceneLabel pack index inválido: $packIndex != $ord"
+  }
+
+  $st = Get-IntOrZero -Value $s.start_ms
+  $en = Get-IntOrZero -Value $s.end_ms
+  $du = Get-IntOrZero -Value $s.duration_ms
+
+  if ($st -lt 0 -or $en -lt 0) {
+    Fail "$sceneLabel timing negativo: ${st}..${en}"
+  }
+
+  if ($en -lt $st) {
+    Fail "$sceneLabel end_ms < start_ms: ${st}..${en}"
+  }
+
+  if ($st -lt $lastEnd) {
+    Fail "$sceneLabel start_ms no monótono: prevEnd=$lastEnd start=${st}"
+  }
+
+  if ($du -le 0) {
+    Fail "$sceneLabel duration_ms inválido: $du"
+  }
+
+  if ($du -ne ($en - $st)) {
+    Fail "$sceneLabel duration_ms mismatch: duration_ms=$du end-start=$($en - $st)"
+  }
+
+  $pkStart = Get-IntOrZero -Value $p.start_ms
+  $pkEnd   = Get-IntOrZero -Value $p.end_ms
+
+  if ($pkStart -ne $st -or $pkEnd -ne $en) {
+    Fail "$sceneLabel pack timing mismatch: manifest=${st}..${en} pack=${pkStart}..${pkEnd}"
+  }
 
   $lastEnd = $en
-}
 
-if ($lastEnd -ne $total) { Fail "last_end=$lastEnd != total_audio_ms=$total" }
+  $clip = Get-AssetPathValue -AssetsObj $s.assets -Key "audio_clip"
+  if ([string]::IsNullOrWhiteSpace($clip)) {
+    Fail "$sceneLabel falta assets.audio_clip"
+  }
 
-# --- Check audio clips por escena ---
-$artDir = Join-Path $live "artifacts"
-if (-not (Test-Path -LiteralPath $artDir)) { Fail "No existe artifacts/ en LIVE: $live" }
+  $expectedLegacy = ("artifacts/audio_s{0:d2}.wav" -f $ord)
+  $expectedV03    = ("assets/audio_clips/s{0:d2}.wav" -f $ord)
 
-for ($i=1; $i -le $scCount; $i++) {
-  $s = $scenes[$i-1]
-  $clip = $null
-  if ($s.assets -and $s.assets.audio_clip) { $clip = [string]$s.assets.audio_clip }
-  if (-not $clip) { Fail "Falta assets.audio_clip en escena index=$($s.index)" }
-
-  $expectedLegacy = ("artifacts/audio_s{0:d2}.wav" -f $i)
-  $expectedV03    = ("assets/audio_clips/s{0:d2}.wav" -f $i)
   if (($clip -ne $expectedLegacy) -and ($clip -ne $expectedV03)) {
-    Fail "audio_clip inesperado en escena ${i}: '$clip' != legacy='$expectedLegacy' ni v03='$expectedV03'"
+    Fail "$sceneLabel audio_clip inesperado: '$clip' != legacy='$expectedLegacy' ni v03='$expectedV03'"
   }
 
-  $clipAbs = Join-Path $live $clip
-  if (-not (Test-Path -LiteralPath $clipAbs)) {
-    Fail "No existe clip: $clipAbs"
+  $clipAbs = Resolve-LivePath -BaseDir $live -Value $clip
+  if (-not (Test-Path -LiteralPath $clipAbs -PathType Leaf)) {
+    Fail "$sceneLabel no existe clip: $clipAbs"
   }
 
-  $len = (Get-Item -LiteralPath $clipAbs).Length
-  if ($len -lt 1000) {
-    Fail "Clip demasiado pequeño ($len bytes): $clipAbs"
+  $clipLen = (Get-Item -LiteralPath $clipAbs).Length
+  if ($clipLen -lt 1000) {
+    Fail "$sceneLabel clip demasiado pequeño ($clipLen bytes): $clipAbs"
+  }
+
+  $pkAudio = Get-StringOrEmpty -Value $p.audio
+  if ($pkAudio -ne $clip) {
+    Fail "$sceneLabel pack audio mismatch: manifest='$clip' pack='$pkAudio'"
+  }
+
+  $visualKind = (Get-StringOrEmpty -Value $s.visual_kind).ToLowerInvariant()
+  if (($visualKind -ne "image") -and ($visualKind -ne "video")) {
+    Fail "$sceneLabel visual_kind inválido en manifest: '$visualKind'"
+  }
+
+  $imgPath = Get-AssetPathValue -AssetsObj $s.assets -Key "image"
+  $vidPath = Get-AssetPathValue -AssetsObj $s.assets -Key "video"
+
+  $pkKind  = (Get-StringOrEmpty -Value $p.visual_kind).ToLowerInvariant()
+  $pkImage = Get-StringOrEmpty -Value $p.image
+  $pkVideo = Get-StringOrEmpty -Value $p.video
+
+  if ($pkKind -ne $visualKind) {
+    Fail "$sceneLabel pack visual_kind mismatch: manifest='$visualKind' pack='$pkKind'"
+  }
+
+  if ($pkImage -ne $imgPath) {
+    Fail "$sceneLabel pack image mismatch: manifest='$imgPath' pack='$pkImage'"
+  }
+
+  if ($pkVideo -ne $vidPath) {
+    Fail "$sceneLabel pack video mismatch: manifest='$vidPath' pack='$pkVideo'"
+  }
+
+  if ($visualKind -eq "image") {
+    if ([string]::IsNullOrWhiteSpace($imgPath)) {
+      Fail "$sceneLabel visual_kind=image pero assets.image vacío"
+    }
+
+    $imgAbs = Resolve-LivePath -BaseDir $live -Value $imgPath
+    if (-not (Test-Path -LiteralPath $imgAbs -PathType Leaf)) {
+      Fail "$sceneLabel no existe image activo: $imgAbs"
+    }
+  }
+  else {
+    if ([string]::IsNullOrWhiteSpace($vidPath)) {
+      Fail "$sceneLabel visual_kind=video pero assets.video vacío"
+    }
+
+    $vidAbs = Resolve-LivePath -BaseDir $live -Value $vidPath
+    if (-not (Test-Path -LiteralPath $vidAbs -PathType Leaf)) {
+      Fail "$sceneLabel no existe video activo: $vidAbs"
+    }
   }
 }
 
-Write-Host ("SMOKE OK: LIVE manifest v03 (scenes_v03 + audio_clips). live={0} scenes={1} total_ms={2} last_end={3}" -f $live,$scCount,$total,$lastEnd)
+if ($lastEnd -ne [int]$total) {
+  Fail "last_end=$lastEnd != total_audio_ms=$total"
+}
+
+Write-Host ("SMOKE OK: LIVE manifest v03 + pack compat. live={0} scenes={1} total_ms={2} last_end={3}" -f $live,$scCount,$total,$lastEnd)

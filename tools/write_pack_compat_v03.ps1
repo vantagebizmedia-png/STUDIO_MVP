@@ -67,6 +67,7 @@ $packCompatScenes = @()
 
 for ($i = 0; $i -lt $scenes.Count; $i++) {
   $scene = $scenes[$i]
+  $sceneOrdinal = $i + 1
 
   $imgPath = ""
   $videoPath = ""
@@ -75,7 +76,6 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   $sceneText = ""
   $sceneStart = 0
   $sceneEnd = 0
-  $sceneIndex = 0
   $visualKind = ""
 
   try {
@@ -98,7 +98,6 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   try { $sceneText = [string]$scene.text } catch { $sceneText = "" }
   try { $sceneStart = [int]$scene.start_ms } catch { $sceneStart = 0 }
   try { $sceneEnd = [int]$scene.end_ms } catch { $sceneEnd = 0 }
-  try { $sceneIndex = [int]$scene.index } catch { $sceneIndex = 0 }
   try {
     if ($scene.PSObject.Properties["visual_kind"] -and $scene.visual_kind) {
       $visualKind = ([string]$scene.visual_kind).Trim().ToLowerInvariant()
@@ -108,19 +107,8 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     $visualKind = ""
   }
 
-  if ($sceneIndex -le 0) {
-    try {
-      if ($sceneId -match '^scene_(\d+)$') {
-        $sceneIndex = [int]$Matches[1]
-      }
-    }
-    catch {
-      $sceneIndex = 0
-    }
-  }
-
-  if ($sceneIndex -le 0) {
-    $sceneIndex = $i + 1
+  if ([string]::IsNullOrWhiteSpace($sceneId)) {
+    $sceneId = ("scene_{0:000}" -f $sceneOrdinal)
   }
 
   if ([string]::IsNullOrWhiteSpace($visualKind)) {
@@ -134,7 +122,7 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
 
   $packCompatScenes += [pscustomobject]@{
     id          = $sceneId
-    index       = [int]$sceneIndex
+    index       = [int]$sceneOrdinal
     text        = $sceneText
     narration   = $sceneText
     onscreen    = $sceneText

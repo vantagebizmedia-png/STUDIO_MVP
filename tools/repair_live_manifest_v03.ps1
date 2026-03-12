@@ -386,6 +386,13 @@ if (-not (Test-Path -LiteralPath $timingSharedPath -PathType Leaf)) {
 
 . $timingSharedPath
 
+$shapeSharedPath = Join-Path $PSScriptRoot "scene_shape_shared_v03.ps1"
+if (-not (Test-Path -LiteralPath $shapeSharedPath -PathType Leaf)) {
+  throw ("No existe helper shape compartido: {0}" -f $shapeSharedPath)
+}
+
+. $shapeSharedPath
+
 $durations = @(Normalize-DurationsToTotal -Durations $rawDurations -TotalMs $totalAudioMs)
 $timeline = @(Build-SceneTimelineShared -Durations $durations -TotalMs $totalAudioMs)
 
@@ -398,19 +405,8 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   $ord = $i + 1
   $sceneDirRel = ("artifacts/scenes/scene_{0:d2}" -f $ord)
 
-  if (-not ($scene.PSObject.Properties.Name -contains "assets") -or -not $scene.assets) {
-    $scene | Add-Member -Force -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{})
-  }
-
-  if (-not ($scene.assets.PSObject.Properties.Name -contains "audio_clip")) {
-    $scene.assets | Add-Member -Force -NotePropertyName audio_clip -NotePropertyValue ""
-  }
-  if (-not ($scene.assets.PSObject.Properties.Name -contains "image")) {
-    $scene.assets | Add-Member -Force -NotePropertyName image -NotePropertyValue ""
-  }
-  if (-not ($scene.assets.PSObject.Properties.Name -contains "video")) {
-    $scene.assets | Add-Member -Force -NotePropertyName video -NotePropertyValue ""
-  }
+  Ensure-SceneAssetSlotsShared -Scene $scene
+  Ensure-SceneNarrativeSlotsShared -Scene $scene
 
   $sceneText = Get-SceneText -Scene $scene
   $sceneQuery = Get-SceneQuery -Scene $scene

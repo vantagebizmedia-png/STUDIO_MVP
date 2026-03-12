@@ -704,6 +704,13 @@ function Ensure-Scenes {
     [int]$SeedValue
   )
 
+  $shapeSharedPath = Join-Path $PSScriptRoot "scene_shape_shared_v03.ps1"
+  if (-not (Test-Path -LiteralPath $shapeSharedPath -PathType Leaf)) {
+    throw ("No existe helper shape compartido: {0}" -f $shapeSharedPath)
+  }
+
+  . $shapeSharedPath
+
   $sc = @()
   if ($ManifestObj.scenes_v03) { $sc = @($ManifestObj.scenes_v03) }
 
@@ -713,24 +720,7 @@ function Ensure-Scenes {
 
   if (@($sc).Count -lt $SceneCount) {
     for ($i = @($sc).Count; $i -lt $SceneCount; $i++) {
-      $obj = [pscustomobject]@{
-        id                 = ("scene_{0:000}" -f ($i + 1))
-        start_ms           = 0
-        end_ms             = 0
-        duration_ms        = 0
-        text               = ""
-        script_text        = ""
-        image_query        = ""
-        visual_kind        = "image"
-        visual_source_kind = "fallback_image"
-        visual_capability  = "stock_image"
-        assets             = [pscustomobject]@{
-          audio_clip = ""
-          image      = ""
-          video      = ""
-        }
-      }
-      $sc += $obj
+      $sc += (New-SceneScaffoldShared -Ordinal ($i + 1))
     }
   }
 
@@ -753,41 +743,18 @@ function Ensure-Scenes {
 
     $sceneObj | Add-Member -Force -NotePropertyName id -NotePropertyValue ("scene_{0:000}" -f ($i + 1))
 
-    if (-not ($sceneObj.PSObject.Properties.Name -contains "text")) {
-      $sceneObj | Add-Member -Force -NotePropertyName text -NotePropertyValue ""
+    Ensure-SceneNarrativeSlotsShared -Scene $sceneObj
+    Ensure-SceneAssetSlotsShared -Scene $sceneObj
+
+    if ($sceneObj.assets.audio_clip -isnot [string]) {
+      try { $sceneObj.assets.audio_clip = [string]$sceneObj.assets.audio_clip } catch { $sceneObj.assets.audio_clip = "" }
     }
 
-    if (-not ($sceneObj.PSObject.Properties.Name -contains "script_text")) {
-      $sceneObj | Add-Member -Force -NotePropertyName script_text -NotePropertyValue ""
-    }
-
-    if (-not ($sceneObj.PSObject.Properties.Name -contains "image_query")) {
-      $sceneObj | Add-Member -Force -NotePropertyName image_query -NotePropertyValue ""
-    }
-
-    if (-not ($sceneObj.PSObject.Properties.Name -contains "assets") -or -not $sceneObj.assets) {
-      $sceneObj | Add-Member -Force -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{
-        audio_clip = ""
-        image      = ""
-        video      = ""
-      })
-    }
-
-    if (-not ($sceneObj.assets.PSObject.Properties.Name -contains "audio_clip")) {
-      $sceneObj.assets | Add-Member -Force -NotePropertyName audio_clip -NotePropertyValue ""
-    }
-
-    if (-not ($sceneObj.assets.PSObject.Properties.Name -contains "image")) {
-      $sceneObj.assets | Add-Member -Force -NotePropertyName image -NotePropertyValue ""
-    }
-    elseif ($sceneObj.assets.image -isnot [string]) {
+    if ($sceneObj.assets.image -isnot [string]) {
       $sceneObj.assets.image = [string](Get-AssetPathValue -AssetsObj $sceneObj.assets -Key "image")
     }
 
-    if (-not ($sceneObj.assets.PSObject.Properties.Name -contains "video")) {
-      $sceneObj.assets | Add-Member -Force -NotePropertyName video -NotePropertyValue ""
-    }
-    elseif ($sceneObj.assets.video -isnot [string]) {
+    if ($sceneObj.assets.video -isnot [string]) {
       $sceneObj.assets.video = [string](Get-AssetPathValue -AssetsObj $sceneObj.assets -Key "video")
     }
 
@@ -809,7 +776,6 @@ function Ensure-Scenes {
 
   $ManifestObj.scenes_v03 = @($sc)
 }
-
 function Ensure-VisualCapabilityFields {
   param(
     [Parameter(Mandatory=$true)]$ManifestObj,

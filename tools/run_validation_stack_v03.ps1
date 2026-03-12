@@ -42,6 +42,20 @@ if ($Quick) {
   $mode = "QUICK"
 }
 
+$statusValidate = "PENDING"
+$statusMainSmoke = "PENDING"
+$statusVideoCase = "SKIPPED"
+$statusNegative = "SKIPPED"
+$statusGit = "SKIPPED"
+
+if (-not $effectiveSkipVideoCase) {
+  $statusVideoCase = "PENDING"
+}
+
+if (-not $effectiveSkipNegativeSuite) {
+  $statusNegative = "PENDING"
+}
+
 Write-Host "== RUN VALIDATION STACK V03 ==" -ForegroundColor Magenta
 Write-Host ("Mode             : {0}" -f $mode) -ForegroundColor DarkGray
 Write-Host ("RepoRoot         : {0}" -f $RepoRoot) -ForegroundColor DarkGray
@@ -70,24 +84,59 @@ Write-Host "== Ejecutando validate_live_suite_v03 ==" -ForegroundColor Cyan
 & $validateTool @invokeArgs
 
 if ($LASTEXITCODE -ne 0) {
-  throw "validate_live_suite_v03.ps1 devolvió exit code $LASTEXITCODE"
+  throw "validate_live_suite_v03.ps1 devolvio exit code $LASTEXITCODE"
+}
+
+$statusValidate = "PASS"
+$statusMainSmoke = "PASS"
+
+if ($effectiveSkipVideoCase) {
+  $statusVideoCase = "SKIPPED"
+}
+else {
+  $statusVideoCase = "PASS"
+}
+
+if ($effectiveSkipNegativeSuite) {
+  $statusNegative = "SKIPPED"
+}
+else {
+  $statusNegative = "PASS"
 }
 
 if ($ShowGitStatus) {
   Write-Host ""
   Write-Host "== Git status ==" -ForegroundColor Cyan
+
   Push-Location $RepoRoot
   try {
-    git status --short
+    & git --no-pager status --short
+    if ($LASTEXITCODE -ne 0) {
+      throw "git status fallo con exit code $LASTEXITCODE"
+    }
 
     Write-Host ""
     Write-Host "== HEAD reciente ==" -ForegroundColor Cyan
-    git log --oneline -8
+
+    & git --no-pager log --oneline -8
+    if ($LASTEXITCODE -ne 0) {
+      throw "git log fallo con exit code $LASTEXITCODE"
+    }
   }
   finally {
     Pop-Location
   }
+
+  $statusGit = "PASS"
 }
+
+Write-Host ""
+Write-Host "== SUMMARY ==" -ForegroundColor Cyan
+Write-Host ("VALIDATE_SUITE={0}" -f $statusValidate) -ForegroundColor DarkGray
+Write-Host ("MAIN_SMOKE={0}" -f $statusMainSmoke) -ForegroundColor DarkGray
+Write-Host ("VIDEO_CASE={0}" -f $statusVideoCase) -ForegroundColor DarkGray
+Write-Host ("NEGATIVE_SUITE={0}" -f $statusNegative) -ForegroundColor DarkGray
+Write-Host ("GIT_STATUS={0}" -f $statusGit) -ForegroundColor DarkGray
 
 Write-Host ""
 Write-Host "OK: run_validation_stack_v03 completado" -ForegroundColor Green

@@ -1048,8 +1048,8 @@ function Sync-PackCompat {
   }
 
   $packJsonPath = Join-Path $LiveDir "pack.json"
-  $utf8BomPack = [System.Text.UTF8Encoding]::new($true)
-  [System.IO.File]::WriteAllText($packJsonPath, ($packCompat | ConvertTo-Json -Depth 50), $utf8BomPack)
+  $utf8NoBomPack = [System.Text.UTF8Encoding]::new($false)
+  [System.IO.File]::WriteAllText($packJsonPath, ($packCompat | ConvertTo-Json -Depth 50), $utf8NoBomPack)
 }
 $liveForCompat = ""
 

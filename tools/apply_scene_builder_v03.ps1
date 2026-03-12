@@ -858,18 +858,15 @@ function Ensure-VisualCapabilityFields {
       ($sceneDirRel + "/video.webm")
     )
 
+    $effectiveImage = ""
+    $effectiveVideo = ""
+
     if (-not [string]::IsNullOrWhiteSpace($resolvedImage)) {
-      $scene.assets.image = [string]$resolvedImage
-    }
-    else {
-      $scene.assets.image = ""
+      $effectiveImage = [string]$resolvedImage
     }
 
     if (-not [string]::IsNullOrWhiteSpace($resolvedVideo)) {
-      $scene.assets.video = [string]$resolvedVideo
-    }
-    else {
-      $scene.assets.video = ""
+      $effectiveVideo = [string]$resolvedVideo
     }
 
     $currentVisualKind = ""
@@ -878,6 +875,15 @@ function Ensure-VisualCapabilityFields {
     }
 
     $vk = Get-ResolvedVisualKindShared -CurrentVisualKind $currentVisualKind -ResolvedImage $resolvedImage -ResolvedVideo $resolvedVideo
+
+    if ($vk -eq "video") {
+      $scene.assets.video = [string]$effectiveVideo
+      $scene.assets.image = ""
+    }
+    else {
+      $scene.assets.image = [string]$effectiveImage
+      $scene.assets.video = ""
+    }
 
     $scene | Add-Member -Force -NotePropertyName visual_kind -NotePropertyValue $vk
     $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })

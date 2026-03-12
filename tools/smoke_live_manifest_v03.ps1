@@ -290,6 +290,10 @@ for ($i = 0; $i -lt $scCount; $i++) {
       Fail "$sceneLabel visual_kind=image pero assets.image vacío"
     }
 
+    if (-not [string]::IsNullOrWhiteSpace($vidPath)) {
+      Fail "$sceneLabel visual_kind=image pero assets.video no vacío: '$vidPath'"
+    }
+
     $imgAbs = Resolve-LivePath -BaseDir $live -Value $imgPath
     if (-not (Test-Path -LiteralPath $imgAbs -PathType Leaf)) {
       Fail "$sceneLabel no existe image activo: $imgAbs"
@@ -298,6 +302,10 @@ for ($i = 0; $i -lt $scCount; $i++) {
   else {
     if ([string]::IsNullOrWhiteSpace($vidPath)) {
       Fail "$sceneLabel visual_kind=video pero assets.video vacío"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($imgPath)) {
+      Fail "$sceneLabel visual_kind=video pero assets.image no vacío: '$imgPath'"
     }
 
     $vidAbs = Resolve-LivePath -BaseDir $live -Value $vidPath

@@ -806,11 +806,58 @@ function Ensure-Scenes {
 
 function Ensure-VisualCapabilityFields {
   param(
-    [Parameter(Mandatory=$true)]$ManifestObj
+    [Parameter(Mandatory=$true)]$ManifestObj,
+    [Parameter(Mandatory=$false)][string]$LiveDir = ""
   )
 
+  function Resolve-SceneAssetRelativePath {
+    param(
+      [Parameter(Mandatory=$false)][string]$BaseDir,
+      [Parameter(Mandatory=$false)][string[]]$Candidates
+    )
+
+    if ([string]::IsNullOrWhiteSpace($BaseDir)) { return "" }
+
+    foreach ($raw in @($Candidates)) {
+      $candidate = [string]$raw
+      if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+
+      $candidate = $candidate.Trim()
+      $abs = $candidate
+
+      if (-not [System.IO.Path]::IsPathRooted($candidate)) {
+        $abs = Join-Path $BaseDir ($candidate -replace '/', '\')
+      }
+
+      if (Test-Path -LiteralPath $abs -PathType Leaf) {
+        if ([System.IO.Path]::IsPathRooted($candidate)) {
+          $baseResolved = (Resolve-Path -LiteralPath $BaseDir).Path
+          $absResolved  = (Resolve-Path -LiteralPath $abs).Path
+
+          $baseUri = [System.Uri]::new($baseResolved.TrimEnd('\','/') + [System.IO.Path]::DirectorySeparatorChar)
+          $absUri  = [System.Uri]::new($absResolved)
+          $relUri  = $baseUri.MakeRelativeUri($absUri)
+          $rel     = [System.Uri]::UnescapeDataString($relUri.ToString())
+
+          return ($rel -replace '\\','/').Trim()
+        }
+
+        return (($candidate -replace '\\','/').Trim())
+      }
+    }
+
+    return ""
+  }
+
+  $baseDir = ""
+  if (-not [string]::IsNullOrWhiteSpace($LiveDir) -and (Test-Path -LiteralPath $LiveDir)) {
+    $baseDir = (Resolve-Path -LiteralPath $LiveDir).Path
+  }
+
   $scenes = @($ManifestObj.scenes_v03)
-  foreach ($scene in $scenes) {
+
+  for ($i = 0; $i -lt $scenes.Count; $i++) {
+    $scene = $scenes[$i]
     if (-not $scene) { continue }
 
     if (-not ($scene.PSObject.Properties.Name -contains "assets") -or -not $scene.assets) {
@@ -821,16 +868,11 @@ function Ensure-VisualCapabilityFields {
       })
     }
 
-    if (-not ($scene.assets.PSObject.Properties.Name -contains "video")) {
-      $scene.assets | Add-Member -Force -NotePropertyName video -NotePropertyValue ""
+    if (-not ($scene.assets.PSObject.Properties.Name -contains "audio_clip")) {
+      $scene.assets | Add-Member -Force -NotePropertyName audio_clip -NotePropertyValue ""
     }
-    elseif ($scene.assets.video -isnot [string]) {
-      try {
-        $scene.assets.video = [string]$scene.assets.video
-      }
-      catch {
-        $scene.assets.video = ""
-      }
+    elseif ($scene.assets.audio_clip -isnot [string]) {
+      try { $scene.assets.audio_clip = [string]$scene.assets.audio_clip } catch { $scene.assets.audio_clip = "" }
     }
 
     if (-not ($scene.assets.PSObject.Properties.Name -contains "image")) {
@@ -838,25 +880,80 @@ function Ensure-VisualCapabilityFields {
     }
     elseif ($scene.assets.image -isnot [string]) {
       try {
-        $scene.assets.image = [string]$scene.assets.image
+        $scene.assets.image = [string](Get-AssetPathValue -AssetsObj $scene.assets -Key "image")
       }
       catch {
         $scene.assets.image = ""
       }
     }
 
-    $vk = ""
-    if ($scene.PSObject.Properties.Name -contains "visual_kind") {
-      try { $vk = ([string]$scene.visual_kind).Trim().ToLowerInvariant() } catch { $vk = "" }
+    if (-not ($scene.assets.PSObject.Properties.Name -contains "video")) {
+      $scene.assets | Add-Member -Force -NotePropertyName video -NotePropertyValue ""
+    }
+    elseif ($scene.assets.video -isnot [string]) {
+      try {
+        $scene.assets.video = [string](Get-AssetPathValue -AssetsObj $scene.assets -Key "video")
+      }
+      catch {
+        $scene.assets.video = ""
+      }
     }
 
-    if ($vk -notin @("image","video")) {
-      if (-not [string]::IsNullOrWhiteSpace([string]$scene.assets.video) -and [string]::IsNullOrWhiteSpace([string]$scene.assets.image)) {
-        $vk = "video"
-      }
-      else {
-        $vk = "image"
-      }
+    $sceneDirRel = ("artifacts/scenes/scene_{0:d2}" -f ($i + 1))
+
+    $resolvedImage = Resolve-SceneAssetRelativePath -BaseDir $baseDir -Candidates @(
+      [string]$scene.assets.image,
+      ($sceneDirRel + "/image.png"),
+      ($sceneDirRel + "/image.jpg"),
+      ($sceneDirRel + "/image.jpeg"),
+      ($sceneDirRel + "/image.webp"),
+      "artifacts/image.png",
+      "artifacts/image.jpg",
+      "artifacts/image.jpeg",
+      "artifacts/image.webp"
+    )
+
+    $resolvedVideo = Resolve-SceneAssetRelativePath -BaseDir $baseDir -Candidates @(
+      [string]$scene.assets.video,
+      ($sceneDirRel + "/video.mp4"),
+      ($sceneDirRel + "/video.mov"),
+      ($sceneDirRel + "/video.webm")
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($resolvedImage)) {
+      $scene.assets.image = [string]$resolvedImage
+    }
+    else {
+      $scene.assets.image = ""
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($resolvedVideo)) {
+      $scene.assets.video = [string]$resolvedVideo
+    }
+    else {
+      $scene.assets.video = ""
+    }
+
+    $currentVisualKind = ""
+    if ($scene.PSObject.Properties.Name -contains "visual_kind") {
+      try { $currentVisualKind = ([string]$scene.visual_kind).Trim().ToLowerInvariant() } catch { $currentVisualKind = "" }
+    }
+
+    $hasImage = -not [string]::IsNullOrWhiteSpace([string]$scene.assets.image)
+    $hasVideo = -not [string]::IsNullOrWhiteSpace([string]$scene.assets.video)
+
+    $vk = "image"
+    if (($currentVisualKind -eq "video") -and $hasVideo) {
+      $vk = "video"
+    }
+    elseif ($hasImage) {
+      $vk = "image"
+    }
+    elseif ($hasVideo) {
+      $vk = "video"
+    }
+    else {
+      $vk = "image"
     }
 
     $scene | Add-Member -Force -NotePropertyName visual_kind -NotePropertyValue $vk
@@ -866,7 +963,6 @@ function Ensure-VisualCapabilityFields {
 
   $ManifestObj.scenes_v03 = @($scenes)
 }
-
 function Sync-PackCompat {
   param(
     [Parameter(Mandatory=$true)]$ManifestObj,
@@ -1051,42 +1147,17 @@ function Sync-PackCompat {
   $utf8NoBomPack = [System.Text.UTF8Encoding]::new($false)
   [System.IO.File]::WriteAllText($packJsonPath, ($packCompat | ConvertTo-Json -Depth 50), $utf8NoBomPack)
 }
-$liveForCompat = ""
+$resolvedContext = Resolve-LiveContext -WorkspaceRootValue $WorkspaceRoot -PackDirValue $PackDir
+$resolvedWorkspaceRoot = [string]$resolvedContext.WorkspaceRoot
+$resolvedLiveDir = [string]$resolvedContext.LiveDir
 
-try {
-  if (Get-Variable -Name live -ErrorAction SilentlyContinue) {
-    $liveForCompat = [string]$live
-  }
-}
-catch { $liveForCompat = "" }
-
-if ([string]::IsNullOrWhiteSpace($liveForCompat)) {
-  try {
-    if (Get-Variable -Name PackDir -ErrorAction SilentlyContinue) {
-      if (-not [string]::IsNullOrWhiteSpace([string]$PackDir)) {
-        $liveForCompat = [string]$PackDir
-      }
-    }
-  }
-  catch { $liveForCompat = "" }
-}
-
-if ([string]::IsNullOrWhiteSpace($liveForCompat)) {
-  try {
-    if (Get-Variable -Name WorkspaceRoot -ErrorAction SilentlyContinue) {
-      if (-not [string]::IsNullOrWhiteSpace([string]$WorkspaceRoot)) {
-        $liveForCompat = Join-Path ([string]$WorkspaceRoot) "runs\smoke_live_latest"
-      }
-    }
-  }
-  catch { $liveForCompat = "" }
-}
+$liveForCompat = [string]$resolvedLiveDir
 
 if (-not [string]::IsNullOrWhiteSpace($liveForCompat)) {
   $manifestCompatPath = Join-Path $liveForCompat "manifest_v03.json"
   if (Test-Path -LiteralPath $manifestCompatPath) {
     $manifestCompatObj = Get-Content -LiteralPath $manifestCompatPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    Ensure-VisualCapabilityFields -ManifestObj $manifestCompatObj
+    Ensure-VisualCapabilityFields -ManifestObj $manifestCompatObj -LiveDir $liveForCompat
 
     $utf8NoBomManifest = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($manifestCompatPath, ($manifestCompatObj | ConvertTo-Json -Depth 50), $utf8NoBomManifest)
@@ -1101,31 +1172,24 @@ if (-not $SkipEnrich) {
     if (Test-Path -LiteralPath $enricher) {
       $manifestGuess = $null
 
-      if ($WorkspaceRoot -and $WorkspaceRoot.Trim().Length -gt 0) {
-        $mg = Join-Path $WorkspaceRoot "runs\smoke_live_latest\manifest_v03.json"
+      if (-not [string]::IsNullOrWhiteSpace($resolvedLiveDir)) {
+        $mg = Join-Path $resolvedLiveDir "manifest_v03.json"
         if (Test-Path -LiteralPath $mg) { $manifestGuess = $mg }
       }
 
-      if (-not $manifestGuess -and (Get-Variable -Name PackDir -ErrorAction SilentlyContinue)) {
-        if ($PackDir -and (Test-Path -LiteralPath $PackDir)) {
-          $mg2 = Join-Path $PackDir "manifest_v03.json"
-          if (Test-Path -LiteralPath $mg2) { $manifestGuess = $mg2 }
-        }
-      }
-
       if ($manifestGuess -and (Test-Path -LiteralPath $manifestGuess)) {
-        if (-not $WorkspaceRoot -or $WorkspaceRoot.Trim().Length -eq 0) {
+        if ([string]::IsNullOrWhiteSpace($resolvedWorkspaceRoot)) {
           throw "WorkspaceRoot vacío: no se puede ejecutar enrich_scenes_queries_v03.ps1"
         }
 
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File $enricher -WorkspaceRoot $WorkspaceRoot -Seed $Seed | Out-Null
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $enricher -WorkspaceRoot $resolvedWorkspaceRoot -Seed $Seed | Out-Null
         $enrichExit = $LASTEXITCODE
 
         if ($enrichExit -ne 0) {
           throw "enrich_scenes_queries_v03.ps1 devolvió exit code $enrichExit"
         }
 
-        Write-Host ("OK: enrich_scenes_queries_v03 aplicado (workspace={0} manifest={1})" -f $WorkspaceRoot, $manifestGuess) -ForegroundColor DarkGray
+        Write-Host ("OK: enrich_scenes_queries_v03 aplicado (workspace={0} manifest={1})" -f $resolvedWorkspaceRoot, $manifestGuess) -ForegroundColor DarkGray
       }
       else {
         Write-Host "WARN: no encontré manifest_v03.json para enriquecer queries" -ForegroundColor Yellow
@@ -1143,36 +1207,7 @@ else {
   Write-Host "SKIP: enrich_scenes_queries_v03 (SkipEnrich=True)" -ForegroundColor DarkGray
 }
 
-$liveForLog = ""
-
-try {
-  if (Get-Variable -Name live -ErrorAction SilentlyContinue) {
-    $liveForLog = [string]$live
-  }
-}
-catch { $liveForLog = "" }
-
-if ([string]::IsNullOrWhiteSpace($liveForLog)) {
-  try {
-    if (Get-Variable -Name PackDir -ErrorAction SilentlyContinue) {
-      if (-not [string]::IsNullOrWhiteSpace([string]$PackDir)) {
-        $liveForLog = [string]$PackDir
-      }
-    }
-  }
-  catch { $liveForLog = "" }
-}
-
-if ([string]::IsNullOrWhiteSpace($liveForLog)) {
-  try {
-    if (Get-Variable -Name WorkspaceRoot -ErrorAction SilentlyContinue) {
-      if (-not [string]::IsNullOrWhiteSpace([string]$WorkspaceRoot)) {
-        $liveForLog = Join-Path ([string]$WorkspaceRoot) "runs\smoke_live_latest"
-      }
-    }
-  }
-  catch { $liveForLog = "" }
-}
+$liveForLog = [string]$resolvedLiveDir
 
 $finalSceneCount = 0
 try {

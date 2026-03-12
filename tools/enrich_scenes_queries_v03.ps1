@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Mandatory=$true)][string]$WorkspaceRoot,
   [int]$Seed = 123,
   [int]$MinScenes = 8,
@@ -758,9 +758,8 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   if ($queryCandidates.Count -gt 0) { $q = [string]$queryCandidates[0] }
 
   Ensure-Pso -parent $scene -name "assets"
-  Ensure-Pso -parent $scene.assets -name "image"
   $imgMeta = Get-SceneImageMetaTarget -Scene $scene
-    Set-Note -obj $imgMeta -name "query" -value $q
+  Set-Note -obj $imgMeta -name "query" -value $q
   Set-Note -obj $imgMeta -name "query_candidates" -value $queryCandidates
 
   if (-not $DownloadPixabay) { continue }

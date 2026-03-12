@@ -59,28 +59,30 @@ function Resolve-ExistingFileRelative {
     [Parameter(Mandatory=$false)][string[]]$Candidates
   )
 
-  foreach ($raw in @(Normalize-ToArray -Value $Candidates)) {
-    $candidate = [string]$raw
-    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
-
-    $candidate = $candidate.Trim()
-
-    if ([System.IO.Path]::IsPathRooted($candidate)) {
-      if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-        return (Convert-ToPackRelativePath -BaseDir $BaseDir -AbsolutePath $candidate)
-      }
-      continue
-    }
-
-    $abs = Join-Path $BaseDir $candidate
-    if (Test-Path -LiteralPath $abs -PathType Leaf) {
-      return (($candidate -replace '\\','/').Trim())
-    }
+  $sharedPath = Join-Path $PSScriptRoot "scene_visual_shared_v03.ps1"
+  if (-not (Test-Path -LiteralPath $sharedPath -PathType Leaf)) {
+    throw ("No existe helper visual compartido: {0}" -f $sharedPath)
   }
 
-  return ""
+  . $sharedPath
+  return (Resolve-SceneAssetRelativePathShared -BaseDir $BaseDir -Candidates $Candidates)
 }
 
+function Get-ResolvedSceneVisualKind {
+  param(
+    [Parameter(Mandatory=$false)][string]$CurrentVisualKind,
+    [Parameter(Mandatory=$false)][string]$ResolvedImage,
+    [Parameter(Mandatory=$false)][string]$ResolvedVideo
+  )
+
+  $sharedPath = Join-Path $PSScriptRoot "scene_visual_shared_v03.ps1"
+  if (-not (Test-Path -LiteralPath $sharedPath -PathType Leaf)) {
+    throw ("No existe helper visual compartido: {0}" -f $sharedPath)
+  }
+
+  . $sharedPath
+  return (Get-ResolvedVisualKindShared -CurrentVisualKind $CurrentVisualKind -ResolvedImage $ResolvedImage -ResolvedVideo $ResolvedVideo)
+}
 function Get-SceneText {
   param($Scene)
 
@@ -447,18 +449,9 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   $hasImage = -not [string]::IsNullOrWhiteSpace($resolvedImage)
   $hasVideo = -not [string]::IsNullOrWhiteSpace($resolvedVideo)
 
-  $finalVisualKind = "image"
-  if (($currentVisualKind -eq "video") -and $hasVideo) {
-    $finalVisualKind = "video"
-  }
-  elseif ($hasImage) {
-    $finalVisualKind = "image"
-  }
-  elseif ($hasVideo) {
-    $finalVisualKind = "video"
-  }
-  else {
-    $finalVisualKind = "image"
+  $finalVisualKind = Get-ResolvedSceneVisualKind -CurrentVisualKind $currentVisualKind -ResolvedImage $resolvedImage -ResolvedVideo $resolvedVideo
+
+  if ((-not $hasImage) -and (-not $hasVideo)) {
     $warnings.Add(("scene_{0:d2}: no se encontró image/video real" -f $ord)) | Out-Null
   }
 

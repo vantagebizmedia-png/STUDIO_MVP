@@ -810,44 +810,12 @@ function Ensure-VisualCapabilityFields {
     [Parameter(Mandatory=$false)][string]$LiveDir = ""
   )
 
-  function Resolve-SceneAssetRelativePath {
-    param(
-      [Parameter(Mandatory=$false)][string]$BaseDir,
-      [Parameter(Mandatory=$false)][string[]]$Candidates
-    )
-
-    if ([string]::IsNullOrWhiteSpace($BaseDir)) { return "" }
-
-    foreach ($raw in @($Candidates)) {
-      $candidate = [string]$raw
-      if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
-
-      $candidate = $candidate.Trim()
-      $abs = $candidate
-
-      if (-not [System.IO.Path]::IsPathRooted($candidate)) {
-        $abs = Join-Path $BaseDir ($candidate -replace '/', '\')
-      }
-
-      if (Test-Path -LiteralPath $abs -PathType Leaf) {
-        if ([System.IO.Path]::IsPathRooted($candidate)) {
-          $baseResolved = (Resolve-Path -LiteralPath $BaseDir).Path
-          $absResolved  = (Resolve-Path -LiteralPath $abs).Path
-
-          $baseUri = [System.Uri]::new($baseResolved.TrimEnd('\','/') + [System.IO.Path]::DirectorySeparatorChar)
-          $absUri  = [System.Uri]::new($absResolved)
-          $relUri  = $baseUri.MakeRelativeUri($absUri)
-          $rel     = [System.Uri]::UnescapeDataString($relUri.ToString())
-
-          return ($rel -replace '\\','/').Trim()
-        }
-
-        return (($candidate -replace '\\','/').Trim())
-      }
-    }
-
-    return ""
+  $sharedPath = Join-Path $PSScriptRoot "scene_visual_shared_v03.ps1"
+  if (-not (Test-Path -LiteralPath $sharedPath -PathType Leaf)) {
+    throw ("No existe helper visual compartido: {0}" -f $sharedPath)
   }
+
+  . $sharedPath
 
   $baseDir = ""
   if (-not [string]::IsNullOrWhiteSpace($LiveDir) -and (Test-Path -LiteralPath $LiveDir)) {
@@ -901,7 +869,7 @@ function Ensure-VisualCapabilityFields {
 
     $sceneDirRel = ("artifacts/scenes/scene_{0:d2}" -f ($i + 1))
 
-    $resolvedImage = Resolve-SceneAssetRelativePath -BaseDir $baseDir -Candidates @(
+    $resolvedImage = Resolve-SceneAssetRelativePathShared -BaseDir $baseDir -Candidates @(
       [string]$scene.assets.image,
       ($sceneDirRel + "/image.png"),
       ($sceneDirRel + "/image.jpg"),
@@ -913,7 +881,7 @@ function Ensure-VisualCapabilityFields {
       "artifacts/image.webp"
     )
 
-    $resolvedVideo = Resolve-SceneAssetRelativePath -BaseDir $baseDir -Candidates @(
+    $resolvedVideo = Resolve-SceneAssetRelativePathShared -BaseDir $baseDir -Candidates @(
       [string]$scene.assets.video,
       ($sceneDirRel + "/video.mp4"),
       ($sceneDirRel + "/video.mov"),
@@ -939,22 +907,7 @@ function Ensure-VisualCapabilityFields {
       try { $currentVisualKind = ([string]$scene.visual_kind).Trim().ToLowerInvariant() } catch { $currentVisualKind = "" }
     }
 
-    $hasImage = -not [string]::IsNullOrWhiteSpace([string]$scene.assets.image)
-    $hasVideo = -not [string]::IsNullOrWhiteSpace([string]$scene.assets.video)
-
-    $vk = "image"
-    if (($currentVisualKind -eq "video") -and $hasVideo) {
-      $vk = "video"
-    }
-    elseif ($hasImage) {
-      $vk = "image"
-    }
-    elseif ($hasVideo) {
-      $vk = "video"
-    }
-    else {
-      $vk = "image"
-    }
+    $vk = Get-ResolvedVisualKindShared -CurrentVisualKind $currentVisualKind -ResolvedImage $resolvedImage -ResolvedVideo $resolvedVideo
 
     $scene | Add-Member -Force -NotePropertyName visual_kind -NotePropertyValue $vk
     $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })

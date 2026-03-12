@@ -734,16 +734,22 @@ function Ensure-Scenes {
     }
   }
 
+  $timingSharedPath = Join-Path $PSScriptRoot "scene_timing_shared_v03.ps1"
+  if (-not (Test-Path -LiteralPath $timingSharedPath -PathType Leaf)) {
+    throw ("No existe helper timing compartido: {0}" -f $timingSharedPath)
+  }
+
+  . $timingSharedPath
+
   $durations = @(New-Durations -SceneCount $SceneCount -TotalAudioMs $TotalAudioMs -SceneMinSec $SceneMinSec -SceneMaxSec $SceneMaxSec -SeedValue $SeedValue)
-  $cur = 0
+  $timeline = @(Build-SceneTimelineShared -Durations $durations -TotalMs $TotalAudioMs)
 
   for ($i = 0; $i -lt $SceneCount; $i++) {
     $sceneObj = $sc[$i]
+    $slot = $timeline[$i]
 
-    $st = $cur
-    $en = $cur + [int]$durations[$i]
-    if ($i -eq ($SceneCount - 1)) { $en = $TotalAudioMs }
-    $cur = $en
+    $st = [int]$slot.start_ms
+    $en = [int]$slot.end_ms
 
     $sceneObj | Add-Member -Force -NotePropertyName id -NotePropertyValue ("scene_{0:000}" -f ($i + 1))
 

@@ -379,13 +379,20 @@ foreach ($scene in $scenes) {
   $rawDurations += [int]$dur
 }
 
+$timingSharedPath = Join-Path $PSScriptRoot "scene_timing_shared_v03.ps1"
+if (-not (Test-Path -LiteralPath $timingSharedPath -PathType Leaf)) {
+  throw ("No existe helper timing compartido: {0}" -f $timingSharedPath)
+}
+
+. $timingSharedPath
+
 $durations = @(Normalize-DurationsToTotal -Durations $rawDurations -TotalMs $totalAudioMs)
+$timeline = @(Build-SceneTimelineShared -Durations $durations -TotalMs $totalAudioMs)
 
 $warnings = New-Object System.Collections.Generic.List[string]
 $audioClips = @()
 $legacyScenes = @()
 
-$cur = 0
 for ($i = 0; $i -lt $scenes.Count; $i++) {
   $scene = $scenes[$i]
   $ord = $i + 1
@@ -455,10 +462,10 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     $warnings.Add(("scene_{0:d2}: no se encontró image/video real" -f $ord)) | Out-Null
   }
 
-  $st = [int]$cur
-  $en = [int]($cur + $durations[$i])
-  if ($i -eq ($scenes.Count - 1)) { $en = [int]$totalAudioMs }
-  $cur = $en
+  $slot = $timeline[$i]
+
+  $st = [int]$slot.start_ms
+  $en = [int]$slot.end_ms
 
   $scene | Add-Member -Force -NotePropertyName id -NotePropertyValue ("scene_{0:000}" -f $ord)
   $scene | Add-Member -Force -NotePropertyName index -NotePropertyValue ([int]($ord - 1))

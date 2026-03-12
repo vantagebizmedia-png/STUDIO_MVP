@@ -508,10 +508,13 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     narration  = [string]$sceneText
     onscreen   = [string]$sceneText
     audio_text = [string]$sceneText
+    visual_kind = [string]$finalVisualKind
     image      = [string]$scene.assets.image
+    video      = [string]$scene.assets.video
     audio      = [string]$scene.assets.audio_clip
     start_ms   = [int]$st
     end_ms     = [int]$en
+    duration_ms = [int]($en - $st)
   }
 }
 

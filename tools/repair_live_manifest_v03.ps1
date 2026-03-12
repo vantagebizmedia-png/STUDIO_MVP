@@ -393,6 +393,13 @@ if (-not (Test-Path -LiteralPath $shapeSharedPath -PathType Leaf)) {
 
 . $shapeSharedPath
 
+$visualMetaSharedPath = Join-Path $PSScriptRoot "scene_visual_meta_shared_v03.ps1"
+if (-not (Test-Path -LiteralPath $visualMetaSharedPath -PathType Leaf)) {
+  throw ("No existe helper visual meta compartido: {0}" -f $visualMetaSharedPath)
+}
+
+. $visualMetaSharedPath
+
 $durations = @(Normalize-DurationsToTotal -Durations $rawDurations -TotalMs $totalAudioMs)
 $timeline = @(Build-SceneTimelineShared -Durations $durations -TotalMs $totalAudioMs)
 
@@ -483,33 +490,7 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue "stock_video"
     $scene | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue "stock_video"
 
-    $videoMeta = $null
-    try {
-      if ($scene.assets.PSObject.Properties["video_meta"] -and $scene.assets.video_meta) {
-        $videoMeta = $scene.assets.video_meta
-      }
-    }
-    catch { $videoMeta = $null }
-
-    if (-not $videoMeta) {
-      $videoMeta = [pscustomobject]@{}
-      if (-not ($scene.assets.PSObject.Properties.Name -contains "video_meta")) {
-        $scene.assets | Add-Member -Force -NotePropertyName video_meta -NotePropertyValue $videoMeta
-      }
-      else {
-        $scene.assets.video_meta = $videoMeta
-      }
-    }
-
-    $videoMeta | Add-Member -Force -NotePropertyName provider -NotePropertyValue $(try { if ($videoMeta.provider) { [string]$videoMeta.provider } else { "repair_live_manifest_v03" } } catch { "repair_live_manifest_v03" })
-    $videoMeta | Add-Member -Force -NotePropertyName cache_hit -NotePropertyValue $(try { [bool]$videoMeta.cache_hit } catch { $false })
-    $videoMeta | Add-Member -Force -NotePropertyName cache_key -NotePropertyValue $(try { if ($videoMeta.cache_key) { [string]$videoMeta.cache_key } else { "" } } catch { "" })
-    $videoMeta | Add-Member -Force -NotePropertyName query -NotePropertyValue ([string]$sceneQuery)
-    $videoMeta | Add-Member -Force -NotePropertyName source_kind -NotePropertyValue "stock_video"
-
-    if ($scene.assets.PSObject.Properties.Name -contains "image_meta") {
-      $scene.assets.image_meta = $null
-    }
+    Update-SceneVisualMetaShared -Scene $scene -Kind "video" -Query ([string]$sceneQuery) -FallbackProvider "repair_live_manifest_v03" | Out-Null
   }
   else {
     $scene.assets.image = [string]$resolvedImage
@@ -519,33 +500,7 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue "stock_image"
     $scene | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue "stock_image"
 
-    $imageMeta = $null
-    try {
-      if ($scene.assets.PSObject.Properties["image_meta"] -and $scene.assets.image_meta) {
-        $imageMeta = $scene.assets.image_meta
-      }
-    }
-    catch { $imageMeta = $null }
-
-    if (-not $imageMeta) {
-      $imageMeta = [pscustomobject]@{}
-      if (-not ($scene.assets.PSObject.Properties.Name -contains "image_meta")) {
-        $scene.assets | Add-Member -Force -NotePropertyName image_meta -NotePropertyValue $imageMeta
-      }
-      else {
-        $scene.assets.image_meta = $imageMeta
-      }
-    }
-
-    $imageMeta | Add-Member -Force -NotePropertyName provider -NotePropertyValue $(try { if ($imageMeta.provider) { [string]$imageMeta.provider } else { "repair_live_manifest_v03" } } catch { "repair_live_manifest_v03" })
-    $imageMeta | Add-Member -Force -NotePropertyName cache_hit -NotePropertyValue $(try { [bool]$imageMeta.cache_hit } catch { $false })
-    $imageMeta | Add-Member -Force -NotePropertyName cache_key -NotePropertyValue $(try { if ($imageMeta.cache_key) { [string]$imageMeta.cache_key } else { "" } } catch { "" })
-    $imageMeta | Add-Member -Force -NotePropertyName query -NotePropertyValue ([string]$sceneQuery)
-    $imageMeta | Add-Member -Force -NotePropertyName source_kind -NotePropertyValue "stock_image"
-
-    if ($scene.assets.PSObject.Properties.Name -contains "video_meta") {
-      $scene.assets.video_meta = $null
-    }
+    Update-SceneVisualMetaShared -Scene $scene -Kind "image" -Query ([string]$sceneQuery) -FallbackProvider "repair_live_manifest_v03" | Out-Null
   }
 
   $audioClips += [pscustomobject]@{

@@ -69,15 +69,20 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   $scene = $scenes[$i]
 
   $imgPath = ""
+  $videoPath = ""
   $audioPath = ""
   $sceneId = ""
   $sceneText = ""
   $sceneStart = 0
   $sceneEnd = 0
+  $sceneIndex = 0
+  $visualKind = ""
 
   try {
     if ($scene.assets) {
       $imgPath = [string](Get-AssetPathValue -AssetsObj $scene.assets -Key "image")
+      $videoPath = [string](Get-AssetPathValue -AssetsObj $scene.assets -Key "video")
+
       if ([string]::IsNullOrWhiteSpace($audioPath) -and $scene.assets.PSObject.Properties["audio_clip"] -and $scene.assets.audio_clip) {
         $audioPath = [string]$scene.assets.audio_clip
       }
@@ -85,6 +90,7 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   }
   catch {
     $imgPath = ""
+    $videoPath = ""
     $audioPath = ""
   }
 
@@ -92,34 +98,55 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   try { $sceneText = [string]$scene.text } catch { $sceneText = "" }
   try { $sceneStart = [int]$scene.start_ms } catch { $sceneStart = 0 }
   try { $sceneEnd = [int]$scene.end_ms } catch { $sceneEnd = 0 }
-
-  $sceneIndex = 0
+  try { $sceneIndex = [int]$scene.index } catch { $sceneIndex = 0 }
   try {
-    $digits = ($sceneId -replace '[^\d]','')
-    if (-not [string]::IsNullOrWhiteSpace($digits)) {
-      $sceneIndex = [int]$digits
+    if ($scene.PSObject.Properties["visual_kind"] -and $scene.visual_kind) {
+      $visualKind = ([string]$scene.visual_kind).Trim().ToLowerInvariant()
     }
   }
-  catch { $sceneIndex = 0 }
+  catch {
+    $visualKind = ""
+  }
+
+  if ($sceneIndex -le 0) {
+    try {
+      if ($sceneId -match '^scene_(\d+)$') {
+        $sceneIndex = [int]$Matches[1]
+      }
+    }
+    catch {
+      $sceneIndex = 0
+    }
+  }
 
   if ($sceneIndex -le 0) {
     $sceneIndex = $i + 1
   }
 
+  if ([string]::IsNullOrWhiteSpace($visualKind)) {
+    if (-not [string]::IsNullOrWhiteSpace($videoPath) -and [string]::IsNullOrWhiteSpace($imgPath)) {
+      $visualKind = "video"
+    }
+    else {
+      $visualKind = "image"
+    }
+  }
+
   $packCompatScenes += [pscustomobject]@{
-    id         = $sceneId
-    index      = [int]$sceneIndex
-    text       = $sceneText
-    narration  = $sceneText
-    onscreen   = $sceneText
-    audio_text = $sceneText
-    image      = $imgPath
-    audio      = $audioPath
-    start_ms   = $sceneStart
-    end_ms     = $sceneEnd
+    id          = $sceneId
+    index       = [int]$sceneIndex
+    text        = $sceneText
+    narration   = $sceneText
+    onscreen    = $sceneText
+    audio_text  = $sceneText
+    visual_kind = $visualKind
+    image       = $imgPath
+    video       = $videoPath
+    audio       = $audioPath
+    start_ms    = $sceneStart
+    end_ms      = $sceneEnd
   }
 }
-
 $manifestScript = ""
 try {
   if ($manifest.PSObject.Properties["script"] -and $manifest.script) {

@@ -120,6 +120,16 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     }
   }
 
+  $exportImage = ""
+  $exportVideo = ""
+
+  if ($visualKind -eq "video") {
+    $exportVideo = [string]$videoPath
+  }
+  else {
+    $exportImage = [string]$imgPath
+  }
+
   $packCompatScenes += [pscustomobject]@{
     id          = $sceneId
     index       = [int]$sceneOrdinal
@@ -128,8 +138,8 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     onscreen    = $sceneText
     audio_text  = $sceneText
     visual_kind = $visualKind
-    image       = $imgPath
-    video       = $videoPath
+    image       = $exportImage
+    video       = $exportVideo
     audio       = $audioPath
     start_ms    = $sceneStart
     end_ms      = $sceneEnd

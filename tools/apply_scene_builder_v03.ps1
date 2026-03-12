@@ -369,36 +369,18 @@ function Build-SceneTexts {
 }
 
 function Get-AssetPathValue {
-  param($AssetsObj, [string]$Key)
+  param(
+    $AssetsObj,
+    [string]$Key
+  )
 
-  if (-not $AssetsObj) { return "" }
-
-  $prop = $AssetsObj.PSObject.Properties[$Key]
-  if (-not $prop -or -not $prop.Value) { return "" }
-
-  $v = $prop.Value
-
-  if ($v -is [string]) { return [string]$v }
-
-  if ($v -is [pscustomobject] -or $v -is [hashtable]) {
-    $p = $v.PSObject.Properties["path"]
-    if ($p -and $p.Value) { return [string]$p.Value }
-    return ""
+  $sharedPath = Join-Path $PSScriptRoot "scene_asset_shared_v03.ps1"
+  if (-not (Test-Path -LiteralPath $sharedPath -PathType Leaf)) {
+    throw ("No existe helper asset compartido: {0}" -f $sharedPath)
   }
 
-  if (($v -is [System.Collections.IEnumerable]) -and -not ($v -is [string])) {
-    $arr = @($v)
-    if (@($arr).Count -ge 1) {
-      $x = $arr[0]
-      if ($x -is [string]) { return [string]$x }
-      if ($x -is [pscustomobject] -or $x -is [hashtable]) {
-        $p0 = $x.PSObject.Properties["path"]
-        if ($p0 -and $p0.Value) { return [string]$p0.Value }
-      }
-    }
-  }
-
-  return ""
+  . $sharedPath
+  return (Get-AssetPathValueShared -AssetsObj $AssetsObj -Key $Key)
 }
 
 function ScenesHaveValidImages {

@@ -183,14 +183,13 @@ function DeriveKeywords([string]$text, [int]$Top, [int]$SceneSeed) {
 }
 
 function Get-SceneText([object]$scene) {
-  foreach ($k in @("script_text", "image_query", "text", "caption", "narration")) {
-    $v = Get-PropValue $scene $k
-    if ($v -and ($v -is [string])) {
-      $s = $v.Trim()
-      if ($s) { return $s }
-    }
+  $sharedPath = Join-Path $PSScriptRoot "scene_narrative_shared_v03.ps1"
+  if (-not (Test-Path -LiteralPath $sharedPath -PathType Leaf)) {
+    throw ("No existe helper narrative compartido: {0}" -f $sharedPath)
   }
-  return ""
+
+  . $sharedPath
+  return (Get-SceneTextShared -Scene $scene)
 }
 
 function Normalize-QueryText([string]$text, [int]$MaxLen = 90) {

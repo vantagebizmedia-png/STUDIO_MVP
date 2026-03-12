@@ -693,6 +693,13 @@ function Ensure-Scenes {
 
   . $shapeSharedPath
 
+  $narrativeSharedPath = Join-Path $PSScriptRoot "scene_narrative_shared_v03.ps1"
+  if (-not (Test-Path -LiteralPath $narrativeSharedPath -PathType Leaf)) {
+    throw ("No existe helper narrative compartido: {0}" -f $narrativeSharedPath)
+  }
+
+  . $narrativeSharedPath
+
   $sc = @()
   if ($ManifestObj.scenes_v03) { $sc = @($ManifestObj.scenes_v03) }
 
@@ -704,6 +711,14 @@ function Ensure-Scenes {
     for ($i = @($sc).Count; $i -lt $SceneCount; $i++) {
       $sc += (New-SceneScaffoldShared -Ordinal ($i + 1))
     }
+  }
+
+  for ($i = 0; $i -lt @($sc).Count; $i++) {
+    $sceneSeed = $sc[$i]
+    if (-not $sceneSeed) { continue }
+
+    Ensure-SceneNarrativeSlotsShared -Scene $sceneSeed
+    Ensure-SceneNarrativeValuesShared -Scene $sceneSeed
   }
 
   $timingSharedPath = Join-Path $PSScriptRoot "scene_timing_shared_v03.ps1"
@@ -726,6 +741,7 @@ function Ensure-Scenes {
     $sceneObj | Add-Member -Force -NotePropertyName id -NotePropertyValue ("scene_{0:000}" -f ($i + 1))
 
     Ensure-SceneNarrativeSlotsShared -Scene $sceneObj
+    Ensure-SceneNarrativeValuesShared -Scene $sceneObj
     Ensure-SceneAssetSlotsShared -Scene $sceneObj
 
     if ($sceneObj.assets.audio_clip -isnot [string]) {

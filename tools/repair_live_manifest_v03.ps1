@@ -86,43 +86,25 @@ function Get-ResolvedSceneVisualKind {
 function Get-SceneText {
   param($Scene)
 
-  $candidates = @()
-
-  try { if ($Scene.PSObject.Properties["text"] -and $Scene.text) { $candidates += [string]$Scene.text } } catch { }
-  try { if ($Scene.PSObject.Properties["script_text"] -and $Scene.script_text) { $candidates += [string]$Scene.script_text } } catch { }
-  try { if ($Scene.PSObject.Properties["narration"] -and $Scene.narration) { $candidates += [string]$Scene.narration } } catch { }
-  try { if ($Scene.PSObject.Properties["onscreen"] -and $Scene.onscreen) { $candidates += [string]$Scene.onscreen } } catch { }
-
-  foreach ($v in $candidates) {
-    if (-not [string]::IsNullOrWhiteSpace($v)) {
-      return $v.Trim()
-    }
+  $sharedPath = Join-Path $PSScriptRoot "scene_narrative_shared_v03.ps1"
+  if (-not (Test-Path -LiteralPath $sharedPath -PathType Leaf)) {
+    throw ("No existe helper narrative compartido: {0}" -f $sharedPath)
   }
 
-  return ""
+  . $sharedPath
+  return (Get-SceneTextShared -Scene $Scene)
 }
 
 function Get-SceneQuery {
   param($Scene)
 
-  $candidates = @()
-
-  try { if ($Scene.PSObject.Properties["image_query"] -and $Scene.image_query) { $candidates += [string]$Scene.image_query } } catch { }
-  try { if ($Scene.PSObject.Properties["query"] -and $Scene.query) { $candidates += [string]$Scene.query } } catch { }
-  try { if ($Scene.PSObject.Properties["stock_query"] -and $Scene.stock_query) { $candidates += [string]$Scene.stock_query } } catch { }
-
-  foreach ($v in $candidates) {
-    if (-not [string]::IsNullOrWhiteSpace($v)) {
-      return $v.Trim()
-    }
+  $sharedPath = Join-Path $PSScriptRoot "scene_narrative_shared_v03.ps1"
+  if (-not (Test-Path -LiteralPath $sharedPath -PathType Leaf)) {
+    throw ("No existe helper narrative compartido: {0}" -f $sharedPath)
   }
 
-  $fallback = Get-SceneText -Scene $Scene
-  if (-not [string]::IsNullOrWhiteSpace($fallback)) {
-    return $fallback
-  }
-
-  return "motivacion"
+  . $sharedPath
+  return (Get-SceneQueryShared -Scene $Scene)
 }
 
 function Get-ManifestTotalAudioMs {
@@ -393,6 +375,13 @@ if (-not (Test-Path -LiteralPath $shapeSharedPath -PathType Leaf)) {
 
 . $shapeSharedPath
 
+$narrativeSharedPath = Join-Path $PSScriptRoot "scene_narrative_shared_v03.ps1"
+if (-not (Test-Path -LiteralPath $narrativeSharedPath -PathType Leaf)) {
+  throw ("No existe helper narrative compartido: {0}" -f $narrativeSharedPath)
+}
+
+. $narrativeSharedPath
+
 $visualMetaSharedPath = Join-Path $PSScriptRoot "scene_visual_meta_shared_v03.ps1"
 if (-not (Test-Path -LiteralPath $visualMetaSharedPath -PathType Leaf)) {
   throw ("No existe helper visual meta compartido: {0}" -f $visualMetaSharedPath)
@@ -414,6 +403,7 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
 
   Ensure-SceneAssetSlotsShared -Scene $scene
   Ensure-SceneNarrativeSlotsShared -Scene $scene
+  Ensure-SceneNarrativeValuesShared -Scene $scene
 
   $sceneText = Get-SceneText -Scene $scene
   $sceneQuery = Get-SceneQuery -Scene $scene

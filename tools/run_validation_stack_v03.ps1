@@ -110,18 +110,33 @@ if ($ShowGitStatus) {
 
   Push-Location $RepoRoot
   try {
-    & git --no-pager status --short
-    if ($LASTEXITCODE -ne 0) {
-      throw "git status fallo con exit code $LASTEXITCODE"
+    $gitStatusOutput = (& git --no-pager status --short 2>&1 | Out-String).TrimEnd()
+    $gitStatusExit = $LASTEXITCODE
+    if ($gitStatusExit -ne 0) {
+      throw "git status fallo con exit code $gitStatusExit"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($gitStatusOutput)) {
+      Write-Host "(working tree clean)" -ForegroundColor DarkGray
+    }
+    else {
+      Write-Host $gitStatusOutput
     }
 
     Write-Host ""
     Write-Host "== HEAD reciente ==" -ForegroundColor Cyan
 
-    & git --no-pager log --oneline -8
-    if ($LASTEXITCODE -ne 0) {
-      throw "git log fallo con exit code $LASTEXITCODE"
+    $gitLogOutput = (& git --no-pager log --oneline -8 2>&1 | Out-String).TrimEnd()
+    $gitLogExit = $LASTEXITCODE
+    if ($gitLogExit -ne 0) {
+      throw "git log fallo con exit code $gitLogExit"
     }
+
+    if ([string]::IsNullOrWhiteSpace($gitLogOutput)) {
+      throw "git log devolvio salida vacia"
+    }
+
+    Write-Host $gitLogOutput
   }
   finally {
     Pop-Location

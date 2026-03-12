@@ -77,32 +77,70 @@ function Get-SceneImageMetaTarget {
 
   if (-not $Scene) { return $null }
 
-  if (-not ($Scene.PSObject.Properties.Name -contains "assets") -or -not $Scene.assets) {
-    $Scene | Add-Member -NotePropertyName assets -NotePropertyValue ([pscustomobject]@{}) -Force
+  Ensure-Pso -parent $Scene -name "assets"
+  Ensure-Pso -parent $Scene -name "meta"
+
+  if (-not ($Scene.assets.PSObject.Properties.Name -contains "audio_clip")) {
+    $Scene.assets | Add-Member -NotePropertyName audio_clip -NotePropertyValue "" -Force
   }
 
-  if (-not ($Scene.assets.PSObject.Properties.Name -contains "image") -or -not $Scene.assets.image) {
-    $Scene.assets | Add-Member -NotePropertyName image -NotePropertyValue @([pscustomobject]@{}) -Force
-  }
-  elseif ($Scene.assets.image -is [string]) {
-    $Scene.assets.image = @([pscustomobject]@{ path = [string]$Scene.assets.image })
-  }
-  elseif ($Scene.assets.image -isnot [System.Collections.IEnumerable] -or $Scene.assets.image -is [pscustomobject]) {
-    $Scene.assets.image = @($Scene.assets.image)
+  if (-not ($Scene.assets.PSObject.Properties.Name -contains "video")) {
+    $Scene.assets | Add-Member -NotePropertyName video -NotePropertyValue "" -Force
   }
 
-  $imgs = @($Scene.assets.image)
-  if ($imgs.Count -lt 1) {
-    $Scene.assets.image = @([pscustomobject]@{})
-    $imgs = @($Scene.assets.image)
+  $currentImagePath = ""
+
+  if ($Scene.assets.PSObject.Properties.Name -contains "image") {
+    $rawImage = $Scene.assets.image
+
+    if ($rawImage -is [string]) {
+      $currentImagePath = [string]$rawImage
+    }
+    elseif ($rawImage -is [System.Collections.IDictionary]) {
+      if ($rawImage.Contains("path") -and $rawImage["path"]) {
+        $currentImagePath = [string]$rawImage["path"]
+      }
+    }
+    elseif ($rawImage -is [System.Collections.IEnumerable] -and -not ($rawImage -is [string])) {
+      $arr = @($rawImage)
+      if ($arr.Count -gt 0 -and $null -ne $arr[0]) {
+        $first = $arr[0]
+
+        if ($first -is [string]) {
+          $currentImagePath = [string]$first
+        }
+        elseif ($first -is [System.Collections.IDictionary]) {
+          if ($first.Contains("path") -and $first["path"]) {
+            $currentImagePath = [string]$first["path"]
+          }
+        }
+        elseif ($first.PSObject.Properties.Name -contains "path") {
+          try { $currentImagePath = [string]$first.path } catch { $currentImagePath = "" }
+        }
+      }
+    }
+    elseif ($null -ne $rawImage -and $rawImage.PSObject.Properties.Name -contains "path") {
+      try { $currentImagePath = [string]$rawImage.path } catch { $currentImagePath = "" }
+    }
   }
 
-  if ($null -eq $imgs[0]) {
-    $imgs[0] = [pscustomobject]@{}
-    $Scene.assets.image = $imgs
+  $currentImagePath = ([string]$currentImagePath).Trim()
+
+  if (-not ($Scene.assets.PSObject.Properties.Name -contains "image")) {
+    $Scene.assets | Add-Member -NotePropertyName image -NotePropertyValue $currentImagePath -Force
+  }
+  else {
+    $Scene.assets.image = $currentImagePath
   }
 
-  return $imgs[0]
+  if (-not (Has-Prop $Scene.meta "image_enrich")) {
+    $Scene.meta | Add-Member -NotePropertyName image_enrich -NotePropertyValue ([pscustomobject]@{}) -Force
+  }
+  else {
+    $Scene.meta.image_enrich = Convert-ToPso $Scene.meta.image_enrich
+  }
+
+  return $Scene.meta.image_enrich
 }
 function Tokenize([string]$text) {
   if (-not $text) { return @() }

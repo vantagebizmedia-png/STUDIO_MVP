@@ -945,6 +945,7 @@ if (-not $SkipEnrich) {
           throw "WorkspaceRoot vacío: no se puede ejecutar enrich_scenes_queries_v03.ps1"
         }
 
+        $global:LASTEXITCODE = 0
         & pwsh -NoProfile -ExecutionPolicy Bypass -File $enricher -WorkspaceRoot $resolvedWorkspaceRoot -Seed $Seed | Out-Null
         $enrichExit = $LASTEXITCODE
 
@@ -982,9 +983,13 @@ if (-not $SkipEnrich) {
   catch {
     Write-Host ("WARN: enrich_scenes_queries_v03 falló (skip): {0}" -f $_.Exception.Message) -ForegroundColor Yellow
   }
+  finally {
+    $global:LASTEXITCODE = 0
+  }
 }
 else {
   Write-Host "SKIP: enrich_scenes_queries_v03 (SkipEnrich=True)" -ForegroundColor DarkGray
+  $global:LASTEXITCODE = 0
 }
 
 $liveForLog = [string]$resolvedLiveDir

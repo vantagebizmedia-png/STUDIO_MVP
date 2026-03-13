@@ -115,14 +115,30 @@ function Get-SceneRequestedMediaType {
 
   if (-not $Scene) { return "image" }
 
+  $requestedMediaType = ""
+  if (Has-Prop $Scene "requested_media_type") {
+    try { $requestedMediaType = ([string]$Scene.requested_media_type).Trim().ToLowerInvariant() } catch { $requestedMediaType = "" }
+  }
+
+  if ($requestedMediaType -eq "video") { return "video" }
+  if ($requestedMediaType -eq "image") { return "image" }
+
+  $visualRequestKind = ""
+  if (Has-Prop $Scene "visual_request_kind") {
+    try { $visualRequestKind = ([string]$Scene.visual_request_kind).Trim().ToLowerInvariant() } catch { $visualRequestKind = "" }
+  }
+
+  if ($visualRequestKind -eq "video") { return "video" }
+  if ($visualRequestKind -eq "image") { return "image" }
+
   $visualCapability = ""
-  if (Has-Prop $Scene "visual_capability" -and $Scene.visual_capability) {
-    $visualCapability = ([string]$Scene.visual_capability).Trim().ToLowerInvariant()
+  if (Has-Prop $Scene "visual_capability") {
+    try { $visualCapability = ([string]$Scene.visual_capability).Trim().ToLowerInvariant() } catch { $visualCapability = "" }
   }
 
   $visualKind = ""
-  if (Has-Prop $Scene "visual_kind" -and $Scene.visual_kind) {
-    $visualKind = ([string]$Scene.visual_kind).Trim().ToLowerInvariant()
+  if (Has-Prop $Scene "visual_kind") {
+    try { $visualKind = ([string]$Scene.visual_kind).Trim().ToLowerInvariant() } catch { $visualKind = "" }
   }
 
   if ($visualCapability -eq "stock_video") { return "video" }
@@ -138,6 +154,14 @@ function Get-SceneVisualMetaTarget {
 
   Ensure-Pso -parent $Scene -name "assets"
   Ensure-Pso -parent $Scene -name "meta"
+
+  if (-not (Has-Prop $Scene "requested_media_type")) {
+    $Scene | Add-Member -NotePropertyName requested_media_type -NotePropertyValue "" -Force
+  }
+
+  if (-not (Has-Prop $Scene "visual_request_kind")) {
+    $Scene | Add-Member -NotePropertyName visual_request_kind -NotePropertyValue "" -Force
+  }
 
   if (-not ($Scene.assets.PSObject.Properties.Name -contains "audio_clip")) {
     $Scene.assets | Add-Member -NotePropertyName audio_clip -NotePropertyValue "" -Force
@@ -165,6 +189,37 @@ function Get-SceneVisualMetaTarget {
   }
   else {
     $Scene.assets.video = $currentVideoPath
+  }
+
+  $requestedMediaType = ""
+  try { $requestedMediaType = ([string]$Scene.requested_media_type).Trim().ToLowerInvariant() } catch { $requestedMediaType = "" }
+
+  if ([string]::IsNullOrWhiteSpace($requestedMediaType)) {
+    $legacyCapability = ""
+    if (Has-Prop $Scene "visual_capability") {
+      try { $legacyCapability = ([string]$Scene.visual_capability).Trim().ToLowerInvariant() } catch { $legacyCapability = "" }
+    }
+
+    $legacyKind = ""
+    if (Has-Prop $Scene "visual_kind") {
+      try { $legacyKind = ([string]$Scene.visual_kind).Trim().ToLowerInvariant() } catch { $legacyKind = "" }
+    }
+
+    if (($legacyCapability -eq "stock_video") -or ($legacyKind -eq "video")) {
+      $requestedMediaType = "video"
+    }
+    else {
+      $requestedMediaType = "image"
+    }
+
+    $Scene.requested_media_type = $requestedMediaType
+  }
+
+  $visualRequestKind = ""
+  try { $visualRequestKind = ([string]$Scene.visual_request_kind).Trim().ToLowerInvariant() } catch { $visualRequestKind = "" }
+
+  if ([string]::IsNullOrWhiteSpace($visualRequestKind)) {
+    $Scene.visual_request_kind = $requestedMediaType
   }
 
   if (-not (Has-Prop $Scene.meta "visual_enrich")) {

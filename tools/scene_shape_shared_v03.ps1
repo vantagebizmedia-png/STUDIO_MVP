@@ -32,17 +32,18 @@ function New-SceneScaffoldShared {
   }
 
   return [pscustomobject]@{
-    id                 = ("scene_{0:000}" -f $Ordinal)
-    start_ms           = 0
-    end_ms             = 0
-    duration_ms        = 0
-    text               = ""
-    script_text        = ""
-    image_query        = ""
-    visual_kind        = "image"
-    visual_source_kind = "fallback_image"
-    visual_capability  = "stock_image"
-    assets             = [pscustomobject]@{
+    id                   = ("scene_{0:000}" -f $Ordinal)
+    start_ms             = 0
+    end_ms               = 0
+    duration_ms          = 0
+    text                 = ""
+    script_text          = ""
+    image_query          = ""
+    requested_media_type = "image"
+    visual_kind          = "image"
+    visual_source_kind   = "fallback_image"
+    visual_capability    = "stock_image"
+    assets               = [pscustomobject]@{
       audio_clip = ""
       image      = ""
       video      = ""
@@ -65,6 +66,34 @@ function Ensure-SceneNarrativeSlotsShared {
 
   if (-not ($Scene.PSObject.Properties.Name -contains "image_query")) {
     $Scene | Add-Member -Force -NotePropertyName image_query -NotePropertyValue ""
+  }
+
+  if (-not ($Scene.PSObject.Properties.Name -contains "requested_media_type")) {
+    $Scene | Add-Member -Force -NotePropertyName requested_media_type -NotePropertyValue ""
+  }
+
+  $requestedMediaType = ""
+  try { $requestedMediaType = ([string]$Scene.requested_media_type).Trim().ToLowerInvariant() } catch { $requestedMediaType = "" }
+
+  if ([string]::IsNullOrWhiteSpace($requestedMediaType)) {
+    $legacyCapability = ""
+    if ($Scene.PSObject.Properties.Name -contains "visual_capability") {
+      try { $legacyCapability = ([string]$Scene.visual_capability).Trim().ToLowerInvariant() } catch { $legacyCapability = "" }
+    }
+
+    $legacyKind = ""
+    if ($Scene.PSObject.Properties.Name -contains "visual_kind") {
+      try { $legacyKind = ([string]$Scene.visual_kind).Trim().ToLowerInvariant() } catch { $legacyKind = "" }
+    }
+
+    if (($legacyCapability -eq "stock_video") -or ($legacyKind -eq "video")) {
+      $requestedMediaType = "video"
+    }
+    else {
+      $requestedMediaType = "image"
+    }
+
+    $Scene.requested_media_type = $requestedMediaType
   }
 }
 

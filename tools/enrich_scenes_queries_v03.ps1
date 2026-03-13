@@ -72,7 +72,66 @@ function Set-Note([object]$obj, [string]$name, $value) {
 }
 
 
-function Get-SceneImageMetaTarget {
+function Get-AssetPathString {
+  param($RawValue)
+
+  $currentPath = ""
+
+  if ($RawValue -is [string]) {
+    $currentPath = [string]$RawValue
+  }
+  elseif ($RawValue -is [System.Collections.IDictionary]) {
+    if ($RawValue.Contains("path") -and $RawValue["path"]) {
+      $currentPath = [string]$RawValue["path"]
+    }
+  }
+  elseif ($RawValue -is [System.Collections.IEnumerable] -and -not ($RawValue -is [string])) {
+    $arr = @($RawValue)
+    if ($arr.Count -gt 0 -and $null -ne $arr[0]) {
+      $first = $arr[0]
+
+      if ($first -is [string]) {
+        $currentPath = [string]$first
+      }
+      elseif ($first -is [System.Collections.IDictionary]) {
+        if ($first.Contains("path") -and $first["path"]) {
+          $currentPath = [string]$first["path"]
+        }
+      }
+      elseif ($null -ne $first -and $first.PSObject.Properties.Name -contains "path") {
+        try { $currentPath = [string]$first.path } catch { $currentPath = "" }
+      }
+    }
+  }
+  elseif ($null -ne $RawValue -and $RawValue.PSObject.Properties.Name -contains "path") {
+    try { $currentPath = [string]$RawValue.path } catch { $currentPath = "" }
+  }
+
+  return ([string]$currentPath).Trim()
+}
+
+function Get-SceneRequestedMediaType {
+  param([object]$Scene)
+
+  if (-not $Scene) { return "image" }
+
+  $visualCapability = ""
+  if (Has-Prop $Scene "visual_capability" -and $Scene.visual_capability) {
+    $visualCapability = ([string]$Scene.visual_capability).Trim().ToLowerInvariant()
+  }
+
+  $visualKind = ""
+  if (Has-Prop $Scene "visual_kind" -and $Scene.visual_kind) {
+    $visualKind = ([string]$Scene.visual_kind).Trim().ToLowerInvariant()
+  }
+
+  if ($visualCapability -eq "stock_video") { return "video" }
+  if ($visualKind -eq "video") { return "video" }
+
+  return "image"
+}
+
+function Get-SceneVisualMetaTarget {
   param([object]$Scene)
 
   if (-not $Scene) { return $null }
@@ -84,47 +143,10 @@ function Get-SceneImageMetaTarget {
     $Scene.assets | Add-Member -NotePropertyName audio_clip -NotePropertyValue "" -Force
   }
 
-  if (-not ($Scene.assets.PSObject.Properties.Name -contains "video")) {
-    $Scene.assets | Add-Member -NotePropertyName video -NotePropertyValue "" -Force
-  }
-
   $currentImagePath = ""
-
   if ($Scene.assets.PSObject.Properties.Name -contains "image") {
-    $rawImage = $Scene.assets.image
-
-    if ($rawImage -is [string]) {
-      $currentImagePath = [string]$rawImage
-    }
-    elseif ($rawImage -is [System.Collections.IDictionary]) {
-      if ($rawImage.Contains("path") -and $rawImage["path"]) {
-        $currentImagePath = [string]$rawImage["path"]
-      }
-    }
-    elseif ($rawImage -is [System.Collections.IEnumerable] -and -not ($rawImage -is [string])) {
-      $arr = @($rawImage)
-      if ($arr.Count -gt 0 -and $null -ne $arr[0]) {
-        $first = $arr[0]
-
-        if ($first -is [string]) {
-          $currentImagePath = [string]$first
-        }
-        elseif ($first -is [System.Collections.IDictionary]) {
-          if ($first.Contains("path") -and $first["path"]) {
-            $currentImagePath = [string]$first["path"]
-          }
-        }
-        elseif ($first.PSObject.Properties.Name -contains "path") {
-          try { $currentImagePath = [string]$first.path } catch { $currentImagePath = "" }
-        }
-      }
-    }
-    elseif ($null -ne $rawImage -and $rawImage.PSObject.Properties.Name -contains "path") {
-      try { $currentImagePath = [string]$rawImage.path } catch { $currentImagePath = "" }
-    }
+    $currentImagePath = Get-AssetPathString -RawValue $Scene.assets.image
   }
-
-  $currentImagePath = ([string]$currentImagePath).Trim()
 
   if (-not ($Scene.assets.PSObject.Properties.Name -contains "image")) {
     $Scene.assets | Add-Member -NotePropertyName image -NotePropertyValue $currentImagePath -Force
@@ -133,14 +155,26 @@ function Get-SceneImageMetaTarget {
     $Scene.assets.image = $currentImagePath
   }
 
-  if (-not (Has-Prop $Scene.meta "image_enrich")) {
-    $Scene.meta | Add-Member -NotePropertyName image_enrich -NotePropertyValue ([pscustomobject]@{}) -Force
-  }
-  else {
-    $Scene.meta.image_enrich = Convert-ToPso $Scene.meta.image_enrich
+  $currentVideoPath = ""
+  if ($Scene.assets.PSObject.Properties.Name -contains "video") {
+    $currentVideoPath = Get-AssetPathString -RawValue $Scene.assets.video
   }
 
-  return $Scene.meta.image_enrich
+  if (-not ($Scene.assets.PSObject.Properties.Name -contains "video")) {
+    $Scene.assets | Add-Member -NotePropertyName video -NotePropertyValue $currentVideoPath -Force
+  }
+  else {
+    $Scene.assets.video = $currentVideoPath
+  }
+
+  if (-not (Has-Prop $Scene.meta "visual_enrich")) {
+    $Scene.meta | Add-Member -NotePropertyName visual_enrich -NotePropertyValue ([pscustomobject]@{}) -Force
+  }
+  else {
+    $Scene.meta.visual_enrich = Convert-ToPso $Scene.meta.visual_enrich
+  }
+
+  return $Scene.meta.visual_enrich
 }
 function Tokenize([string]$text) {
   if (-not $text) { return @() }
@@ -795,9 +829,11 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   if ($queryCandidates.Count -gt 0) { $q = [string]$queryCandidates[0] }
 
   Ensure-Pso -parent $scene -name "assets"
-  $imgMeta = Get-SceneImageMetaTarget -Scene $scene
-  Set-Note -obj $imgMeta -name "query" -value $q
-  Set-Note -obj $imgMeta -name "query_candidates" -value $queryCandidates
+  $requestedMediaType = Get-SceneRequestedMediaType -Scene $scene
+  $visualMeta = Get-SceneVisualMetaTarget -Scene $scene
+  Set-Note -obj $visualMeta -name "query" -value $q
+  Set-Note -obj $visualMeta -name "query_candidates" -value $queryCandidates
+  Set-Note -obj $visualMeta -name "requested_media_type" -value $requestedMediaType
 
   if (-not $DownloadPixabay) { continue }
 
@@ -819,10 +855,10 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     foreach ($candidate in $queryCandidates) {
       if (-not $candidate) { continue }
 
-      $safeName = ("scene_{0:000}_{1}" -f ($i + 1), (Sha256Hex $candidate).Substring(0,12))
+      $safeName = ("scene_{0:000}_{1}_{2}" -f ($i + 1), $requestedMediaType, (Sha256Hex $candidate).Substring(0,12))
       $cacheJson = Join-Path $cacheDir ($safeName + ".json")
 
-      & $stock -Query $candidate -OutJsonPath $cacheJson -Seed ($Seed + $i) -PerPage $PerPage | Out-Null
+      & $stock -Query $candidate -OutJsonPath $cacheJson -Seed ($Seed + $i) -PerPage $PerPage -MediaType $requestedMediaType | Out-Null
 
       $pj = Get-Content -LiteralPath $cacheJson -Raw -Encoding UTF8 | ConvertFrom-Json
       $candidateHits = @()
@@ -835,12 +871,13 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
       }
     }
 
-    Set-Note -obj $imgMeta -name "provider" -value "pixabay"
-    Set-Note -obj $imgMeta -name "used_query" -value $usedQuery
-    Set-Note -obj $imgMeta -name "hits_count" -value $hits.Count
+    Set-Note -obj $visualMeta -name "provider" -value "pixabay"
+    Set-Note -obj $visualMeta -name "media_type" -value $requestedMediaType
+    Set-Note -obj $visualMeta -name "used_query" -value $usedQuery
+    Set-Note -obj $visualMeta -name "hits_count" -value $hits.Count
 
     if ($hits.Count -lt 1) {
-      Set-Note -obj $imgMeta -name "note" -value "pixabay: 0 hits"
+      Set-Note -obj $visualMeta -name "note" -value ("pixabay: 0 hits ({0})" -f $requestedMediaType)
       $withoutHits++
       continue
     }
@@ -853,7 +890,7 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
       $url = [string]$hit.url
     }
     if (-not $url) {
-      Set-Note -obj $imgMeta -name "note" -value "pixabay: hit sin .url"
+      Set-Note -obj $visualMeta -name "note" -value ("pixabay: hit sin .url ({0})" -f $requestedMediaType)
       $withErrors++
       continue
     }
@@ -863,20 +900,48 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
       New-Item -ItemType Directory -Force -Path $outDir | Out-Null
     }
 
-    $outPath = Join-Path $outDir ("scene_{0:000}.jpg" -f ($i + 1))
+    $fileName = ""
+    if ($requestedMediaType -eq "video") {
+      $fileName = ("scene_{0:000}.mp4" -f ($i + 1))
+    }
+    else {
+      $fileName = ("scene_{0:000}.jpg" -f ($i + 1))
+    }
+
+    $outPath = Join-Path $outDir $fileName
     & $dl -Url $url -OutPath $outPath | Out-Null
 
     $resolvedOutPath = (Resolve-Path -LiteralPath $outPath).Path
-    $scene.assets.image = [string]$resolvedOutPath
 
-    Set-Note -obj $imgMeta -name "path" -value $resolvedOutPath
-    Set-Note -obj $imgMeta -name "picked_index" -value $idx
-    Set-Note -obj $imgMeta -name "source_url" -value $url
+    if ($requestedMediaType -eq "video") {
+      $scene.assets.video = [string]$resolvedOutPath
+      $scene.assets.image = ""
+      Set-Note -obj $scene -name "visual_kind" -value "video"
+      Set-Note -obj $scene -name "visual_capability" -value "stock_video"
+      Set-Note -obj $scene -name "visual_source_kind" -value "pixabay_video"
+    }
+    else {
+      $scene.assets.image = [string]$resolvedOutPath
+      $scene.assets.video = ""
+      Set-Note -obj $scene -name "visual_kind" -value "image"
+      Set-Note -obj $scene -name "visual_capability" -value "stock_image"
+      Set-Note -obj $scene -name "visual_source_kind" -value "pixabay_image"
+    }
+
+    Set-Note -obj $visualMeta -name "path" -value $resolvedOutPath
+    Set-Note -obj $visualMeta -name "picked_index" -value $idx
+    Set-Note -obj $visualMeta -name "source_url" -value $url
+
+    if ($hit -and (Has-Prop $hit "thumb_url") -and $hit.thumb_url) {
+      Set-Note -obj $visualMeta -name "thumb_url" -value ([string]$hit.thumb_url)
+    }
+
     $downloaded++
   }
   catch {
-    Set-Note -obj $imgMeta -name "provider" -value "pixabay"
-    Set-Note -obj $imgMeta -name "note" -value ("pixabay error: " + $_.Exception.Message)
+    Set-Note -obj $visualMeta -name "provider" -value "pixabay"
+    Set-Note -obj $visualMeta -name "media_type" -value $requestedMediaType
+    Set-Note -obj $visualMeta -name "note" -value (("pixabay error ({0}): " -f $requestedMediaType) + $_.Exception.Message)
     $withErrors++
   }
   finally {

@@ -952,7 +952,24 @@ if (-not $SkipEnrich) {
           throw "enrich_scenes_queries_v03.ps1 devolvió exit code $enrichExit"
         }
 
-        Write-Host ("OK: enrich_scenes_queries_v03 aplicado (workspace={0} manifest={1})" -f $resolvedWorkspaceRoot, $manifestGuess) -ForegroundColor DarkGray
+        $manifestPostEnrichPath = $manifestGuess
+        if (-not (Test-Path -LiteralPath $manifestPostEnrichPath -PathType Leaf)) {
+          throw ("No existe manifest_v03.json post-enrich: {0}" -f $manifestPostEnrichPath)
+        }
+
+        if ([string]::IsNullOrWhiteSpace($resolvedLiveDir)) {
+          throw "LiveDir vacío: no se puede resincronizar manifest_v03/pack.json post-enrich"
+        }
+
+        $manifestPostEnrichObj = Get-Content -LiteralPath $manifestPostEnrichPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        Ensure-VisualCapabilityFields -ManifestObj $manifestPostEnrichObj -LiveDir $resolvedLiveDir
+
+        $utf8NoBomManifest = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($manifestPostEnrichPath, ($manifestPostEnrichObj | ConvertTo-Json -Depth 50), $utf8NoBomManifest)
+
+        Sync-PackCompat -ManifestObj $manifestPostEnrichObj -LiveDir $resolvedLiveDir
+
+        Write-Host ("OK: enrich_scenes_queries_v03 aplicado y resincronizado (workspace={0} manifest={1})" -f $resolvedWorkspaceRoot, $manifestPostEnrichPath) -ForegroundColor DarkGray
       }
       else {
         Write-Host "WARN: no encontré manifest_v03.json para enriquecer queries" -ForegroundColor Yellow

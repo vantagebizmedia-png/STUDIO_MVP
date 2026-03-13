@@ -4,6 +4,7 @@
   [Parameter(Mandatory=$false)][string]$LiveDir = "",
   [switch]$Quick,
   [switch]$SkipVideoCase,
+  [switch]$SkipMixedVisuals,
   [switch]$SkipNegativeSuite,
   [switch]$ShowGitStatus
 )
@@ -29,11 +30,13 @@ if ([string]::IsNullOrWhiteSpace($LiveDir)) {
   $LiveDir = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
 }
 
-$effectiveSkipVideoCase = [bool]$SkipVideoCase
+$effectiveSkipVideoCase    = [bool]$SkipVideoCase
+$effectiveSkipMixedVisuals = [bool]$SkipMixedVisuals
 $effectiveSkipNegativeSuite = [bool]$SkipNegativeSuite
 
 if ($Quick) {
   $effectiveSkipVideoCase = $true
+  $effectiveSkipMixedVisuals = $true
   $effectiveSkipNegativeSuite = $true
 }
 
@@ -45,11 +48,16 @@ if ($Quick) {
 $statusValidate = "PENDING"
 $statusMainSmoke = "PENDING"
 $statusVideoCase = "SKIPPED"
+$statusMixedVisuals = "SKIPPED"
 $statusNegative = "SKIPPED"
 $statusGit = "SKIPPED"
 
 if (-not $effectiveSkipVideoCase) {
   $statusVideoCase = "PENDING"
+}
+
+if (-not $effectiveSkipMixedVisuals) {
+  $statusMixedVisuals = "PENDING"
 }
 
 if (-not $effectiveSkipNegativeSuite) {
@@ -62,6 +70,7 @@ Write-Host ("RepoRoot         : {0}" -f $RepoRoot) -ForegroundColor DarkGray
 Write-Host ("WorkspaceRoot    : {0}" -f $WorkspaceRoot) -ForegroundColor DarkGray
 Write-Host ("LiveDir          : {0}" -f $LiveDir) -ForegroundColor DarkGray
 Write-Host ("SkipVideoCase    : {0}" -f $effectiveSkipVideoCase) -ForegroundColor DarkGray
+Write-Host ("SkipMixedVisuals : {0}" -f $effectiveSkipMixedVisuals) -ForegroundColor DarkGray
 Write-Host ("SkipNegative     : {0}" -f $effectiveSkipNegativeSuite) -ForegroundColor DarkGray
 Write-Host ("ShowGitStatus    : {0}" -f [bool]$ShowGitStatus) -ForegroundColor DarkGray
 
@@ -73,6 +82,10 @@ $invokeArgs = @{
 
 if ($effectiveSkipVideoCase) {
   $invokeArgs.SkipVideoCase = $true
+}
+
+if ($effectiveSkipMixedVisuals) {
+  $invokeArgs.SkipMixedVisuals = $true
 }
 
 if ($effectiveSkipNegativeSuite) {
@@ -95,6 +108,13 @@ if ($effectiveSkipVideoCase) {
 }
 else {
   $statusVideoCase = "PASS"
+}
+
+if ($effectiveSkipMixedVisuals) {
+  $statusMixedVisuals = "SKIPPED"
+}
+else {
+  $statusMixedVisuals = "PASS"
 }
 
 if ($effectiveSkipNegativeSuite) {
@@ -150,6 +170,7 @@ Write-Host "== SUMMARY ==" -ForegroundColor Cyan
 Write-Host ("VALIDATE_SUITE={0}" -f $statusValidate) -ForegroundColor DarkGray
 Write-Host ("MAIN_SMOKE={0}" -f $statusMainSmoke) -ForegroundColor DarkGray
 Write-Host ("VIDEO_CASE={0}" -f $statusVideoCase) -ForegroundColor DarkGray
+Write-Host ("MIXED_VISUALS={0}" -f $statusMixedVisuals) -ForegroundColor DarkGray
 Write-Host ("NEGATIVE_SUITE={0}" -f $statusNegative) -ForegroundColor DarkGray
 Write-Host ("GIT_STATUS={0}" -f $statusGit) -ForegroundColor DarkGray
 

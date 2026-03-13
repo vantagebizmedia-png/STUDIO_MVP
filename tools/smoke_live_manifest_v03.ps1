@@ -1,6 +1,7 @@
 ﻿param(
   [Parameter(Mandatory=$true)][string]$LiveDir,
-  [int]$MaxScenes = 6
+  [int]$MaxScenes = 6,
+  [int]$AudioDurationToleranceMs = 250
 )
 
 Set-StrictMode -Version Latest
@@ -98,6 +99,30 @@ function Resolve-LivePath {
   catch { }
 
   return (Join-Path $BaseDir $p)
+}
+
+function Get-FFprobeDurationMs {
+  param(
+    [Parameter(Mandatory=$true)][string]$Path,
+    [Parameter(Mandatory=$true)][string]$Label
+  )
+
+  $ffprobeOut = & ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $Path 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    Fail "$Label ffprobe no pudo leer duración: $Path"
+  }
+
+  $ffprobeText = (($ffprobeOut | ForEach-Object { "$_" }) -join "").Trim()
+  if ([string]::IsNullOrWhiteSpace($ffprobeText)) {
+    Fail "$Label ffprobe devolvió duración vacía: $Path"
+  }
+
+  $durationSec = 0.0
+  if (-not [double]::TryParse($ffprobeText, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$durationSec)) {
+    Fail "$Label no pudo parsear duración ffprobe='$ffprobeText'"
+  }
+
+  return [Math]::Max(1, [int][Math]::Round($durationSec * 1000.0))
 }
 
 $live = (Resolve-Path -LiteralPath $LiveDir).Path
@@ -254,6 +279,13 @@ for ($i = 0; $i -lt $scCount; $i++) {
   $clipLen = (Get-Item -LiteralPath $clipAbs).Length
   if ($clipLen -lt 1000) {
     Fail "$sceneLabel clip demasiado pequeño ($clipLen bytes): $clipAbs"
+  }
+
+  $clipDurationMs = Get-FFprobeDurationMs -Path $clipAbs -Label $sceneLabel
+  $clipDeltaMs = [Math]::Abs($clipDurationMs - $du)
+
+  if ($clipDeltaMs -gt $AudioDurationToleranceMs) {
+    Fail "$sceneLabel duration/audio mismatch: duration_ms=$du audio_ms=$clipDurationMs delta_ms=$clipDeltaMs tolerance_ms=$AudioDurationToleranceMs"
   }
 
   $pkAudio = Get-StringOrEmpty -Value $p.audio

@@ -204,7 +204,8 @@ try {
       "-u",
       $renderer,
       "--pack-dir", $OutputLiveDir,
-      "--out", $renderOut
+      "--out", $renderOut,
+      "--keep-tmp"
     ) `
     -NoNewWindow `
     -Wait `
@@ -261,6 +262,79 @@ $stdoutText = [System.IO.File]::ReadAllText($renderStdOut)
 if ([string]::IsNullOrWhiteSpace($stdoutText)) {
   throw "stdout log del renderer quedó vacío"
 }
+
+$segmentDurationToleranceMs = 300
+
+function Get-FFprobeDurationMsLocal {
+  param(
+    [Parameter(Mandatory=$true)][string]$Path,
+    [Parameter(Mandatory=$true)][string]$Label
+  )
+
+  $ffprobeOut = & ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $Path 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    throw "$Label ffprobe falló: $Path"
+  }
+
+  $ffprobeText = (($ffprobeOut | ForEach-Object { "$_" }) -join "").Trim()
+  if ([string]::IsNullOrWhiteSpace($ffprobeText)) {
+    throw "$Label ffprobe devolvió duración vacía: $Path"
+  }
+
+  $durationSec = 0.0
+  if (-not [double]::TryParse($ffprobeText, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$durationSec)) {
+    throw "$Label no pudo parsear duración ffprobe='$ffprobeText'"
+  }
+
+  return [Math]::Max(1, [int][Math]::Round($durationSec * 1000.0))
+}
+
+$tmpMatch = [regex]::Match($stdoutText, '(?im)^TMP \(keep\):\s*(.+?)\s*$')
+if (-not $tmpMatch.Success) {
+  throw "stdout log no expone TMP (keep) del renderer"
+}
+
+$tmpRenderDir = $tmpMatch.Groups[1].Value.Trim()
+if ([string]::IsNullOrWhiteSpace($tmpRenderDir)) {
+  throw "TMP (keep) del renderer quedó vacío"
+}
+
+if (-not (Test-Path -LiteralPath $tmpRenderDir -PathType Container)) {
+  throw "No existe TMP (keep) del renderer: $tmpRenderDir"
+}
+
+$segmentChecks = @(
+  [pscustomobject]@{
+    Label       = "scene_01 segment/audio"
+    SegmentPath = (Join-Path $tmpRenderDir "seg_01.mp4")
+    AudioPath   = $audioPath
+  },
+  [pscustomobject]@{
+    Label       = "scene_02 segment/audio"
+    SegmentPath = (Join-Path $tmpRenderDir "seg_02.mp4")
+    AudioPath   = (Join-Path $OutputLiveDir "assets\audio_clips\s02.wav")
+  }
+)
+
+foreach ($check in $segmentChecks) {
+  if (-not (Test-Path -LiteralPath $check.SegmentPath -PathType Leaf)) {
+    throw "$($check.Label) no existe segmento renderizado: $($check.SegmentPath)"
+  }
+
+  if (-not (Test-Path -LiteralPath $check.AudioPath -PathType Leaf)) {
+    throw "$($check.Label) no existe audio: $($check.AudioPath)"
+  }
+
+  $segmentMs = Get-FFprobeDurationMsLocal -Path $check.SegmentPath -Label $check.Label
+  $audioMs   = Get-FFprobeDurationMsLocal -Path $check.AudioPath -Label $check.Label
+  $deltaMs   = [Math]::Abs($segmentMs - $audioMs)
+
+  if ($deltaMs -gt $segmentDurationToleranceMs) {
+    throw "$($check.Label) segment/audio mismatch: segment_ms=$segmentMs audio_ms=$audioMs delta_ms=$deltaMs tolerance_ms=$segmentDurationToleranceMs"
+  }
+}
+
+Write-Host ("OK: duración segmento/audio validada en TMP={0}" -f $tmpRenderDir) -ForegroundColor DarkGray
 
 $scene01ExpectedVideo = $videoPath
 $scene01UnexpectedImage = $imagePath

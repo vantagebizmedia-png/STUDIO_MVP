@@ -876,6 +876,18 @@ function Ensure-VisualCapabilityFields {
 
     $vk = Get-ResolvedVisualKindShared -CurrentVisualKind $currentVisualKind -ResolvedImage $resolvedImage -ResolvedVideo $resolvedVideo
 
+    $requestedMediaType = ""
+    if ($scene.PSObject.Properties.Name -contains "requested_media_type") {
+      try { $requestedMediaType = ([string]$scene.requested_media_type).Trim().ToLowerInvariant() } catch { $requestedMediaType = "" }
+    }
+    if ($requestedMediaType -notin @("image","video")) { $requestedMediaType = "" }
+
+    $visualRequestKind = ""
+    if ($scene.PSObject.Properties.Name -contains "visual_request_kind") {
+      try { $visualRequestKind = ([string]$scene.visual_request_kind).Trim().ToLowerInvariant() } catch { $visualRequestKind = "" }
+    }
+    if ($visualRequestKind -notin @("image","video")) { $visualRequestKind = "" }
+
     if ($vk -eq "video") {
       $scene.assets.video = [string]$effectiveVideo
       $scene.assets.image = ""
@@ -885,6 +897,19 @@ function Ensure-VisualCapabilityFields {
       $scene.assets.video = ""
     }
 
+    $isLegacyImageIntentDefault = `
+      ($requestedMediaType -eq "image") -and `
+      ($visualRequestKind -eq "image") -and `
+      ($vk -eq "image") -and `
+      [string]::IsNullOrWhiteSpace([string]$effectiveVideo)
+
+    if ($isLegacyImageIntentDefault) {
+      $requestedMediaType = ""
+      $visualRequestKind  = ""
+    }
+
+    $scene | Add-Member -Force -NotePropertyName requested_media_type -NotePropertyValue $requestedMediaType
+    $scene | Add-Member -Force -NotePropertyName visual_request_kind -NotePropertyValue $visualRequestKind
     $scene | Add-Member -Force -NotePropertyName visual_kind -NotePropertyValue $vk
     $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })
     $scene | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })

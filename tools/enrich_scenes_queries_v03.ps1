@@ -110,26 +110,22 @@ function Get-AssetPathString {
   return ([string]$currentPath).Trim()
 }
 
-function Get-SceneRequestedMediaType {
+function Get-SceneIntentMediaType {
   param([object]$Scene)
 
-  if (-not $Scene) { return "image" }
+  if (-not $Scene) { return "" }
 
   $requestedMediaType = ""
   if (Has-Prop $Scene "requested_media_type") {
     try { $requestedMediaType = ([string]$Scene.requested_media_type).Trim().ToLowerInvariant() } catch { $requestedMediaType = "" }
   }
-
-  if ($requestedMediaType -eq "video") { return "video" }
-  if ($requestedMediaType -eq "image") { return "image" }
+  if ($requestedMediaType -in @("image","video")) { return $requestedMediaType }
 
   $visualRequestKind = ""
   if (Has-Prop $Scene "visual_request_kind") {
     try { $visualRequestKind = ([string]$Scene.visual_request_kind).Trim().ToLowerInvariant() } catch { $visualRequestKind = "" }
   }
-
-  if ($visualRequestKind -eq "video") { return "video" }
-  if ($visualRequestKind -eq "image") { return "image" }
+  if ($visualRequestKind -in @("image","video")) { return $visualRequestKind }
 
   $visualCapability = ""
   if (Has-Prop $Scene "visual_capability") {
@@ -144,6 +140,14 @@ function Get-SceneRequestedMediaType {
   if ($visualCapability -eq "stock_video") { return "video" }
   if ($visualKind -eq "video") { return "video" }
 
+  return ""
+}
+
+function Get-SceneRequestedMediaType {
+  param([object]$Scene)
+
+  $intentMediaType = Get-SceneIntentMediaType -Scene $Scene
+  if ($intentMediaType -eq "video") { return "video" }
   return "image"
 }
 
@@ -193,33 +197,32 @@ function Get-SceneVisualMetaTarget {
 
   $requestedMediaType = ""
   try { $requestedMediaType = ([string]$Scene.requested_media_type).Trim().ToLowerInvariant() } catch { $requestedMediaType = "" }
-
-  if ([string]::IsNullOrWhiteSpace($requestedMediaType)) {
-    $legacyCapability = ""
-    if (Has-Prop $Scene "visual_capability") {
-      try { $legacyCapability = ([string]$Scene.visual_capability).Trim().ToLowerInvariant() } catch { $legacyCapability = "" }
-    }
-
-    $legacyKind = ""
-    if (Has-Prop $Scene "visual_kind") {
-      try { $legacyKind = ([string]$Scene.visual_kind).Trim().ToLowerInvariant() } catch { $legacyKind = "" }
-    }
-
-    if (($legacyCapability -eq "stock_video") -or ($legacyKind -eq "video")) {
-      $requestedMediaType = "video"
-    }
-    else {
-      $requestedMediaType = "image"
-    }
-
-    $Scene.requested_media_type = $requestedMediaType
-  }
+  if ($requestedMediaType -notin @("image","video")) { $requestedMediaType = "" }
 
   $visualRequestKind = ""
   try { $visualRequestKind = ([string]$Scene.visual_request_kind).Trim().ToLowerInvariant() } catch { $visualRequestKind = "" }
+  if ($visualRequestKind -notin @("image","video")) { $visualRequestKind = "" }
 
-  if ([string]::IsNullOrWhiteSpace($visualRequestKind)) {
-    $Scene.visual_request_kind = $requestedMediaType
+  $intentMediaType = Get-SceneIntentMediaType -Scene $Scene
+
+  if (-not [string]::IsNullOrWhiteSpace($intentMediaType)) {
+    if ([string]::IsNullOrWhiteSpace($requestedMediaType)) {
+      $Scene.requested_media_type = $intentMediaType
+    }
+    else {
+      $Scene.requested_media_type = $requestedMediaType
+    }
+
+    if ([string]::IsNullOrWhiteSpace($visualRequestKind)) {
+      $Scene.visual_request_kind = $intentMediaType
+    }
+    else {
+      $Scene.visual_request_kind = $visualRequestKind
+    }
+  }
+  else {
+    $Scene.requested_media_type = $requestedMediaType
+    $Scene.visual_request_kind  = $visualRequestKind
   }
 
   if (-not (Has-Prop $Scene.meta "visual_enrich")) {
@@ -884,11 +887,20 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   if ($queryCandidates.Count -gt 0) { $q = [string]$queryCandidates[0] }
 
   Ensure-Pso -parent $scene -name "assets"
+  $intentMediaType = Get-SceneIntentMediaType -Scene $scene
   $requestedMediaType = Get-SceneRequestedMediaType -Scene $scene
   $visualMeta = Get-SceneVisualMetaTarget -Scene $scene
+
+  $sceneVisualRequestKind = ""
+  if (Has-Prop $scene "visual_request_kind") {
+    try { $sceneVisualRequestKind = ([string]$scene.visual_request_kind).Trim().ToLowerInvariant() } catch { $sceneVisualRequestKind = "" }
+  }
+
   Set-Note -obj $visualMeta -name "query" -value $q
   Set-Note -obj $visualMeta -name "query_candidates" -value $queryCandidates
-  Set-Note -obj $visualMeta -name "requested_media_type" -value $requestedMediaType
+  Set-Note -obj $visualMeta -name "requested_media_type" -value $intentMediaType
+  Set-Note -obj $visualMeta -name "effective_requested_media_type" -value $requestedMediaType
+  Set-Note -obj $visualMeta -name "visual_request_kind" -value $sceneVisualRequestKind
 
   if (-not $DownloadPixabay) { continue }
 

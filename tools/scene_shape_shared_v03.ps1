@@ -39,7 +39,8 @@ function New-SceneScaffoldShared {
     text                 = ""
     script_text          = ""
     image_query          = ""
-    requested_media_type = "image"
+    requested_media_type = ""
+    visual_request_kind  = ""
     visual_kind          = "image"
     visual_source_kind   = "fallback_image"
     visual_capability    = "stock_image"
@@ -72,28 +73,48 @@ function Ensure-SceneNarrativeSlotsShared {
     $Scene | Add-Member -Force -NotePropertyName requested_media_type -NotePropertyValue ""
   }
 
+  if (-not ($Scene.PSObject.Properties.Name -contains "visual_request_kind")) {
+    $Scene | Add-Member -Force -NotePropertyName visual_request_kind -NotePropertyValue ""
+  }
+
   $requestedMediaType = ""
   try { $requestedMediaType = ([string]$Scene.requested_media_type).Trim().ToLowerInvariant() } catch { $requestedMediaType = "" }
+  if ($requestedMediaType -notin @("image","video")) { $requestedMediaType = "" }
 
-  if ([string]::IsNullOrWhiteSpace($requestedMediaType)) {
-    $legacyCapability = ""
-    if ($Scene.PSObject.Properties.Name -contains "visual_capability") {
-      try { $legacyCapability = ([string]$Scene.visual_capability).Trim().ToLowerInvariant() } catch { $legacyCapability = "" }
-    }
+  $visualRequestKind = ""
+  try { $visualRequestKind = ([string]$Scene.visual_request_kind).Trim().ToLowerInvariant() } catch { $visualRequestKind = "" }
+  if ($visualRequestKind -notin @("image","video")) { $visualRequestKind = "" }
 
-    $legacyKind = ""
-    if ($Scene.PSObject.Properties.Name -contains "visual_kind") {
-      try { $legacyKind = ([string]$Scene.visual_kind).Trim().ToLowerInvariant() } catch { $legacyKind = "" }
-    }
+  if (-not [string]::IsNullOrWhiteSpace($requestedMediaType) -and [string]::IsNullOrWhiteSpace($visualRequestKind)) {
+    $Scene.visual_request_kind = $requestedMediaType
+    return
+  }
 
-    if (($legacyCapability -eq "stock_video") -or ($legacyKind -eq "video")) {
-      $requestedMediaType = "video"
-    }
-    else {
-      $requestedMediaType = "image"
-    }
+  if (-not [string]::IsNullOrWhiteSpace($visualRequestKind) -and [string]::IsNullOrWhiteSpace($requestedMediaType)) {
+    $Scene.requested_media_type = $visualRequestKind
+    return
+  }
 
-    $Scene.requested_media_type = $requestedMediaType
+  if (
+    (-not [string]::IsNullOrWhiteSpace($requestedMediaType)) -and
+    (-not [string]::IsNullOrWhiteSpace($visualRequestKind))
+  ) {
+    return
+  }
+
+  $legacyCapability = ""
+  if ($Scene.PSObject.Properties.Name -contains "visual_capability") {
+    try { $legacyCapability = ([string]$Scene.visual_capability).Trim().ToLowerInvariant() } catch { $legacyCapability = "" }
+  }
+
+  $legacyKind = ""
+  if ($Scene.PSObject.Properties.Name -contains "visual_kind") {
+    try { $legacyKind = ([string]$Scene.visual_kind).Trim().ToLowerInvariant() } catch { $legacyKind = "" }
+  }
+
+  if (($legacyCapability -eq "stock_video") -or ($legacyKind -eq "video")) {
+    $Scene.requested_media_type = "video"
+    $Scene.visual_request_kind  = "video"
   }
 }
 

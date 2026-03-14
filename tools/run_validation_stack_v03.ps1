@@ -5,6 +5,7 @@
   [switch]$Quick,
   [switch]$SkipVideoCase,
   [switch]$SkipMixedVisuals,
+  [switch]$SkipIntentImageFallback,
   [switch]$SkipNegativeSuite,
   [switch]$ShowGitStatus
 )
@@ -30,13 +31,15 @@ if ([string]::IsNullOrWhiteSpace($LiveDir)) {
   $LiveDir = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
 }
 
-$effectiveSkipVideoCase    = [bool]$SkipVideoCase
-$effectiveSkipMixedVisuals = [bool]$SkipMixedVisuals
-$effectiveSkipNegativeSuite = [bool]$SkipNegativeSuite
+$effectiveSkipVideoCase           = [bool]$SkipVideoCase
+$effectiveSkipMixedVisuals        = [bool]$SkipMixedVisuals
+$effectiveSkipIntentImageFallback = [bool]$SkipIntentImageFallback
+$effectiveSkipNegativeSuite       = [bool]$SkipNegativeSuite
 
 if ($Quick) {
   $effectiveSkipVideoCase = $true
   $effectiveSkipMixedVisuals = $true
+  $effectiveSkipIntentImageFallback = $true
   $effectiveSkipNegativeSuite = $true
 }
 
@@ -49,6 +52,7 @@ $statusValidate = "PENDING"
 $statusMainSmoke = "PENDING"
 $statusVideoCase = "SKIPPED"
 $statusMixedVisuals = "SKIPPED"
+$statusIntentImageFallback = "SKIPPED"
 $statusNegative = "SKIPPED"
 $statusGit = "SKIPPED"
 
@@ -60,6 +64,10 @@ if (-not $effectiveSkipMixedVisuals) {
   $statusMixedVisuals = "PENDING"
 }
 
+if (-not $effectiveSkipIntentImageFallback) {
+  $statusIntentImageFallback = "PENDING"
+}
+
 if (-not $effectiveSkipNegativeSuite) {
   $statusNegative = "PENDING"
 }
@@ -69,10 +77,11 @@ Write-Host ("Mode             : {0}" -f $mode) -ForegroundColor DarkGray
 Write-Host ("RepoRoot         : {0}" -f $RepoRoot) -ForegroundColor DarkGray
 Write-Host ("WorkspaceRoot    : {0}" -f $WorkspaceRoot) -ForegroundColor DarkGray
 Write-Host ("LiveDir          : {0}" -f $LiveDir) -ForegroundColor DarkGray
-Write-Host ("SkipVideoCase    : {0}" -f $effectiveSkipVideoCase) -ForegroundColor DarkGray
-Write-Host ("SkipMixedVisuals : {0}" -f $effectiveSkipMixedVisuals) -ForegroundColor DarkGray
-Write-Host ("SkipNegative     : {0}" -f $effectiveSkipNegativeSuite) -ForegroundColor DarkGray
-Write-Host ("ShowGitStatus    : {0}" -f [bool]$ShowGitStatus) -ForegroundColor DarkGray
+Write-Host ("SkipVideoCase          : {0}" -f $effectiveSkipVideoCase) -ForegroundColor DarkGray
+Write-Host ("SkipMixedVisuals       : {0}" -f $effectiveSkipMixedVisuals) -ForegroundColor DarkGray
+Write-Host ("SkipIntentImageFallback: {0}" -f $effectiveSkipIntentImageFallback) -ForegroundColor DarkGray
+Write-Host ("SkipNegative           : {0}" -f $effectiveSkipNegativeSuite) -ForegroundColor DarkGray
+Write-Host ("ShowGitStatus          : {0}" -f [bool]$ShowGitStatus) -ForegroundColor DarkGray
 
 $invokeArgs = @{
   RepoRoot      = $RepoRoot
@@ -86,6 +95,10 @@ if ($effectiveSkipVideoCase) {
 
 if ($effectiveSkipMixedVisuals) {
   $invokeArgs.SkipMixedVisuals = $true
+}
+
+if ($effectiveSkipIntentImageFallback) {
+  $invokeArgs.SkipIntentImageFallback = $true
 }
 
 if ($effectiveSkipNegativeSuite) {
@@ -115,6 +128,13 @@ if ($effectiveSkipMixedVisuals) {
 }
 else {
   $statusMixedVisuals = "PASS"
+}
+
+if ($effectiveSkipIntentImageFallback) {
+  $statusIntentImageFallback = "SKIPPED"
+}
+else {
+  $statusIntentImageFallback = "PASS"
 }
 
 if ($effectiveSkipNegativeSuite) {
@@ -171,6 +191,7 @@ Write-Host ("VALIDATE_SUITE={0}" -f $statusValidate) -ForegroundColor DarkGray
 Write-Host ("MAIN_SMOKE={0}" -f $statusMainSmoke) -ForegroundColor DarkGray
 Write-Host ("VIDEO_CASE={0}" -f $statusVideoCase) -ForegroundColor DarkGray
 Write-Host ("MIXED_VISUALS={0}" -f $statusMixedVisuals) -ForegroundColor DarkGray
+Write-Host ("INTENT_IMAGE_FALLBACK={0}" -f $statusIntentImageFallback) -ForegroundColor DarkGray
 Write-Host ("NEGATIVE_SUITE={0}" -f $statusNegative) -ForegroundColor DarkGray
 Write-Host ("GIT_STATUS={0}" -f $statusGit) -ForegroundColor DarkGray
 

@@ -4,6 +4,7 @@
   [Parameter(Mandatory=$false)][string]$LiveDir = "",
   [switch]$SkipVideoCase,
   [switch]$SkipMixedVisuals,
+  [switch]$SkipIntentImageFallback,
   [switch]$SkipNegativeSuite
 )
 
@@ -19,13 +20,14 @@ if (-not (Test-Path -LiteralPath $WorkspaceRoot -PathType Container)) {
   throw "No existe WorkspaceRoot: $WorkspaceRoot"
 }
 
-$applyTool         = Join-Path $RepoRoot "tools\apply_scene_builder_v03.ps1"
-$smokeTool         = Join-Path $RepoRoot "tools\smoke_live_manifest_v03.ps1"
-$videoCaseTool     = Join-Path $RepoRoot "tools\smoke_live_video_case_v03.ps1"
-$mixedVisualsTool  = Join-Path $RepoRoot "tools\smoke_live_mixed_visuals_v03.ps1"
-$negativeSuiteTool = Join-Path $RepoRoot "tools\negative_live_suite_v03.ps1"
+$applyTool              = Join-Path $RepoRoot "tools\apply_scene_builder_v03.ps1"
+$smokeTool              = Join-Path $RepoRoot "tools\smoke_live_manifest_v03.ps1"
+$videoCaseTool          = Join-Path $RepoRoot "tools\smoke_live_video_case_v03.ps1"
+$mixedVisualsTool       = Join-Path $RepoRoot "tools\smoke_live_mixed_visuals_v03.ps1"
+$intentImageFallbackTool = Join-Path $RepoRoot "tools\smoke_live_intent_image_fallback_v03.ps1"
+$negativeSuiteTool      = Join-Path $RepoRoot "tools\negative_live_suite_v03.ps1"
 
-foreach ($p in @($applyTool, $smokeTool, $videoCaseTool, $mixedVisualsTool, $negativeSuiteTool)) {
+foreach ($p in @($applyTool, $smokeTool, $videoCaseTool, $mixedVisualsTool, $intentImageFallbackTool, $negativeSuiteTool)) {
   if (-not (Test-Path -LiteralPath $p -PathType Leaf)) {
     throw "No existe tool requerido: $p"
   }
@@ -35,16 +37,18 @@ if ([string]::IsNullOrWhiteSpace($LiveDir)) {
   $LiveDir = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
 }
 
-$videoCaseLiveDir    = Join-Path $WorkspaceRoot "runs\smoke_live_video_case"
-$mixedVisualsLiveDir = Join-Path $WorkspaceRoot "runs\smoke_live_mixed_visuals"
+$videoCaseLiveDir          = Join-Path $WorkspaceRoot "runs\smoke_live_video_case"
+$mixedVisualsLiveDir       = Join-Path $WorkspaceRoot "runs\smoke_live_mixed_visuals"
+$intentImageFallbackLiveDir = Join-Path $WorkspaceRoot "runs\smoke_live_intent_image_fallback"
 
 Write-Host "== VALIDATE SUITE V03 ==" -ForegroundColor Magenta
 Write-Host ("RepoRoot         : {0}" -f $RepoRoot) -ForegroundColor DarkGray
 Write-Host ("WorkspaceRoot    : {0}" -f $WorkspaceRoot) -ForegroundColor DarkGray
 Write-Host ("LiveDir          : {0}" -f $LiveDir) -ForegroundColor DarkGray
-Write-Host ("SkipVideoCase    : {0}" -f [bool]$SkipVideoCase) -ForegroundColor DarkGray
-Write-Host ("SkipMixedVisuals : {0}" -f [bool]$SkipMixedVisuals) -ForegroundColor DarkGray
-Write-Host ("SkipNegative     : {0}" -f [bool]$SkipNegativeSuite) -ForegroundColor DarkGray
+Write-Host ("SkipVideoCase          : {0}" -f [bool]$SkipVideoCase) -ForegroundColor DarkGray
+Write-Host ("SkipMixedVisuals       : {0}" -f [bool]$SkipMixedVisuals) -ForegroundColor DarkGray
+Write-Host ("SkipIntentImageFallback: {0}" -f [bool]$SkipIntentImageFallback) -ForegroundColor DarkGray
+Write-Host ("SkipNegative           : {0}" -f [bool]$SkipNegativeSuite) -ForegroundColor DarkGray
 
 Write-Host ""
 Write-Host "== Paso 1: apply_scene_builder_v03 ==" -ForegroundColor Cyan
@@ -98,9 +102,27 @@ else {
   Write-Host "== Paso 4: mixed visuals omitido por flag ==" -ForegroundColor Yellow
 }
 
+if (-not $SkipIntentImageFallback) {
+  Write-Host ""
+  Write-Host "== Paso 5: smoke_live_intent_image_fallback_v03 ==" -ForegroundColor Cyan
+  & $intentImageFallbackTool `
+    -RepoRoot $RepoRoot `
+    -WorkspaceRoot $WorkspaceRoot `
+    -SourceLiveDir $LiveDir `
+    -OutputLiveDir $intentImageFallbackLiveDir
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "smoke_live_intent_image_fallback_v03.ps1 devolvió exit code $LASTEXITCODE"
+  }
+}
+else {
+  Write-Host ""
+  Write-Host "== Paso 5: intent->image fallback omitido por flag ==" -ForegroundColor Yellow
+}
+
 if (-not $SkipNegativeSuite) {
   Write-Host ""
-  Write-Host "== Paso 5: negative_live_suite_v03 ==" -ForegroundColor Cyan
+  Write-Host "== Paso 6: negative_live_suite_v03 ==" -ForegroundColor Cyan
   & $negativeSuiteTool `
     -RepoRoot $RepoRoot `
     -WorkspaceRoot $WorkspaceRoot `
@@ -112,7 +134,7 @@ if (-not $SkipNegativeSuite) {
 }
 else {
   Write-Host ""
-  Write-Host "== Paso 5: negative suite omitida por flag ==" -ForegroundColor Yellow
+  Write-Host "== Paso 6: negative suite omitida por flag ==" -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -125,6 +147,10 @@ if (-not $SkipVideoCase) {
 
 if (-not $SkipMixedVisuals) {
   Write-Host ("LIVE_MIXED_VISUALS={0}" -f $mixedVisualsLiveDir) -ForegroundColor DarkGray
+}
+
+if (-not $SkipIntentImageFallback) {
+  Write-Host ("LIVE_INTENT_IMAGE_FALLBACK={0}" -f $intentImageFallbackLiveDir) -ForegroundColor DarkGray
 }
 
 if (-not $SkipNegativeSuite) {

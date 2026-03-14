@@ -30,6 +30,37 @@ function Assert-SceneVisualState {
     $videoValue = [string]$SceneObj.assets.video
   }
 
+  if (-not $IsPack) {
+    $requestedMediaType = ""
+    $visualRequestKind = ""
+
+    try {
+      if ($SceneObj.PSObject.Properties.Name -contains "requested_media_type") {
+        $requestedMediaType = ([string]$SceneObj.requested_media_type).Trim().ToLowerInvariant()
+      }
+    }
+    catch {
+      $requestedMediaType = ""
+    }
+
+    try {
+      if ($SceneObj.PSObject.Properties.Name -contains "visual_request_kind") {
+        $visualRequestKind = ([string]$SceneObj.visual_request_kind).Trim().ToLowerInvariant()
+      }
+    }
+    catch {
+      $visualRequestKind = ""
+    }
+
+    if ($requestedMediaType -ne $ExpectedMediaType) {
+      throw "$Label requested_media_type esperado='$ExpectedMediaType' actual='$requestedMediaType'"
+    }
+
+    if ($visualRequestKind -ne $ExpectedMediaType) {
+      throw "$Label visual_request_kind esperado='$ExpectedMediaType' actual='$visualRequestKind'"
+    }
+  }
+
   if ($kind -ne $ExpectedMediaType) {
     throw "$Label visual_kind esperado='$ExpectedMediaType' actual='$kind'"
   }
@@ -173,6 +204,9 @@ foreach ($spec in $sceneSpecs) {
   if (-not $scene.assets) {
     throw "$sceneId no tiene assets"
   }
+
+  $scene.requested_media_type = [string]$spec.ExpectedMedia
+  $scene.visual_request_kind = [string]$spec.ExpectedMedia
 
   if ($spec.ExpectedMedia -eq "video") {
     $scene.assets.image = ""

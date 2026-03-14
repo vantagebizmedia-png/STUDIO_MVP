@@ -107,6 +107,8 @@ if (-not $scene1.assets) {
 
 $scene1.assets.image = ""
 $scene1.assets.video = "artifacts/scenes/scene_01/video.mp4"
+$scene1.requested_media_type = "video"
+$scene1.visual_request_kind = "video"
 $scene1.visual_kind = "video"
 $scene1.visual_source_kind = "stock_video"
 $scene1.visual_capability = "stock_video"
@@ -154,6 +156,12 @@ $p1 = @($packCheck.scenes)[0]
 
 if ([string]$m1.visual_kind -ne "video") {
   throw "manifest_v03 scene_001 no quedó en visual_kind=video"
+}
+if ([string]$m1.requested_media_type -ne "video") {
+  throw "manifest_v03 scene_001 no quedó en requested_media_type=video"
+}
+if ([string]$m1.visual_request_kind -ne "video") {
+  throw "manifest_v03 scene_001 no quedó en visual_request_kind=video"
 }
 if (-not [string]::IsNullOrWhiteSpace([string]$m1.assets.image)) {
   throw "manifest_v03 scene_001 dejó image no vacío"

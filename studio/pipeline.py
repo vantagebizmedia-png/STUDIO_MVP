@@ -304,22 +304,119 @@ class StudioPipeline:
         outp = os.path.join(self.work_dir, "subtitles.srt")
         os.makedirs(os.path.dirname(outp) or ".", exist_ok=True)
 
-        ordered = sorted(
-            [dict(s or {}) for s in (scenes or []) if int((s or {}).get("index", 0) or 0) >= 1],
-            key=lambda x: int(x.get("index", 0) or 0),
-        )
-        scene_duration_ms = 2500
+        def _safe_int(value, default: int = 0) -> int:
+            try:
+                return int(value)
+            except Exception:
+                return default
+
+        def _scene_index(scene: dict, pos: int) -> int:
+            idx = _safe_int((scene or {}).get("index", 0), 0)
+            return idx if idx >= 1 else (pos + 1)
+
+        def _pick_scene_text(scene: dict, idx: int) -> str:
+            for key in ("script_text", "narration", "onscreen", "audio_text", "stock_query", "text"):
+                value = str((scene or {}).get(key, "") or "").strip()
+                if value:
+                    return _sanitize_subtitle_text(value, idx)
+            return _sanitize_subtitle_text("", idx)
+
+        def _resolve_audio_path(scene: dict) -> str:
+            artifacts = (scene or {}).get("artifacts")
+            assets = (scene or {}).get("assets")
+
+            candidates = []
+
+            if isinstance(artifacts, dict):
+                candidates.append(str(artifacts.get("audio", "") or "").strip())
+
+            if isinstance(assets, dict):
+                candidates.append(str(assets.get("audio_clip", "") or "").strip())
+
+            candidates.append(str((scene or {}).get("audio", "") or "").strip())
+
+            for raw in candidates:
+                if not raw:
+                    continue
+                p = raw
+                if not os.path.isabs(p):
+                    p = os.path.join(self.work_dir, p)
+                p = os.path.abspath(p)
+                if os.path.exists(p):
+                    return p
+
+            return ""
+
+        def _audio_duration_ms(scene: dict) -> int:
+            audio_path = _resolve_audio_path(scene)
+            if not audio_path:
+                return 0
+            try:
+                with wave.open(audio_path, "rb") as wf:
+                    return int((wf.getnframes() / float(wf.getframerate())) * 1000)
+            except Exception:
+                return 0
+
+        def _fallback_duration_ms(scene: dict, idx: int) -> int:
+            explicit_duration = _safe_int((scene or {}).get("duration_ms", 0), 0)
+            if explicit_duration > 0:
+                return explicit_duration
+
+            audio_ms = _audio_duration_ms(scene)
+            if audio_ms > 0:
+                return audio_ms
+
+            raw_text = ""
+            for key in ("script_text", "narration", "onscreen", "audio_text", "stock_query", "text"):
+                value = str((scene or {}).get(key, "") or "").strip()
+                if value:
+                    raw_text = value
+                    break
+
+            word_count = len([tok for tok in raw_text.split() if tok.strip()])
+            if word_count <= 0:
+                return 1500
+
+            return max(1200, word_count * 280)
+
+        normalized: list[dict] = []
+        for pos, raw_scene in enumerate(scenes or []):
+            scene = dict(raw_scene or {})
+            scene["__sort_index"] = _scene_index(scene, pos)
+            normalized.append(scene)
+
+        ordered = sorted(normalized, key=lambda x: int(x.get("__sort_index", 0) or 0))
+
         blocks: list[str] = []
+        cursor_ms = 0
+
         for pos, scene in enumerate(ordered):
-            idx = int(scene.get("index", 0) or 0) or (pos + 1)
-            start_ms = pos * scene_duration_ms
-            end_ms = (pos + 1) * scene_duration_ms
-            text = _sanitize_subtitle_text(str(scene.get("narration", "") or ""), idx)
+            idx = _safe_int(scene.get("__sort_index", pos + 1), pos + 1)
+
+            start_ms = _safe_int(scene.get("start_ms", -1), -1)
+            end_ms = _safe_int(scene.get("end_ms", -1), -1)
+            duration_ms = _safe_int(scene.get("duration_ms", 0), 0)
+
+            if start_ms >= 0 and end_ms > start_ms:
+                pass
+            else:
+                if duration_ms <= 0:
+                    duration_ms = _audio_duration_ms(scene)
+                if duration_ms <= 0:
+                    duration_ms = _fallback_duration_ms(scene, idx)
+
+                start_ms = max(0, cursor_ms)
+                end_ms = start_ms + max(1, duration_ms)
+
+            cursor_ms = max(cursor_ms, end_ms)
+
+            text = _pick_scene_text(scene, idx)
             blocks.append(
                 f"{pos + 1}\n"
                 f"{_format_srt_time(start_ms)} --> {_format_srt_time(end_ms)}\n"
                 f"{text}\n"
             )
+
         payload = "\n".join(blocks).rstrip() + "\n"
         with open(outp, "w", encoding="utf-8") as f:
             f.write(payload)

@@ -259,25 +259,105 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
     if not rows:
         return []
 
-    n = len(rows)
-    if total_ms <= 0:
-        total_ms = n * 2000
+    def _scene_text_parts(sc: Dict[str, Any], ordinal: int) -> tuple[str, str, str, str]:
+        narration = _norm_text(sc.get("narration"))
+        onscreen = _norm_text(sc.get("onscreen"))
+        stock_query = _norm_text(sc.get("stock_query"))
+        scene_text = narration or onscreen or stock_query or f"Escena {ordinal:02d}"
+        return narration, onscreen, stock_query, scene_text
 
-    base = total_ms // n
-    rem = total_ms - (base * n)
+    def _word_weight(text: str) -> int:
+        words = [tok for tok in str(text or "").split() if tok.strip()]
+        return max(1, len(words))
+
+    def _allocate_weighted_durations(total_ms_value: int, weights: List[int]) -> List[int]:
+        if not weights:
+            return []
+
+        n_local = len(weights)
+        total_ms_local = int(total_ms_value or 0)
+        if total_ms_local <= 0:
+            total_ms_local = n_local * 2000
+
+        if total_ms_local < n_local:
+            total_ms_local = n_local
+
+        base = [1 for _ in weights]
+        remaining = total_ms_local - n_local
+        weight_sum = sum(max(1, int(w or 0)) for w in weights)
+
+        extras = []
+        used = 0
+        for w in weights:
+            extra = (remaining * max(1, int(w or 0))) // weight_sum
+            extras.append(extra)
+            used += extra
+
+        leftover = remaining - used
+        order = sorted(
+            range(n_local),
+            key=lambda idx: (-max(1, int(weights[idx] or 0)), idx),
+        )
+
+        for idx in order:
+            if leftover <= 0:
+                break
+            extras[idx] += 1
+            leftover -= 1
+
+        return [base[i] + extras[i] for i in range(n_local)]
+
+    explicit_pairs: List[tuple[int, int]] = []
+    explicit_ok = True
+    last_end = -1
+
+    for sc in rows:
+        st = _safe_int(sc.get("start_ms"), -1)
+        en = _safe_int(sc.get("end_ms"), -1)
+        if st < 0 or en <= st or st < last_end:
+            explicit_ok = False
+            break
+        explicit_pairs.append((int(st), int(en)))
+        last_end = int(en)
+
+    duration_values: List[int] = []
+    durations_ok = True
+    if not explicit_ok:
+        for sc in rows:
+            dur = _safe_int(sc.get("duration_ms"), 0)
+            if dur <= 0:
+                durations_ok = False
+                break
+            duration_values.append(int(dur))
+
+        if durations_ok and duration_values:
+            if total_ms > 0:
+                duration_values = _allocate_weighted_durations(
+                    total_ms,
+                    duration_values,
+                )
+        else:
+            weights: List[int] = []
+            for i, sc in enumerate(rows, start=1):
+                _, _, _, scene_text = _scene_text_parts(sc, i)
+                weights.append(_word_weight(scene_text))
+            duration_values = _allocate_weighted_durations(total_ms, weights)
 
     out: List[Dict[str, Any]] = []
     cur = 0
 
     for i, sc in enumerate(rows):
-        dur = base + (1 if i < rem else 0)
-        start_ms = cur
-        end_ms = cur + dur
-        cur = end_ms
+        ordinal = i + 1
 
-        narration = _norm_text(sc.get("narration"))
-        onscreen = _norm_text(sc.get("onscreen"))
-        stock_query = _norm_text(sc.get("stock_query"))
+        if explicit_ok:
+            start_ms, end_ms = explicit_pairs[i]
+        else:
+            dur = int(duration_values[i])
+            start_ms = int(cur)
+            end_ms = int(cur + dur)
+            cur = end_ms
+
+        narration, onscreen, stock_query, scene_text = _scene_text_parts(sc, ordinal)
 
         arts = sc.get("artifacts") or {}
         if not isinstance(arts, dict):
@@ -287,7 +367,6 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
         image_rel = _norm_text(arts.get("image"))
         video_rel = _norm_text(arts.get("video"))
 
-        scene_text = narration or onscreen or stock_query or f"Escena {i+1:02d}"
         image_query = _pick_visual_query(stock_query, narration, onscreen)
 
         visual_kind = "video" if (video_rel and not image_rel) else "image"
@@ -296,7 +375,7 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
 
         out.append(
             {
-                "id": f"s{i+1:02d}",
+                "id": f"s{ordinal:02d}",
                 "index": i,
                 "start_ms": int(start_ms),
                 "end_ms": int(end_ms),
@@ -314,9 +393,10 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
             }
         )
 
-    if out:
-        out[-1]["end_ms"] = int(total_ms)
-        out[-1]["duration_ms"] = int(max(0, total_ms - _safe_int(out[-1]["start_ms"], 0)))
+    if out and not explicit_ok:
+        computed_total = int(sum(int(x["duration_ms"]) for x in out))
+        if computed_total > 0:
+            out[-1]["end_ms"] = int(out[-1]["start_ms"] + out[-1]["duration_ms"])
 
     return out
 

@@ -1,4 +1,4 @@
-﻿param(
+param(
   [Parameter(Mandatory=$false)][string]$RepoRoot = "C:\Users\vanta\Documents\STUDIO_MVP",
   [Parameter(Mandatory=$false)][string]$WorkspaceRoot = "C:\Users\vanta\Documents\STUDIO_WORKSPACE",
   [Parameter(Mandatory=$false)][string]$LiveDir = "",
@@ -53,6 +53,7 @@ if ($Quick) {
 
 $statusValidate = "PENDING"
 $statusMainSmoke = "PENDING"
+$statusSubtitlesSmoke = "PENDING"
 $statusVideoCase = "SKIPPED"
 $statusMixedVisuals = "SKIPPED"
 $statusIntentImageFallback = "SKIPPED"
@@ -128,6 +129,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $statusValidate = "PASS"
 $statusMainSmoke = "PASS"
+$statusSubtitlesSmoke = "PASS"
 
 if ($effectiveSkipVideoCase) {
   $statusVideoCase = "SKIPPED"
@@ -209,6 +211,7 @@ Write-Host ""
 Write-Host "== SUMMARY ==" -ForegroundColor Cyan
 Write-Host ("VALIDATE_SUITE={0}" -f $statusValidate) -ForegroundColor DarkGray
 Write-Host ("MAIN_SMOKE={0}" -f $statusMainSmoke) -ForegroundColor DarkGray
+Write-Host ("SUBTITLES_SMOKE={0}" -f $statusSubtitlesSmoke) -ForegroundColor DarkGray
 Write-Host ("VIDEO_CASE={0}" -f $statusVideoCase) -ForegroundColor DarkGray
 Write-Host ("MIXED_VISUALS={0}" -f $statusMixedVisuals) -ForegroundColor DarkGray
 Write-Host ("INTENT_IMAGE_FALLBACK={0}" -f $statusIntentImageFallback) -ForegroundColor DarkGray

@@ -46,32 +46,28 @@ if (!(Test-Path -LiteralPath $video)) {
 
 Write-Host "OK: video.mp4 generado" -ForegroundColor Green
 
-# 2) Resolver subtítulos canónicos -> captions_v03.srt
+# 2) Regenerar SIEMPRE subtítulos canónicos desde el estado actual del pack
 if (Test-Path -LiteralPath $captionsV03) {
-  Write-Host "OK: captions_v03.srt ya existe (no regenero)." -ForegroundColor Green
+  Remove-Item -LiteralPath $captionsV03 -Force
 }
-elseif (Test-Path -LiteralPath $legacySrt) {
-  Copy-Item -LiteralPath $legacySrt -Destination $captionsV03 -Force
-  Write-Host "OK: subtitles.srt -> captions_v03.srt" -ForegroundColor Green
-}
-else {
-  Write-Host "INFO: no existe captions_v03.srt/subtitles.srt, generando captions_v03.srt..." -ForegroundColor Yellow
-  python -u tools\make_subtitles_from_pack_v03.py --pack $pack --output $captionsV03 --field $SubsField 2>&1 |
-    Tee-Object $logSubs
-}
+
+Write-Host "INFO: regenerando captions_v03.srt canónico desde pack/scenes..." -ForegroundColor Yellow
+python -u tools\make_subtitles_from_pack_v03.py --pack $pack --output $captionsV03 --field $SubsField 2>&1 |
+  Tee-Object $logSubs
 
 if (!(Test-Path -LiteralPath $captionsV03)) {
   throw "No se generó captions_v03.srt en: $pack"
 }
 
-# 3) Compatibilidad legacy: mantener subtitles.srt sincronizado
-if (!(Test-Path -LiteralPath $legacySrt)) {
-  Copy-Item -LiteralPath $captionsV03 -Destination $legacySrt -Force
-  Write-Host "OK: captions_v03.srt -> subtitles.srt (compat legacy)" -ForegroundColor Green
-} else {
-  Copy-Item -LiteralPath $captionsV03 -Destination $legacySrt -Force
-  Write-Host "OK: subtitles.srt resincronizado desde captions_v03.srt" -ForegroundColor Green
+if ((Get-Item -LiteralPath $captionsV03).Length -le 10) {
+  throw "captions_v03.srt quedó vacío o demasiado pequeño: $captionsV03"
 }
+
+Write-Host "OK: captions_v03.srt regenerado" -ForegroundColor Green
+
+# 3) Compatibilidad legacy: mantener subtitles.srt sincronizado SIEMPRE
+Copy-Item -LiteralPath $captionsV03 -Destination $legacySrt -Force
+Write-Host "OK: subtitles.srt resincronizado desde captions_v03.srt" -ForegroundColor Green
 
 # 4) Limpiar artefacto legacy con burn-in para evitar doble texto
 if (Test-Path -LiteralPath $legacyVSub) {

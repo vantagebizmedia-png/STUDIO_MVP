@@ -298,6 +298,32 @@ for ($i = 0; $i -lt $scCount; $i++) {
     Fail "$sceneLabel visual_kind inválido en manifest: '$visualKind'"
   }
 
+  $requestedMediaType = ""
+  if ($s.PSObject.Properties.Name -contains "requested_media_type") {
+    $requestedMediaType = (Get-StringOrEmpty -Value $s.requested_media_type).ToLowerInvariant()
+  }
+
+  if (($requestedMediaType -ne "") -and ($requestedMediaType -ne "image") -and ($requestedMediaType -ne "video")) {
+    Fail "$sceneLabel requested_media_type inválido en manifest: '$requestedMediaType'"
+  }
+
+  $visualRequestKind = ""
+  if ($s.PSObject.Properties.Name -contains "visual_request_kind") {
+    $visualRequestKind = (Get-StringOrEmpty -Value $s.visual_request_kind).ToLowerInvariant()
+  }
+
+  if (($visualRequestKind -ne "") -and ($visualRequestKind -ne "image") -and ($visualRequestKind -ne "video")) {
+    Fail "$sceneLabel visual_request_kind inválido en manifest: '$visualRequestKind'"
+  }
+
+  if ([string]::IsNullOrWhiteSpace($requestedMediaType) -xor [string]::IsNullOrWhiteSpace($visualRequestKind)) {
+    Fail "$sceneLabel intent fields desalineados: requested_media_type='$requestedMediaType' visual_request_kind='$visualRequestKind'"
+  }
+
+  if (($requestedMediaType -ne "") -and ($visualRequestKind -ne "") -and ($requestedMediaType -ne $visualRequestKind)) {
+    Fail "$sceneLabel intent fields conflictivos: requested_media_type='$requestedMediaType' visual_request_kind='$visualRequestKind'"
+  }
+
   $imgPath = Get-AssetPathValue -AssetsObj $s.assets -Key "image"
   $vidPath = Get-AssetPathValue -AssetsObj $s.assets -Key "video"
 

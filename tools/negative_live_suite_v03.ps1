@@ -157,6 +157,7 @@ function Invoke-SmokeExpectFailure {
 $caseA = Join-Path $WorkspaceRoot "runs\smoke_live_neg_video_missing"
 $caseB = Join-Path $WorkspaceRoot "runs\smoke_live_neg_image_with_video_leak"
 $caseC = Join-Path $WorkspaceRoot "runs\smoke_live_neg_pack_audio_mismatch"
+$caseD = Join-Path $WorkspaceRoot "runs\smoke_live_neg_intent_conflict"
 
 Write-Host "== NEGATIVE LIVE SUITE V03 ==" -ForegroundColor Magenta
 Write-Host ("RepoRoot      : {0}" -f $RepoRoot) -ForegroundColor DarkGray
@@ -272,7 +273,46 @@ Invoke-SmokeExpectFailure `
   -ExpectedSubstring "scene_01 pack audio mismatch:"
 
 Write-Host ""
+Write-Host "== NEG-D: requested_media_type y visual_request_kind conflictivos ==" -ForegroundColor Cyan
+Reset-LiveClone -Source $SourceLiveDir -Destination $caseD
+
+$caseDManifestPath = Join-Path $caseD "manifest_v03.json"
+$caseDManifest = Read-JsonFile -Path $caseDManifestPath
+
+if (-not $caseDManifest.scenes_v03 -or @($caseDManifest.scenes_v03).Count -lt 1) {
+  throw "NEG-D manifest no contiene scenes_v03 válidas"
+}
+
+$caseDScene1Manifest = @($caseDManifest.scenes_v03)[0]
+
+if (-not $caseDScene1Manifest.assets) {
+  throw "NEG-D scene_001 manifest no tiene assets"
+}
+
+$caseDImageRel = [string]$caseDScene1Manifest.assets.image
+if ([string]::IsNullOrWhiteSpace($caseDImageRel)) {
+  throw "NEG-D scene_001 no tiene image base válido"
+}
+
+$caseDScene1Manifest.requested_media_type = "video"
+$caseDScene1Manifest.visual_request_kind = "image"
+$caseDScene1Manifest.visual_kind = "image"
+$caseDScene1Manifest.visual_source_kind = "stock_image"
+$caseDScene1Manifest.visual_capability = "stock_image"
+$caseDScene1Manifest.assets.image = $caseDImageRel
+$caseDScene1Manifest.assets.video = ""
+
+Write-JsonUtf8NoBom -Path $caseDManifestPath -Object $caseDManifest
+
+Invoke-SmokeExpectFailure `
+  -SmokeToolPath $smokeTool `
+  -LiveDir $caseD `
+  -CaseName "neg_d_intent_conflict" `
+  -ExpectedSubstring "scene_01 intent fields conflictivos:"
+
+Write-Host ""
 Write-Host "OK: negative_live_suite_v03 completado" -ForegroundColor Green
 Write-Host ("NEG_A={0}" -f $caseA) -ForegroundColor DarkGray
 Write-Host ("NEG_B={0}" -f $caseB) -ForegroundColor DarkGray
 Write-Host ("NEG_C={0}" -f $caseC) -ForegroundColor DarkGray
+Write-Host ("NEG_D={0}" -f $caseD) -ForegroundColor DarkGray

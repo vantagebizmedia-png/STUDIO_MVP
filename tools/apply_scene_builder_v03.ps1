@@ -756,14 +756,25 @@ function Ensure-Scenes {
       $sceneObj.assets.video = [string](Get-AssetPathValue -AssetsObj $sceneObj.assets -Key "video")
     }
 
-    $vk = "image"
-    if (-not [string]::IsNullOrWhiteSpace([string]$sceneObj.assets.video) -and [string]::IsNullOrWhiteSpace([string]$sceneObj.assets.image)) {
-      $vk = "video"
+    if (-not ($sceneObj.PSObject.Properties.Name -contains "requested_media_type")) {
+      $sceneObj | Add-Member -Force -NotePropertyName requested_media_type -NotePropertyValue ""
     }
 
-    $sceneObj | Add-Member -Force -NotePropertyName visual_kind -NotePropertyValue $vk
-    $sceneObj | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })
-    $sceneObj | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })
+    if (-not ($sceneObj.PSObject.Properties.Name -contains "visual_request_kind")) {
+      $sceneObj | Add-Member -Force -NotePropertyName visual_request_kind -NotePropertyValue ""
+    }
+
+    if (-not ($sceneObj.PSObject.Properties.Name -contains "visual_kind")) {
+      $sceneObj | Add-Member -Force -NotePropertyName visual_kind -NotePropertyValue ""
+    }
+
+    if (-not ($sceneObj.PSObject.Properties.Name -contains "visual_source_kind")) {
+      $sceneObj | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue ""
+    }
+
+    if (-not ($sceneObj.PSObject.Properties.Name -contains "visual_capability")) {
+      $sceneObj | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue ""
+    }
 
     $sceneObj | Add-Member -Force -NotePropertyName start_ms -NotePropertyValue ([int]$st)
     $sceneObj | Add-Member -Force -NotePropertyName end_ms -NotePropertyValue ([int]$en)

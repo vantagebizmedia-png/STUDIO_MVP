@@ -885,8 +885,6 @@ function Ensure-VisualCapabilityFields {
       try { $currentVisualKind = ([string]$scene.visual_kind).Trim().ToLowerInvariant() } catch { $currentVisualKind = "" }
     }
 
-    $vk = Get-ResolvedVisualKindShared -CurrentVisualKind $currentVisualKind -ResolvedImage $resolvedImage -ResolvedVideo $resolvedVideo
-
     $requestedMediaType = ""
     if ($scene.PSObject.Properties.Name -contains "requested_media_type") {
       try { $requestedMediaType = ([string]$scene.requested_media_type).Trim().ToLowerInvariant() } catch { $requestedMediaType = "" }
@@ -898,6 +896,23 @@ function Ensure-VisualCapabilityFields {
       try { $visualRequestKind = ([string]$scene.visual_request_kind).Trim().ToLowerInvariant() } catch { $visualRequestKind = "" }
     }
     if ($visualRequestKind -notin @("image","video")) { $visualRequestKind = "" }
+
+    if ([string]::IsNullOrWhiteSpace($requestedMediaType) -and -not [string]::IsNullOrWhiteSpace($visualRequestKind)) {
+      $requestedMediaType = $visualRequestKind
+    }
+    elseif ([string]::IsNullOrWhiteSpace($visualRequestKind) -and -not [string]::IsNullOrWhiteSpace($requestedMediaType)) {
+      $visualRequestKind = $requestedMediaType
+    }
+    elseif (($requestedMediaType -ne "") -and ($visualRequestKind -ne "") -and ($requestedMediaType -ne $visualRequestKind)) {
+      $visualRequestKind = $requestedMediaType
+    }
+
+    $vk = Get-ResolvedVisualKindShared `
+      -CurrentVisualKind $currentVisualKind `
+      -RequestedMediaType $requestedMediaType `
+      -VisualRequestKind $visualRequestKind `
+      -ResolvedImage $resolvedImage `
+      -ResolvedVideo $resolvedVideo
 
     if ($vk -eq "video") {
       $scene.assets.video = [string]$effectiveVideo

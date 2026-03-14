@@ -51,15 +51,46 @@ function Resolve-SceneAssetRelativePathShared {
 function Get-ResolvedVisualKindShared {
   param(
     [Parameter(Mandatory=$false)][string]$CurrentVisualKind,
+    [Parameter(Mandatory=$false)][string]$RequestedMediaType,
+    [Parameter(Mandatory=$false)][string]$VisualRequestKind,
     [Parameter(Mandatory=$false)][string]$ResolvedImage,
     [Parameter(Mandatory=$false)][string]$ResolvedVideo
   )
 
   $vk = ""
   try { $vk = ([string]$CurrentVisualKind).Trim().ToLowerInvariant() } catch { $vk = "" }
+  if ($vk -notin @("image","video")) { $vk = "" }
+
+  $requested = ""
+  try { $requested = ([string]$RequestedMediaType).Trim().ToLowerInvariant() } catch { $requested = "" }
+  if ($requested -notin @("image","video")) { $requested = "" }
+
+  $requestKind = ""
+  try { $requestKind = ([string]$VisualRequestKind).Trim().ToLowerInvariant() } catch { $requestKind = "" }
+  if ($requestKind -notin @("image","video")) { $requestKind = "" }
+
+  $intentKind = ""
+  if (-not [string]::IsNullOrWhiteSpace($requested)) {
+    $intentKind = $requested
+  }
+  elseif (-not [string]::IsNullOrWhiteSpace($requestKind)) {
+    $intentKind = $requestKind
+  }
 
   $hasImage = -not [string]::IsNullOrWhiteSpace([string]$ResolvedImage)
   $hasVideo = -not [string]::IsNullOrWhiteSpace([string]$ResolvedVideo)
+
+  if ($intentKind -eq "video") {
+    if ($hasVideo) { return "video" }
+    if ($hasImage) { return "image" }
+    return "image"
+  }
+
+  if ($intentKind -eq "image") {
+    if ($hasImage) { return "image" }
+    if ($hasVideo) { return "video" }
+    return "image"
+  }
 
   if (($vk -eq "video") -and $hasVideo) { return "video" }
   if ($hasImage) { return "image" }

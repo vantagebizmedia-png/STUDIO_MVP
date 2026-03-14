@@ -6,6 +6,7 @@
   [switch]$SkipVideoCase,
   [switch]$SkipMixedVisuals,
   [switch]$SkipIntentImageFallback,
+  [switch]$SkipIntentVideoFallback,
   [switch]$SkipNegativeSuite,
   [switch]$ShowGitStatus
 )
@@ -34,12 +35,14 @@ if ([string]::IsNullOrWhiteSpace($LiveDir)) {
 $effectiveSkipVideoCase           = [bool]$SkipVideoCase
 $effectiveSkipMixedVisuals        = [bool]$SkipMixedVisuals
 $effectiveSkipIntentImageFallback = [bool]$SkipIntentImageFallback
+$effectiveSkipIntentVideoFallback = [bool]$SkipIntentVideoFallback
 $effectiveSkipNegativeSuite       = [bool]$SkipNegativeSuite
 
 if ($Quick) {
   $effectiveSkipVideoCase = $true
   $effectiveSkipMixedVisuals = $true
   $effectiveSkipIntentImageFallback = $true
+  $effectiveSkipIntentVideoFallback = $true
   $effectiveSkipNegativeSuite = $true
 }
 
@@ -53,6 +56,7 @@ $statusMainSmoke = "PENDING"
 $statusVideoCase = "SKIPPED"
 $statusMixedVisuals = "SKIPPED"
 $statusIntentImageFallback = "SKIPPED"
+$statusIntentVideoFallback = "SKIPPED"
 $statusNegative = "SKIPPED"
 $statusGit = "SKIPPED"
 
@@ -68,20 +72,25 @@ if (-not $effectiveSkipIntentImageFallback) {
   $statusIntentImageFallback = "PENDING"
 }
 
+if (-not $effectiveSkipIntentVideoFallback) {
+  $statusIntentVideoFallback = "PENDING"
+}
+
 if (-not $effectiveSkipNegativeSuite) {
   $statusNegative = "PENDING"
 }
 
 Write-Host "== RUN VALIDATION STACK V03 ==" -ForegroundColor Magenta
-Write-Host ("Mode             : {0}" -f $mode) -ForegroundColor DarkGray
-Write-Host ("RepoRoot         : {0}" -f $RepoRoot) -ForegroundColor DarkGray
-Write-Host ("WorkspaceRoot    : {0}" -f $WorkspaceRoot) -ForegroundColor DarkGray
-Write-Host ("LiveDir          : {0}" -f $LiveDir) -ForegroundColor DarkGray
-Write-Host ("SkipVideoCase          : {0}" -f $effectiveSkipVideoCase) -ForegroundColor DarkGray
-Write-Host ("SkipMixedVisuals       : {0}" -f $effectiveSkipMixedVisuals) -ForegroundColor DarkGray
-Write-Host ("SkipIntentImageFallback: {0}" -f $effectiveSkipIntentImageFallback) -ForegroundColor DarkGray
-Write-Host ("SkipNegative           : {0}" -f $effectiveSkipNegativeSuite) -ForegroundColor DarkGray
-Write-Host ("ShowGitStatus          : {0}" -f [bool]$ShowGitStatus) -ForegroundColor DarkGray
+Write-Host ("Mode                     : {0}" -f $mode) -ForegroundColor DarkGray
+Write-Host ("RepoRoot                 : {0}" -f $RepoRoot) -ForegroundColor DarkGray
+Write-Host ("WorkspaceRoot            : {0}" -f $WorkspaceRoot) -ForegroundColor DarkGray
+Write-Host ("LiveDir                  : {0}" -f $LiveDir) -ForegroundColor DarkGray
+Write-Host ("SkipVideoCase            : {0}" -f $effectiveSkipVideoCase) -ForegroundColor DarkGray
+Write-Host ("SkipMixedVisuals         : {0}" -f $effectiveSkipMixedVisuals) -ForegroundColor DarkGray
+Write-Host ("SkipIntentImageFallback  : {0}" -f $effectiveSkipIntentImageFallback) -ForegroundColor DarkGray
+Write-Host ("SkipIntentVideoFallback  : {0}" -f $effectiveSkipIntentVideoFallback) -ForegroundColor DarkGray
+Write-Host ("SkipNegative             : {0}" -f $effectiveSkipNegativeSuite) -ForegroundColor DarkGray
+Write-Host ("ShowGitStatus            : {0}" -f [bool]$ShowGitStatus) -ForegroundColor DarkGray
 
 $invokeArgs = @{
   RepoRoot      = $RepoRoot
@@ -99,6 +108,10 @@ if ($effectiveSkipMixedVisuals) {
 
 if ($effectiveSkipIntentImageFallback) {
   $invokeArgs.SkipIntentImageFallback = $true
+}
+
+if ($effectiveSkipIntentVideoFallback) {
+  $invokeArgs.SkipIntentVideoFallback = $true
 }
 
 if ($effectiveSkipNegativeSuite) {
@@ -135,6 +148,13 @@ if ($effectiveSkipIntentImageFallback) {
 }
 else {
   $statusIntentImageFallback = "PASS"
+}
+
+if ($effectiveSkipIntentVideoFallback) {
+  $statusIntentVideoFallback = "SKIPPED"
+}
+else {
+  $statusIntentVideoFallback = "PASS"
 }
 
 if ($effectiveSkipNegativeSuite) {
@@ -192,6 +212,7 @@ Write-Host ("MAIN_SMOKE={0}" -f $statusMainSmoke) -ForegroundColor DarkGray
 Write-Host ("VIDEO_CASE={0}" -f $statusVideoCase) -ForegroundColor DarkGray
 Write-Host ("MIXED_VISUALS={0}" -f $statusMixedVisuals) -ForegroundColor DarkGray
 Write-Host ("INTENT_IMAGE_FALLBACK={0}" -f $statusIntentImageFallback) -ForegroundColor DarkGray
+Write-Host ("INTENT_VIDEO_FALLBACK={0}" -f $statusIntentVideoFallback) -ForegroundColor DarkGray
 Write-Host ("NEGATIVE_SUITE={0}" -f $statusNegative) -ForegroundColor DarkGray
 Write-Host ("GIT_STATUS={0}" -f $statusGit) -ForegroundColor DarkGray
 

@@ -11,7 +11,9 @@
 from __future__ import annotations
 
 from typing import Dict, Any, List
+from pathlib import Path
 import re
+import wave
 
 from studio.scene_builder_v03 import build_scenes_v03
 from studio.stock_query_pixabay_v03 import resolve_image_for_scene, resolve_video_for_scene
@@ -250,7 +252,12 @@ def _extract_total_ms(manifest: Dict[str, Any]) -> int:
     return max(0, total_ms)
 
 
-def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[Dict[str, Any]]:
+def _build_from_legacy_scenes(
+    manifest: Dict[str, Any],
+    total_ms: int,
+    *,
+    pack_dir: str,
+) -> List[Dict[str, Any]]:
     legacy = manifest.get("scenes")
     if not isinstance(legacy, list) or len(legacy) == 0:
         return []
@@ -258,6 +265,8 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
     rows = [dict(x or {}) for x in legacy if isinstance(x, dict)]
     if not rows:
         return []
+
+    pack_root = Path(pack_dir).resolve()
 
     def _scene_text_parts(sc: Dict[str, Any], ordinal: int) -> tuple[str, str, str, str]:
         narration = _norm_text(sc.get("narration"))
@@ -286,7 +295,7 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
         remaining = total_ms_local - n_local
         weight_sum = sum(max(1, int(w or 0)) for w in weights)
 
-        extras = []
+        extras: List[int] = []
         used = 0
         for w in weights:
             extra = (remaining * max(1, int(w or 0))) // weight_sum
@@ -307,68 +316,175 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
 
         return [base[i] + extras[i] for i in range(n_local)]
 
-    explicit_pairs: List[tuple[int, int]] = []
-    explicit_ok = True
-    last_end = -1
+    def _resolve_audio_path(raw_path: Any) -> Path | None:
+        raw = _norm_text(raw_path)
+        if not raw:
+            return None
 
-    for sc in rows:
-        st = _safe_int(sc.get("start_ms"), -1)
-        en = _safe_int(sc.get("end_ms"), -1)
-        if st < 0 or en <= st or st < last_end:
-            explicit_ok = False
-            break
-        explicit_pairs.append((int(st), int(en)))
-        last_end = int(en)
+        candidate = Path(raw)
+        if not candidate.is_absolute():
+            candidate = pack_root / raw
 
-    duration_values: List[int] = []
-    durations_ok = True
-    if not explicit_ok:
-        for sc in rows:
-            dur = _safe_int(sc.get("duration_ms"), 0)
-            if dur <= 0:
-                durations_ok = False
-                break
-            duration_values.append(int(dur))
+        try:
+            candidate = candidate.resolve()
+        except Exception:
+            candidate = candidate.absolute()
 
-        if durations_ok and duration_values:
-            if total_ms > 0:
-                duration_values = _allocate_weighted_durations(
-                    total_ms,
-                    duration_values,
-                )
-        else:
-            weights: List[int] = []
-            for i, sc in enumerate(rows, start=1):
-                _, _, _, scene_text = _scene_text_parts(sc, i)
-                weights.append(_word_weight(scene_text))
-            duration_values = _allocate_weighted_durations(total_ms, weights)
+        if not candidate.exists() or not candidate.is_file():
+            return None
 
-    out: List[Dict[str, Any]] = []
-    cur = 0
+        return candidate
 
-    for i, sc in enumerate(rows):
-        ordinal = i + 1
+    def _read_audio_duration_ms(sc: Dict[str, Any]) -> int:
+        candidates: List[Any] = []
 
-        if explicit_ok:
-            start_ms, end_ms = explicit_pairs[i]
-        else:
-            dur = int(duration_values[i])
-            start_ms = int(cur)
-            end_ms = int(cur + dur)
-            cur = end_ms
+        arts = sc.get("artifacts")
+        if isinstance(arts, dict):
+            candidates.append(arts.get("audio"))
 
+        assets = sc.get("assets")
+        if isinstance(assets, dict):
+            candidates.append(assets.get("audio_clip"))
+
+        candidates.append(sc.get("audio"))
+
+        for raw in candidates:
+            audio_path = _resolve_audio_path(raw)
+            if audio_path is None:
+                continue
+
+            try:
+                with wave.open(str(audio_path), "rb") as wf:
+                    frames = wf.getnframes()
+                    rate = wf.getframerate()
+                    if rate <= 0:
+                        continue
+                    return int(round((frames / float(rate)) * 1000.0))
+            except Exception:
+                continue
+
+        return 0
+
+    row_meta: List[Dict[str, Any]] = []
+    for ordinal, sc in enumerate(rows, start=1):
         narration, onscreen, stock_query, scene_text = _scene_text_parts(sc, ordinal)
 
         arts = sc.get("artifacts") or {}
         if not isinstance(arts, dict):
             arts = {}
 
-        audio_rel = _norm_text(arts.get("audio"))
-        image_rel = _norm_text(arts.get("image"))
-        video_rel = _norm_text(arts.get("video"))
+        assets = sc.get("assets") or {}
+        if not isinstance(assets, dict):
+            assets = {}
 
-        image_query = _pick_visual_query(stock_query, narration, onscreen)
+        audio_rel = (
+            _norm_text(arts.get("audio"))
+            or _norm_text(assets.get("audio_clip"))
+            or _norm_text(sc.get("audio"))
+        )
+        image_rel = (
+            _norm_text(arts.get("image"))
+            or _norm_text(assets.get("image"))
+            or _norm_text(sc.get("image"))
+        )
+        video_rel = (
+            _norm_text(arts.get("video"))
+            or _norm_text(assets.get("video"))
+            or _norm_text(sc.get("video"))
+        )
 
+        row_meta.append(
+            {
+                "raw": sc,
+                "ordinal": ordinal,
+                "narration": narration,
+                "onscreen": onscreen,
+                "stock_query": stock_query,
+                "scene_text": scene_text,
+                "audio_rel": audio_rel,
+                "image_rel": image_rel,
+                "video_rel": video_rel,
+                "explicit_duration_ms": _safe_int(sc.get("duration_ms"), 0),
+                "audio_duration_ms": _read_audio_duration_ms(sc),
+            }
+        )
+
+    explicit_pairs: List[tuple[int, int]] = []
+    explicit_ok = True
+    last_end = -1
+
+    for meta in row_meta:
+        sc = meta["raw"]
+        st = _safe_int(sc.get("start_ms"), -1)
+        en = _safe_int(sc.get("end_ms"), -1)
+
+        if st < 0 or en <= st or st < last_end:
+            explicit_ok = False
+            break
+
+        explicit_pairs.append((int(st), int(en)))
+        last_end = int(en)
+
+    duration_values: List[int] = []
+    if not explicit_ok:
+        duration_values = [0 for _ in row_meta]
+        unresolved_indices: List[int] = []
+        known_total_ms = 0
+
+        for idx, meta in enumerate(row_meta):
+            candidate_ms = 0
+
+            if int(meta["audio_duration_ms"]) > 0:
+                candidate_ms = int(meta["audio_duration_ms"])
+            elif int(meta["explicit_duration_ms"]) > 0:
+                candidate_ms = int(meta["explicit_duration_ms"])
+
+            if candidate_ms > 0:
+                duration_values[idx] = candidate_ms
+                known_total_ms += candidate_ms
+            else:
+                unresolved_indices.append(idx)
+
+        if unresolved_indices:
+            hinted_total_ms = int(total_ms or 0)
+            fallback_total_ms = 0
+            if hinted_total_ms > known_total_ms:
+                fallback_total_ms = hinted_total_ms - known_total_ms
+
+            fallback_weights = [
+                _word_weight(str(row_meta[idx]["scene_text"]))
+                for idx in unresolved_indices
+            ]
+            fallback_values = _allocate_weighted_durations(
+                fallback_total_ms,
+                fallback_weights,
+            )
+
+            for pos, idx in enumerate(unresolved_indices):
+                duration_values[idx] = int(fallback_values[pos])
+
+    out: List[Dict[str, Any]] = []
+    cur = 0
+
+    for i, meta in enumerate(row_meta):
+        ordinal = int(meta["ordinal"])
+
+        if explicit_ok:
+            start_ms, end_ms = explicit_pairs[i]
+        else:
+            dur = max(1, int(duration_values[i] or 0))
+            start_ms = int(cur)
+            end_ms = int(cur + dur)
+            cur = end_ms
+
+        image_query = _pick_visual_query(
+            meta["stock_query"],
+            meta["narration"],
+            meta["onscreen"],
+        )
+
+        video_rel = str(meta["video_rel"] or "")
+        image_rel = str(meta["image_rel"] or "")
         visual_kind = "video" if (video_rel and not image_rel) else "image"
         visual_source_kind = "stock_video" if visual_kind == "video" else "stock_image"
         visual_capability = visual_source_kind
@@ -380,7 +496,7 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
                 "start_ms": int(start_ms),
                 "end_ms": int(end_ms),
                 "duration_ms": int(max(0, end_ms - start_ms)),
-                "script_text": scene_text,
+                "script_text": str(meta["scene_text"]),
                 "image_query": image_query,
                 "visual_kind": visual_kind,
                 "visual_source_kind": visual_source_kind,
@@ -388,15 +504,10 @@ def _build_from_legacy_scenes(manifest: Dict[str, Any], total_ms: int) -> List[D
                 "assets": {
                     "image": image_rel or None,
                     "video": video_rel or None,
-                    "audio_clip": audio_rel or None,
+                    "audio_clip": str(meta["audio_rel"] or "") or None,
                 },
             }
         )
-
-    if out and not explicit_ok:
-        computed_total = int(sum(int(x["duration_ms"]) for x in out))
-        if computed_total > 0:
-            out[-1]["end_ms"] = int(out[-1]["start_ms"] + out[-1]["duration_ms"])
 
     return out
 
@@ -427,7 +538,11 @@ def apply_scene_builder_to_manifest(
         stock_cache = {}
         manifest["stock_cache"] = stock_cache
 
-    scenes = _build_from_legacy_scenes(manifest, total_ms)
+    scenes = _build_from_legacy_scenes(
+        manifest,
+        total_ms,
+        pack_dir=pack_dir,
+    )
 
     if not scenes:
         scenes = build_scenes_v03(
@@ -562,10 +677,16 @@ def apply_scene_builder_to_manifest(
 
             assets["image_meta"] = image_meta
 
+    effective_total_ms = int(total_ms)
+    if scenes:
+        effective_total_ms = _safe_int(scenes[-1].get("end_ms"), effective_total_ms)
+
     manifest["scenes_v03"] = scenes
+    manifest["total_audio_ms"] = int(effective_total_ms)
+    manifest["audio_duration_ms"] = int(effective_total_ms)
     manifest["scene_builder_v03"] = {
         "max_scenes": len(scenes),
-        "total_audio_ms": int(total_ms),
+        "total_audio_ms": int(effective_total_ms),
         "note": "generated by live_manifest_patch_v03 using legacy scenes as priority source",
     }
 

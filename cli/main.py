@@ -28,19 +28,29 @@ def _enforce_live_guard(force_mode: str) -> None:
 
 
 def _load_v03_pipe_defaults(config_path: str) -> dict[str, Any]:
-    cfg_path = os.path.abspath(config_path or "")
-    if not cfg_path or not os.path.exists(cfg_path):
-        return {}
     try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
+        with open(config_path, "r", encoding="utf-8-sig") as f:
             obj = json.load(f)
-        pipe = obj.get("pipe") or {}
-        if not isinstance(pipe, dict):
+
+        if not isinstance(obj, dict):
             return {}
-        return pipe
+
+        pipe_cfg = obj.get("pipe") or {}
+        if isinstance(pipe_cfg, dict) and pipe_cfg:
+            return {
+                k: pipe_cfg.get(k)
+                for k in ("multiscene", "max_scenes", "scene_split")
+                if k in pipe_cfg
+            }
+
+        # Compat: configs viejos con knobs al nivel raíz
+        return {
+            k: obj.get(k)
+            for k in ("multiscene", "max_scenes", "scene_split")
+            if k in obj
+        }
     except Exception:
         return {}
-
 
 def apply_pipe_knobs(
     pipeline: Any,

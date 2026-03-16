@@ -196,6 +196,35 @@ def _pick_visual_query(*values: Any) -> str:
     return " ".join(top).strip() or "persona escritorio agenda"
 
 
+def _normalize_provider_name(value: Any) -> str:
+    return _norm_text(value).lower()
+
+
+def _get_stock_provider_order(manifest: Dict[str, Any]) -> List[str]:
+    out: List[str] = []
+
+    raw_sources: List[Any] = []
+
+    cfg = manifest.get("stock_resolver_v03")
+    if isinstance(cfg, dict):
+        raw_sources.append(cfg.get("provider_order"))
+
+    sb = manifest.get("scene_builder_v03")
+    if isinstance(sb, dict):
+        raw_sources.append(sb.get("provider_order"))
+
+    for raw in raw_sources:
+        if isinstance(raw, (list, tuple)):
+            for item in raw:
+                name = _normalize_provider_name(item)
+                if name and name not in out:
+                    out.append(name)
+
+    if not out:
+        out.append("pixabay")
+
+    return out
+
 def _infer_pixabay_context(scene_text: str, image_query: str, scene_index: int) -> Dict[str, Any]:
     text = f"{_norm_text(scene_text)} {_norm_text(image_query)}".lower()
 
@@ -553,6 +582,8 @@ def apply_scene_builder_to_manifest(
         for sc in scenes:
             sc["image_query"] = _pick_visual_query(sc.get("image_query"), sc.get("script_text"))
 
+    provider_order = _get_stock_provider_order(manifest)
+
     used_assets: Dict[str, Any] = {
         "paths": set(),
         "source_urls": set(),
@@ -617,7 +648,7 @@ def apply_scene_builder_to_manifest(
             min_width=int(ctx["min_width"]),
             editors_choice=bool(ctx["editors_choice"]),
             used_assets=used_assets,
-            provider_order=None,
+            provider_order=provider_order,
         )
         actual_kind = _norm_text(r.get("media_kind") or "image").lower()
         actual_source_kind = _norm_text(r.get("source_kind")).lower()

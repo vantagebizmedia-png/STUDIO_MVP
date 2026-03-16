@@ -235,6 +235,9 @@ Write-Host "== Inspección scene_001 manifest + pack ==" -ForegroundColor Cyan
   visual_kind          = [string]$m1.visual_kind
   visual_source_kind   = [string]$m1.visual_source_kind
   visual_capability    = [string]$m1.visual_capability
+  start_ms             = [int]$m1.start_ms
+  end_ms               = [int]$m1.end_ms
+  duration_ms          = [int]$m1.duration_ms
   image                = [string]$m1.assets.image
   video                = [string]$m1.assets.video
   audio                = [string]$m1.assets.audio_clip
@@ -242,11 +245,14 @@ Write-Host "== Inspección scene_001 manifest + pack ==" -ForegroundColor Cyan
 [pscustomobject]@{
   source               = "pack_json"
   id                   = [string]$p1.id
-  requested_media_type = ""
-  visual_request_kind  = ""
+  requested_media_type = [string]$p1.requested_media_type
+  visual_request_kind  = [string]$p1.visual_request_kind
   visual_kind          = [string]$p1.visual_kind
-  visual_source_kind   = ""
+  visual_source_kind   = [string]$p1.visual_source_kind
   visual_capability    = ""
+  start_ms             = [int]$p1.start_ms
+  end_ms               = [int]$p1.end_ms
+  duration_ms          = [int]$p1.duration_ms
   image                = [string]$p1.image
   video                = [string]$p1.video
   audio                = [string]$p1.audio
@@ -267,6 +273,9 @@ if ([string]$m1.visual_source_kind -ne "stock_video") {
 if ([string]$m1.visual_capability -ne "stock_video") {
   throw "manifest_v03 scene_001 no resolvió visual_capability=stock_video"
 }
+if ([int]$m1.duration_ms -ne ([int]$m1.end_ms - [int]$m1.start_ms)) {
+  throw "manifest_v03 scene_001 dejó duration_ms inconsistente"
+}
 if (-not [string]::IsNullOrWhiteSpace([string]$m1.assets.image)) {
   throw "manifest_v03 scene_001 dejó image no vacío"
 }
@@ -274,8 +283,20 @@ if ([string]::IsNullOrWhiteSpace([string]$m1.assets.video)) {
   throw "manifest_v03 scene_001 dejó video vacío"
 }
 
+if ([string]$p1.requested_media_type -ne "image") {
+  throw "pack.json scene_001 no preservó requested_media_type=image"
+}
+if ([string]$p1.visual_request_kind -ne "image") {
+  throw "pack.json scene_001 no preservó visual_request_kind=image"
+}
 if ([string]$p1.visual_kind -ne "video") {
   throw "pack.json scene_001 no quedó en visual_kind=video"
+}
+if ([string]$p1.visual_source_kind -ne "stock_video") {
+  throw "pack.json scene_001 no resolvió visual_source_kind=stock_video"
+}
+if ([int]$p1.duration_ms -ne ([int]$p1.end_ms - [int]$p1.start_ms)) {
+  throw "pack.json scene_001 dejó duration_ms inconsistente"
 }
 if (-not [string]::IsNullOrWhiteSpace([string]$p1.image)) {
   throw "pack.json scene_001 dejó image no vacío"
@@ -283,7 +304,6 @@ if (-not [string]::IsNullOrWhiteSpace([string]$p1.image)) {
 if ([string]::IsNullOrWhiteSpace([string]$p1.video)) {
   throw "pack.json scene_001 dejó video vacío"
 }
-
 Write-Host "== Smoke sobre LIVE intent->video fallback ==" -ForegroundColor Cyan
 & $smokeManifest -LiveDir $OutputLiveDir
 if ($LASTEXITCODE -ne 0) {

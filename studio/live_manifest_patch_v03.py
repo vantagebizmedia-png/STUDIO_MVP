@@ -1,4 +1,4 @@
-# studio/live_manifest_patch_v03.py
+﻿# studio/live_manifest_patch_v03.py
 # Fuente de verdad v03:
 # - si ya existe manifest["scenes"] legacy bien armado, derivar scenes_v03 desde ahí
 # - si no existe, usar build_scenes_v03(script_text, ...)
@@ -574,10 +574,34 @@ def apply_scene_builder_to_manifest(
             assets = {}
             sc["assets"] = assets
 
-        requested_capability = _norm_text(sc.get("visual_capability")).lower()
-        if requested_capability not in {"stock_image", "stock_video"}:
-            requested_kind = _norm_text(sc.get("visual_kind")).lower()
-            requested_capability = "stock_video" if requested_kind == "video" else "stock_image"
+        requested_media_type = _norm_text(sc.get("requested_media_type")).lower()
+        visual_request_kind = _norm_text(sc.get("visual_request_kind")).lower()
+
+        if requested_media_type not in {"image", "video"}:
+            requested_media_type = ""
+        if visual_request_kind not in {"image", "video"}:
+            visual_request_kind = ""
+
+        if requested_media_type and not visual_request_kind:
+            visual_request_kind = requested_media_type
+        elif visual_request_kind and not requested_media_type:
+            requested_media_type = visual_request_kind
+        elif requested_media_type and visual_request_kind and requested_media_type != visual_request_kind:
+            visual_request_kind = requested_media_type
+
+        if requested_media_type:
+            sc["requested_media_type"] = requested_media_type
+            sc["visual_request_kind"] = visual_request_kind
+
+        if requested_media_type == "video":
+            requested_capability = "stock_video"
+        elif requested_media_type == "image":
+            requested_capability = "stock_image"
+        else:
+            requested_capability = _norm_text(sc.get("visual_capability")).lower()
+            if requested_capability not in {"stock_image", "stock_video"}:
+                requested_kind = _norm_text(sc.get("visual_kind")).lower()
+                requested_capability = "stock_video" if requested_kind == "video" else "stock_image"
 
         if requested_capability == "stock_video":
             r = resolve_video_for_scene(

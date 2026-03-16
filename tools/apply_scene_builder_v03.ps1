@@ -884,6 +884,13 @@ function Ensure-VisualCapabilityFields {
     if ($scene.PSObject.Properties.Name -contains "visual_kind") {
       try { $currentVisualKind = ([string]$scene.visual_kind).Trim().ToLowerInvariant() } catch { $currentVisualKind = "" }
     }
+    if ($currentVisualKind -notin @("image","video")) { $currentVisualKind = "" }
+
+    $currentVisualSourceKind = ""
+    if ($scene.PSObject.Properties.Name -contains "visual_source_kind") {
+      try { $currentVisualSourceKind = ([string]$scene.visual_source_kind).Trim().ToLowerInvariant() } catch { $currentVisualSourceKind = "" }
+    }
+    if ($currentVisualSourceKind -notmatch "(^|_)(image|video)$") { $currentVisualSourceKind = "" }
 
     $requestedMediaType = ""
     if ($scene.PSObject.Properties.Name -contains "requested_media_type") {
@@ -914,30 +921,35 @@ function Ensure-VisualCapabilityFields {
       -ResolvedImage $resolvedImage `
       -ResolvedVideo $resolvedVideo
 
+    $resolvedSourceKind = ""
+
     if ($vk -eq "video") {
       $scene.assets.video = [string]$effectiveVideo
       $scene.assets.image = ""
+
+      if ($currentVisualSourceKind -match "(^|_)video$") {
+        $resolvedSourceKind = $currentVisualSourceKind
+      }
+      else {
+        $resolvedSourceKind = "stock_video"
+      }
     }
     else {
       $scene.assets.image = [string]$effectiveImage
       $scene.assets.video = ""
-    }
 
-    $isLegacyImageIntentDefault = `
-      ($requestedMediaType -eq "image") -and `
-      ($visualRequestKind -eq "image") -and `
-      ($vk -eq "image") -and `
-      [string]::IsNullOrWhiteSpace([string]$effectiveVideo)
-
-    if ($isLegacyImageIntentDefault) {
-      $requestedMediaType = ""
-      $visualRequestKind  = ""
+      if ($currentVisualSourceKind -match "(^|_)image$") {
+        $resolvedSourceKind = $currentVisualSourceKind
+      }
+      else {
+        $resolvedSourceKind = "stock_image"
+      }
     }
 
     $scene | Add-Member -Force -NotePropertyName requested_media_type -NotePropertyValue $requestedMediaType
     $scene | Add-Member -Force -NotePropertyName visual_request_kind -NotePropertyValue $visualRequestKind
     $scene | Add-Member -Force -NotePropertyName visual_kind -NotePropertyValue $vk
-    $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })
+    $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue $resolvedSourceKind
     $scene | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })
   }
 

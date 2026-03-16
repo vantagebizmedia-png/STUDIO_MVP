@@ -253,9 +253,14 @@ for ($i = 0; $i -lt $scCount; $i++) {
 
   $pkStart = Get-IntOrZero -Value $p.start_ms
   $pkEnd   = Get-IntOrZero -Value $p.end_ms
+  $pkDu    = Get-IntOrZero -Value $p.duration_ms
 
   if ($pkStart -ne $st -or $pkEnd -ne $en) {
     Fail "$sceneLabel pack timing mismatch: manifest=${st}..${en} pack=${pkStart}..${pkEnd}"
+  }
+
+  if ($pkDu -ne $du) {
+    Fail "$sceneLabel pack duration mismatch: manifest=$du pack=$pkDu"
   }
 
   $lastEnd = $en
@@ -324,6 +329,42 @@ for ($i = 0; $i -lt $scCount; $i++) {
     Fail "$sceneLabel intent fields conflictivos: requested_media_type='$requestedMediaType' visual_request_kind='$visualRequestKind'"
   }
 
+  $visualSourceKind = ""
+  if ($s.PSObject.Properties.Name -contains "visual_source_kind") {
+    $visualSourceKind = (Get-StringOrEmpty -Value $s.visual_source_kind).ToLowerInvariant()
+  }
+
+  if ([string]::IsNullOrWhiteSpace($visualSourceKind)) {
+    Fail "$sceneLabel visual_source_kind vacío en manifest"
+  }
+
+  if ($visualSourceKind -notmatch "(^|_)(image|video)$") {
+    Fail "$sceneLabel visual_source_kind inválido en manifest: '$visualSourceKind'"
+  }
+
+  if (($visualKind -eq "image") -and ($visualSourceKind -notmatch "(^|_)image$")) {
+    Fail "$sceneLabel visual_source_kind incompatible con visual_kind=image: '$visualSourceKind'"
+  }
+
+  if (($visualKind -eq "video") -and ($visualSourceKind -notmatch "(^|_)video$")) {
+    Fail "$sceneLabel visual_source_kind incompatible con visual_kind=video: '$visualSourceKind'"
+  }
+
+  $pkRequestedMediaType = (Get-StringOrEmpty -Value $p.requested_media_type).ToLowerInvariant()
+  $pkVisualRequestKind  = (Get-StringOrEmpty -Value $p.visual_request_kind).ToLowerInvariant()
+  $pkVisualSourceKind   = (Get-StringOrEmpty -Value $p.visual_source_kind).ToLowerInvariant()
+
+  if ($pkRequestedMediaType -ne $requestedMediaType) {
+    Fail "$sceneLabel pack requested_media_type mismatch: manifest='$requestedMediaType' pack='$pkRequestedMediaType'"
+  }
+
+  if ($pkVisualRequestKind -ne $visualRequestKind) {
+    Fail "$sceneLabel pack visual_request_kind mismatch: manifest='$visualRequestKind' pack='$pkVisualRequestKind'"
+  }
+
+  if ($pkVisualSourceKind -ne $visualSourceKind) {
+    Fail "$sceneLabel pack visual_source_kind mismatch: manifest='$visualSourceKind' pack='$pkVisualSourceKind'"
+  }
   $imgPath = Get-AssetPathValue -AssetsObj $s.assets -Key "image"
   $vidPath = Get-AssetPathValue -AssetsObj $s.assets -Key "video"
 

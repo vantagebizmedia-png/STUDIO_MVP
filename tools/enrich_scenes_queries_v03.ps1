@@ -127,22 +127,8 @@ function Get-SceneIntentMediaType {
   }
   if ($visualRequestKind -in @("image","video")) { return $visualRequestKind }
 
-  $visualCapability = ""
-  if (Has-Prop $Scene "visual_capability") {
-    try { $visualCapability = ([string]$Scene.visual_capability).Trim().ToLowerInvariant() } catch { $visualCapability = "" }
-  }
-
-  $visualKind = ""
-  if (Has-Prop $Scene "visual_kind") {
-    try { $visualKind = ([string]$Scene.visual_kind).Trim().ToLowerInvariant() } catch { $visualKind = "" }
-  }
-
-  if ($visualCapability -eq "stock_video") { return "video" }
-  if ($visualKind -eq "video") { return "video" }
-
   return ""
 }
-
 function Get-SceneRequestedMediaType {
   param([object]$Scene)
 

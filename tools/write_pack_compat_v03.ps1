@@ -76,7 +76,11 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   $sceneText = ""
   $sceneStart = 0
   $sceneEnd = 0
+  $sceneDuration = 0
   $visualKind = ""
+  $requestedMediaType = ""
+  $visualRequestKind = ""
+  $visualSourceKind = ""
 
   try {
     if ($scene.assets) {
@@ -98,6 +102,8 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   try { $sceneText = [string]$scene.text } catch { $sceneText = "" }
   try { $sceneStart = [int]$scene.start_ms } catch { $sceneStart = 0 }
   try { $sceneEnd = [int]$scene.end_ms } catch { $sceneEnd = 0 }
+  try { $sceneDuration = [int]$scene.duration_ms } catch { $sceneDuration = 0 }
+
   try {
     if ($scene.PSObject.Properties["visual_kind"] -and $scene.visual_kind) {
       $visualKind = ([string]$scene.visual_kind).Trim().ToLowerInvariant()
@@ -105,6 +111,44 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   }
   catch {
     $visualKind = ""
+  }
+
+  try {
+    if ($scene.PSObject.Properties["requested_media_type"] -and $scene.requested_media_type) {
+      $requestedMediaType = ([string]$scene.requested_media_type).Trim().ToLowerInvariant()
+    }
+  }
+  catch {
+    $requestedMediaType = ""
+  }
+
+  try {
+    if ($scene.PSObject.Properties["visual_request_kind"] -and $scene.visual_request_kind) {
+      $visualRequestKind = ([string]$scene.visual_request_kind).Trim().ToLowerInvariant()
+    }
+  }
+  catch {
+    $visualRequestKind = ""
+  }
+
+  try {
+    if ($scene.PSObject.Properties["visual_source_kind"] -and $scene.visual_source_kind) {
+      $visualSourceKind = ([string]$scene.visual_source_kind).Trim().ToLowerInvariant()
+    }
+  }
+  catch {
+    $visualSourceKind = ""
+  }
+
+  if ($requestedMediaType -notin @("image","video")) { $requestedMediaType = "" }
+  if ($visualRequestKind -notin @("image","video")) { $visualRequestKind = "" }
+  if ($visualKind -notin @("image","video")) { $visualKind = "" }
+
+  if ([string]::IsNullOrWhiteSpace($requestedMediaType) -and -not [string]::IsNullOrWhiteSpace($visualRequestKind)) {
+    $requestedMediaType = $visualRequestKind
+  }
+  elseif ([string]::IsNullOrWhiteSpace($visualRequestKind) -and -not [string]::IsNullOrWhiteSpace($requestedMediaType)) {
+    $visualRequestKind = $requestedMediaType
   }
 
   if ([string]::IsNullOrWhiteSpace($sceneId)) {
@@ -120,6 +164,19 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     }
   }
 
+  if ([string]::IsNullOrWhiteSpace($visualSourceKind)) {
+    if ($visualKind -eq "video") {
+      $visualSourceKind = "stock_video"
+    }
+    else {
+      $visualSourceKind = "stock_image"
+    }
+  }
+
+  if ($sceneDuration -le 0) {
+    $sceneDuration = [Math]::Max(0, ($sceneEnd - $sceneStart))
+  }
+
   $exportImage = ""
   $exportVideo = ""
 
@@ -131,18 +188,22 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   }
 
   $packCompatScenes += [pscustomobject]@{
-    id          = $sceneId
-    index       = [int]$sceneOrdinal
-    text        = $sceneText
-    narration   = $sceneText
-    onscreen    = $sceneText
-    audio_text  = $sceneText
-    visual_kind = $visualKind
-    image       = $exportImage
-    video       = $exportVideo
-    audio       = $audioPath
-    start_ms    = $sceneStart
-    end_ms      = $sceneEnd
+    id                  = $sceneId
+    index               = [int]$sceneOrdinal
+    text                = $sceneText
+    narration           = $sceneText
+    onscreen            = $sceneText
+    audio_text          = $sceneText
+    requested_media_type = $requestedMediaType
+    visual_request_kind = $visualRequestKind
+    visual_kind         = $visualKind
+    visual_source_kind  = $visualSourceKind
+    image               = $exportImage
+    video               = $exportVideo
+    audio               = $audioPath
+    start_ms            = $sceneStart
+    end_ms              = $sceneEnd
+    duration_ms         = $sceneDuration
   }
 }
 $manifestScript = ""

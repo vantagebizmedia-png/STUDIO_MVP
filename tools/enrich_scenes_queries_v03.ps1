@@ -845,13 +845,11 @@ $topic = Try-GetTopic $json
 $manifestDir = Split-Path -Parent $manifest
 
 $stock = Join-Path $repo "tools\stock_query_pixabay_v03.ps1"
-$dl = Join-Path $repo "tools\download_file_v03.ps1"
 if ($DownloadPixabay) {
   if (-not (Test-Path -LiteralPath $stock)) { throw "Falta: $stock" }
-  if (-not (Test-Path -LiteralPath $dl)) { throw "Falta: $dl" }
 }
 
-$downloaded = 0
+$probed = 0
 $withoutHits = 0
 $withErrors = 0
 
@@ -890,6 +888,11 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
 
   if (-not $DownloadPixabay) { continue }
 
+  $probeMediaType = $requestedMediaType
+  if ($probeMediaType -notin @("image","video")) {
+    $probeMediaType = "image"
+  }
+
   $prev = $env:PIXABAY_API_KEY
   try {
     if ($PixabayApiKey -and $PixabayApiKey.Trim().Length -ge 8) {
@@ -908,10 +911,10 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     foreach ($candidate in $queryCandidates) {
       if (-not $candidate) { continue }
 
-      $safeName = ("scene_{0:000}_{1}_{2}" -f ($i + 1), $requestedMediaType, (Sha256Hex $candidate).Substring(0,12))
+      $safeName = ("scene_{0:000}_{1}_{2}" -f ($i + 1), $probeMediaType, (Sha256Hex $candidate).Substring(0,12))
       $cacheJson = Join-Path $cacheDir ($safeName + ".json")
 
-      & $stock -Query $candidate -OutJsonPath $cacheJson -Seed ($Seed + $i) -PerPage $PerPage -MediaType $requestedMediaType | Out-Null
+      & $stock -Query $candidate -OutJsonPath $cacheJson -Seed ($Seed + $i) -PerPage $PerPage -MediaType $probeMediaType | Out-Null
 
       $pj = Get-Content -LiteralPath $cacheJson -Raw -Encoding UTF8 | ConvertFrom-Json
       $candidateHits = @()
@@ -925,12 +928,16 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     }
 
     Set-Note -obj $visualMeta -name "provider" -value "pixabay"
-    Set-Note -obj $visualMeta -name "media_type" -value $requestedMediaType
+    Set-Note -obj $visualMeta -name "mode" -value "probe_only"
+    Set-Note -obj $visualMeta -name "media_type" -value $probeMediaType
     Set-Note -obj $visualMeta -name "used_query" -value $usedQuery
     Set-Note -obj $visualMeta -name "hits_count" -value $hits.Count
+    if (-not [string]::IsNullOrWhiteSpace($cacheJson)) {
+      Set-Note -obj $visualMeta -name "cache_json" -value $cacheJson
+    }
 
     if ($hits.Count -lt 1) {
-      Set-Note -obj $visualMeta -name "note" -value ("pixabay: 0 hits ({0})" -f $requestedMediaType)
+      Set-Note -obj $visualMeta -name "note" -value ("pixabay probe_only: 0 hits ({0})" -f $probeMediaType)
       $withoutHits++
       continue
     }
@@ -942,66 +949,38 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     if ($hit -and (Has-Prop $hit "url") -and $hit.url) {
       $url = [string]$hit.url
     }
-    if (-not $url) {
-      Set-Note -obj $visualMeta -name "note" -value ("pixabay: hit sin .url ({0})" -f $requestedMediaType)
-      $withErrors++
-      continue
+
+    $thumbUrl = ""
+    if ($hit -and (Has-Prop $hit "thumb_url") -and $hit.thumb_url) {
+      $thumbUrl = [string]$hit.thumb_url
     }
 
-    $outDir = Join-Path $ws "assets\scenes_v03"
-    if (-not (Test-Path -LiteralPath $outDir)) {
-      New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+    $hitId = ""
+    if ($hit -and (Has-Prop $hit "id") -and $null -ne $hit.id) {
+      $hitId = [string]$hit.id
     }
 
-    $fileName = ""
-    if ($requestedMediaType -eq "video") {
-      $fileName = ("scene_{0:000}.mp4" -f ($i + 1))
-    }
-    else {
-      $fileName = ("scene_{0:000}.jpg" -f ($i + 1))
-    }
-
-    $outPath = Join-Path $outDir $fileName
-    & $dl -Url $url -OutPath $outPath | Out-Null
-
-    $resolvedOutPath = (Resolve-Path -LiteralPath $outPath).Path
-
-    if ($requestedMediaType -eq "video") {
-      $scene.assets.video = [string]$resolvedOutPath
-      $scene.assets.image = ""
-      Set-Note -obj $scene -name "visual_kind" -value "video"
-      Set-Note -obj $scene -name "visual_capability" -value "stock_video"
-      Set-Note -obj $scene -name "visual_source_kind" -value "pixabay_video"
-    }
-    else {
-      $scene.assets.image = [string]$resolvedOutPath
-      $scene.assets.video = ""
-      Set-Note -obj $scene -name "visual_kind" -value "image"
-      Set-Note -obj $scene -name "visual_capability" -value "stock_image"
-      Set-Note -obj $scene -name "visual_source_kind" -value "pixabay_image"
-    }
-
-    Set-Note -obj $visualMeta -name "path" -value $resolvedOutPath
     Set-Note -obj $visualMeta -name "picked_index" -value $idx
     Set-Note -obj $visualMeta -name "source_url" -value $url
+    Set-Note -obj $visualMeta -name "thumb_url" -value $thumbUrl
+    Set-Note -obj $visualMeta -name "hit_id" -value $hitId
+    Set-Note -obj $visualMeta -name "preview_media_kind" -value $probeMediaType
+    Set-Note -obj $visualMeta -name "preview_source_kind" -value $(if ($probeMediaType -eq "video") { "stock_video" } else { "stock_image" })
+    Set-Note -obj $visualMeta -name "note" -value ("pixabay probe_only: authority stays in live_manifest_patch_v03 ({0})" -f $probeMediaType)
 
-    if ($hit -and (Has-Prop $hit "thumb_url") -and $hit.thumb_url) {
-      Set-Note -obj $visualMeta -name "thumb_url" -value ([string]$hit.thumb_url)
-    }
-
-    $downloaded++
+    $probed++
   }
   catch {
     Set-Note -obj $visualMeta -name "provider" -value "pixabay"
-    Set-Note -obj $visualMeta -name "media_type" -value $requestedMediaType
-    Set-Note -obj $visualMeta -name "note" -value (("pixabay error ({0}): " -f $requestedMediaType) + $_.Exception.Message)
+    Set-Note -obj $visualMeta -name "mode" -value "probe_only"
+    Set-Note -obj $visualMeta -name "media_type" -value $probeMediaType
+    Set-Note -obj $visualMeta -name "note" -value (("pixabay probe_only error ({0}): " -f $probeMediaType) + $_.Exception.Message)
     $withErrors++
   }
   finally {
     $env:PIXABAY_API_KEY = $prev
   }
 }
-
 $json.scenes_v03 = $scenes
 
 $outJson = $json | ConvertTo-Json -Depth 99
@@ -1009,7 +988,7 @@ $outJson = $outJson -replace "`r`n", "`n"
 Write-Utf8NoBom -Path $manifest -Text $outJson
 
 if ($DownloadPixabay) {
-  Write-Host ("OK enrich scenes queries -> {0} (downloaded={1}, no_hits={2}, errors={3})" -f $manifest, $downloaded, $withoutHits, $withErrors) -ForegroundColor Green
+  Write-Host ("OK enrich scenes queries -> {0} (probe_only; probed={1}, no_hits={2}, errors={3})" -f $manifest, $probed, $withoutHits, $withErrors) -ForegroundColor Green
 }
 else {
   Write-Host "OK enrich scenes queries -> $manifest" -ForegroundColor Green

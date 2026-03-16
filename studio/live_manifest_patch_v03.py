@@ -1,4 +1,4 @@
-﻿# studio/live_manifest_patch_v03.py
+# studio/live_manifest_patch_v03.py
 # Fuente de verdad v03:
 # - si ya existe manifest["scenes"] legacy bien armado, derivar scenes_v03 desde ahí
 # - si no existe, usar build_scenes_v03(script_text, ...)
@@ -16,7 +16,7 @@ import re
 import wave
 
 from studio.scene_builder_v03 import build_scenes_v03
-from studio.stock_query_pixabay_v03 import resolve_image_for_scene, resolve_video_for_scene
+from studio.stock_resolver_v03 import resolve_visual_for_scene
 
 _STOPWORDS = {
     "a","al","con","de","del","el","en","la","las","lo","los","para","por","sin","un","una","unos","unas","y","o",
@@ -603,37 +603,22 @@ def apply_scene_builder_to_manifest(
                 requested_kind = _norm_text(sc.get("visual_kind")).lower()
                 requested_capability = "stock_video" if requested_kind == "video" else "stock_image"
 
-        if requested_capability == "stock_video":
-            r = resolve_video_for_scene(
-                pack_dir=pack_dir,
-                query=q,
-                seed=seed,
-                replay_strict=replay_strict,
-                cache=stock_cache,
-                placeholder_path=None,
-                lang=str(ctx["lang"]),
-                orientation=str(ctx["orientation"]),
-                category=str(ctx["category"]),
-                min_width=int(ctx["min_width"]),
-                editors_choice=bool(ctx["editors_choice"]),
-                used_assets=used_assets,
-            )
-        else:
-            r = resolve_image_for_scene(
-                pack_dir=pack_dir,
-                query=q,
-                seed=seed,
-                replay_strict=replay_strict,
-                cache=stock_cache,
-                placeholder_path=None,
-                lang=str(ctx["lang"]),
-                orientation=str(ctx["orientation"]),
-                category=str(ctx["category"]),
-                min_width=int(ctx["min_width"]),
-                editors_choice=bool(ctx["editors_choice"]),
-                used_assets=used_assets,
-            )
-
+        r = resolve_visual_for_scene(
+            pack_dir=pack_dir,
+            query=q,
+            seed=seed,
+            replay_strict=replay_strict,
+            cache=stock_cache,
+            requested_capability=requested_capability,
+            placeholder_path=None,
+            lang=str(ctx["lang"]),
+            orientation=str(ctx["orientation"]),
+            category=str(ctx["category"]),
+            min_width=int(ctx["min_width"]),
+            editors_choice=bool(ctx["editors_choice"]),
+            used_assets=used_assets,
+            provider_order=None,
+        )
         actual_kind = _norm_text(r.get("media_kind") or "image").lower()
         actual_source_kind = _norm_text(r.get("source_kind")).lower()
 

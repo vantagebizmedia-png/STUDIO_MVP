@@ -927,8 +927,8 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
       }
     }
 
-    Set-Note -obj $visualMeta -name "provider" -value "pixabay"
-    Set-Note -obj $visualMeta -name "mode" -value "probe_only"
+    Set-Note -obj $visualMeta -name "preview_provider" -value "pixabay"
+    Set-Note -obj $visualMeta -name "preview_mode" -value "probe_only"
     Set-Note -obj $visualMeta -name "media_type" -value $probeMediaType
     Set-Note -obj $visualMeta -name "used_query" -value $usedQuery
     Set-Note -obj $visualMeta -name "hits_count" -value $hits.Count
@@ -971,8 +971,8 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     $probed++
   }
   catch {
-    Set-Note -obj $visualMeta -name "provider" -value "pixabay"
-    Set-Note -obj $visualMeta -name "mode" -value "probe_only"
+    Set-Note -obj $visualMeta -name "preview_provider" -value "pixabay"
+    Set-Note -obj $visualMeta -name "preview_mode" -value "probe_only"
     Set-Note -obj $visualMeta -name "media_type" -value $probeMediaType
     Set-Note -obj $visualMeta -name "note" -value (("pixabay probe_only error ({0}): " -f $probeMediaType) + $_.Exception.Message)
     $withErrors++

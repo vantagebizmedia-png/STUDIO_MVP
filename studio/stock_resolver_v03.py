@@ -113,7 +113,7 @@ def resolve_visual_for_scene(
     for provider_name in providers:
         try:
             if provider_name == "pixabay":
-                return _resolve_with_pixabay(
+                result = _resolve_with_pixabay(
                     pack_dir=pack_dir,
                     query=query,
                     seed=seed,
@@ -128,8 +128,23 @@ def resolve_visual_for_scene(
                     editors_choice=editors_choice,
                     used_assets=used_assets,
                 )
+            else:
+                raise RuntimeError(f"Provider no soportado todavía en stock_resolver_v03: {provider_name}")
 
-            raise RuntimeError(f"Provider no soportado todavía en stock_resolver_v03: {provider_name}")
+            if not isinstance(result, dict):
+                raise RuntimeError(f"Resolver inválido para provider {provider_name}: resultado no dict")
+
+            provider_detail = _norm_text(result.get("provider"))
+            result["provider_selected"] = provider_name
+            result["provider_order_used"] = list(providers)
+
+            if provider_detail and provider_detail != provider_name:
+                result["provider_detail"] = provider_detail
+            elif "provider_detail" in result:
+                del result["provider_detail"]
+
+            result["provider"] = provider_name
+            return result
         except Exception as exc:
             last_error = exc
 

@@ -690,25 +690,39 @@ def apply_scene_builder_to_manifest(
         )
         actual_kind = _norm_text(r.get("media_kind") or "image").lower()
         actual_source_kind = _norm_text(r.get("source_kind")).lower()
-        provider_selected = _norm_text(r.get("provider"))
-        provider_order_seen = [_norm_text(p) for p in provider_order if _norm_text(p)]
+
+        provider_selected = _norm_text(r.get("provider_selected"))
+        if not provider_selected:
+            provider_selected = _norm_text(r.get("provider"))
+
+        provider_detail = _norm_text(r.get("provider_detail"))
+
+        raw_provider_order_used = r.get("provider_order_used")
+        if isinstance(raw_provider_order_used, (list, tuple)):
+            provider_order_seen = [_norm_text(p) for p in raw_provider_order_used if _norm_text(p)]
+        else:
+            provider_order_seen = [_norm_text(p) for p in provider_order if _norm_text(p)]
 
         fallback_applied = False
-        fallback_reason = ""
+        fallback_reason = _norm_text(r.get("fallback_reason"))
 
         if actual_source_kind.startswith("fallback_"):
             fallback_applied = True
-            fallback_reason = provider_selected or actual_source_kind
+            if not fallback_reason:
+                fallback_reason = provider_detail or actual_source_kind
         elif requested_capability == "stock_video" and actual_kind != "video":
             fallback_applied = True
-            fallback_reason = "video_request_resolved_to_image"
+            if not fallback_reason:
+                fallback_reason = "video_request_resolved_to_image"
         elif requested_capability == "stock_image" and actual_kind != "image":
             fallback_applied = True
-            fallback_reason = "image_request_resolved_to_video"
+            if not fallback_reason:
+                fallback_reason = "image_request_resolved_to_video"
 
         visual_enrich["runtime_requested_capability"] = requested_capability
         visual_enrich["runtime_provider_order"] = provider_order_seen
         visual_enrich["runtime_provider_selected"] = provider_selected
+        visual_enrich["runtime_provider_detail"] = provider_detail
         visual_enrich["runtime_resolved_media_kind"] = actual_kind
         visual_enrich["runtime_resolved_source_kind"] = actual_source_kind
         visual_enrich["runtime_fallback_applied"] = bool(fallback_applied)
@@ -726,7 +740,8 @@ def apply_scene_builder_to_manifest(
                 del assets["image_meta"]
 
             video_meta = {
-                "provider": r["provider"],
+                "provider": provider_selected or _norm_text(r.get("provider")),
+                "provider_detail": provider_detail,
                 "cache_hit": r["cache_hit"],
                 "cache_key": r["cache_key"],
                 "query": q,
@@ -766,7 +781,8 @@ def apply_scene_builder_to_manifest(
                 del assets["video_meta"]
 
             image_meta = {
-                "provider": r["provider"],
+                "provider": provider_selected or _norm_text(r.get("provider")),
+                "provider_detail": provider_detail,
                 "cache_hit": r["cache_hit"],
                 "cache_key": r["cache_key"],
                 "query": q,

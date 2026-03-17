@@ -933,6 +933,35 @@ function Ensure-VisualCapabilityFields {
 
   $scenes = @($ManifestObj.scenes_v03)
 
+  $sceneBuilderProviderOrder = @()
+
+  try {
+    if ($ManifestObj.PSObject.Properties.Name -contains "scene_builder_v03" -and $null -ne $ManifestObj.scene_builder_v03) {
+      $sceneBuilderMeta = $ManifestObj.scene_builder_v03
+
+      if ($sceneBuilderMeta -is [hashtable]) {
+        $ManifestObj | Add-Member -Force -NotePropertyName scene_builder_v03 -NotePropertyValue ([pscustomobject]$sceneBuilderMeta)
+        $sceneBuilderMeta = $ManifestObj.scene_builder_v03
+      }
+
+      if ($sceneBuilderMeta.PSObject.Properties.Name -contains "provider_order" -and $sceneBuilderMeta.provider_order) {
+        $sceneBuilderProviderOrder = @(
+          $sceneBuilderMeta.provider_order |
+            ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -Unique
+        )
+      }
+    }
+  }
+  catch {
+    $sceneBuilderProviderOrder = @()
+  }
+
+  if (@($sceneBuilderProviderOrder).Count -lt 1) {
+    $sceneBuilderProviderOrder = @("pixabay")
+  }
+
   for ($i = 0; $i -lt $scenes.Count; $i++) {
     $scene = $scenes[$i]
     if (-not $scene) { continue }
@@ -1185,20 +1214,78 @@ function Ensure-VisualCapabilityFields {
     }
 
     $runtimeProviderSelected = ""
-    $runtimeProviderOrder = @()
+    $runtimeProviderOrder = @($sceneBuilderProviderOrder)
+    $resolvedAssetMeta = $null
+    $providerCandidates = New-Object System.Collections.Generic.List[string]
+
+    if ($vk -eq "video") {
+      try {
+        if ($scene.assets.PSObject.Properties.Name -contains "video_meta" -and $null -ne $scene.assets.video_meta) {
+          $resolvedAssetMeta = $scene.assets.video_meta
+        }
+      }
+      catch { $resolvedAssetMeta = $null }
+    }
+    else {
+      try {
+        if ($scene.assets.PSObject.Properties.Name -contains "image_meta" -and $null -ne $scene.assets.image_meta) {
+          $resolvedAssetMeta = $scene.assets.image_meta
+        }
+      }
+      catch { $resolvedAssetMeta = $null }
+    }
+
+    try {
+      if ($visualMeta.PSObject.Properties.Name -contains "runtime_provider_selected") {
+        $candidate = ([string]$visualMeta.runtime_provider_selected).Trim().ToLowerInvariant()
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+          $providerCandidates.Add($candidate) | Out-Null
+        }
+      }
+    }
+    catch { }
 
     try {
       if ($visualMeta.PSObject.Properties.Name -contains "provider") {
-        $runtimeProviderSelected = ([string]$visualMeta.provider).Trim().ToLowerInvariant()
+        $candidate = ([string]$visualMeta.provider).Trim().ToLowerInvariant()
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+          $providerCandidates.Add($candidate) | Out-Null
+        }
       }
     }
-    catch { $runtimeProviderSelected = "" }
+    catch { }
 
-    if (-not [string]::IsNullOrWhiteSpace($runtimeProviderSelected)) {
-      $runtimeProviderOrder = @($runtimeProviderSelected)
+    if ($null -ne $resolvedAssetMeta) {
+      try {
+        if ($resolvedAssetMeta.PSObject.Properties.Name -contains "provider") {
+          $candidate = ([string]$resolvedAssetMeta.provider).Trim().ToLowerInvariant()
+          if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            $providerCandidates.Add($candidate) | Out-Null
+          }
+        }
+      }
+      catch { }
     }
-    elseif ($resolvedSourceKind -match "^(stock|fallback)_(image|video)$") {
-      $runtimeProviderOrder = @("pixabay")
+
+    foreach ($candidate in @($providerCandidates)) {
+      if ($sceneBuilderProviderOrder -contains $candidate) {
+        $runtimeProviderSelected = $candidate
+        break
+      }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($runtimeProviderSelected) -and @($sceneBuilderProviderOrder).Count -gt 0) {
+      if ($resolvedSourceKind -match "^(stock|fallback)_(image|video)$") {
+        $runtimeProviderSelected = [string]$sceneBuilderProviderOrder[0]
+      }
+    }
+
+    $assetProviderValue = ""
+    if (-not [string]::IsNullOrWhiteSpace($runtimeProviderSelected)) {
+      $assetProviderValue = [string]$runtimeProviderSelected
+    }
+    elseif (@($runtimeProviderOrder).Count -gt 0) {
+      $assetProviderValue = [string]$runtimeProviderOrder[0]
     }
 
     $fallbackApplied = $false
@@ -1245,6 +1332,7 @@ function Ensure-VisualCapabilityFields {
       $scene.assets.video_meta | Add-Member -Force -NotePropertyName query -NotePropertyValue $runtimeQuery
       $scene.assets.video_meta | Add-Member -Force -NotePropertyName query_authority -NotePropertyValue $runtimeQueryAuthority
       $scene.assets.video_meta | Add-Member -Force -NotePropertyName requested_capability -NotePropertyValue $requestedCapability
+      $scene.assets.video_meta | Add-Member -Force -NotePropertyName provider -NotePropertyValue $assetProviderValue
       $scene.assets.video_meta | Add-Member -Force -NotePropertyName provider_order -NotePropertyValue @($runtimeProviderOrder)
       $scene.assets.video_meta | Add-Member -Force -NotePropertyName resolved_media_kind -NotePropertyValue $vk
       $scene.assets.video_meta | Add-Member -Force -NotePropertyName resolved_source_kind -NotePropertyValue $resolvedSourceKind
@@ -1269,6 +1357,7 @@ function Ensure-VisualCapabilityFields {
       $scene.assets.image_meta | Add-Member -Force -NotePropertyName query -NotePropertyValue $runtimeQuery
       $scene.assets.image_meta | Add-Member -Force -NotePropertyName query_authority -NotePropertyValue $runtimeQueryAuthority
       $scene.assets.image_meta | Add-Member -Force -NotePropertyName requested_capability -NotePropertyValue $requestedCapability
+      $scene.assets.image_meta | Add-Member -Force -NotePropertyName provider -NotePropertyValue $assetProviderValue
       $scene.assets.image_meta | Add-Member -Force -NotePropertyName provider_order -NotePropertyValue @($runtimeProviderOrder)
       $scene.assets.image_meta | Add-Member -Force -NotePropertyName resolved_media_kind -NotePropertyValue $vk
       $scene.assets.image_meta | Add-Member -Force -NotePropertyName resolved_source_kind -NotePropertyValue $resolvedSourceKind

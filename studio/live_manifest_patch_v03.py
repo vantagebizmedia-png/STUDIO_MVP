@@ -591,7 +591,45 @@ def apply_scene_builder_to_manifest(
     }
 
     for sc in scenes:
-        q = _pick_visual_query(sc.get("image_query"), sc.get("script_text")) or "persona escritorio agenda"
+        meta = sc.get("meta")
+        if not isinstance(meta, dict):
+            meta = {}
+            sc["meta"] = meta
+
+        visual_enrich = meta.get("visual_enrich")
+        if not isinstance(visual_enrich, dict):
+            visual_enrich = {}
+            meta["visual_enrich"] = visual_enrich
+
+        q = ""
+        query_authority = ""
+
+        q = _norm_text(visual_enrich.get("used_query"))
+        if q:
+            query_authority = "visual_enrich.used_query"
+
+        if not q:
+            q = _norm_text(visual_enrich.get("query"))
+            if q:
+                query_authority = "visual_enrich.query"
+
+        if not q:
+            raw_candidates = visual_enrich.get("query_candidates")
+            if isinstance(raw_candidates, list):
+                for idx, candidate in enumerate(raw_candidates):
+                    candidate_q = _norm_text(candidate)
+                    if candidate_q:
+                        q = candidate_q
+                        query_authority = f"visual_enrich.query_candidates[{idx}]"
+                        break
+
+        if not q:
+            q = _pick_visual_query(sc.get("image_query"), sc.get("script_text")) or "persona escritorio agenda"
+            query_authority = "live_manifest_patch._pick_visual_query"
+
+        visual_enrich["runtime_query"] = q
+        visual_enrich["runtime_query_authority"] = query_authority
+
         sc["image_query"] = q
 
         ctx = _infer_pixabay_context(
@@ -652,6 +690,29 @@ def apply_scene_builder_to_manifest(
         )
         actual_kind = _norm_text(r.get("media_kind") or "image").lower()
         actual_source_kind = _norm_text(r.get("source_kind")).lower()
+        provider_selected = _norm_text(r.get("provider"))
+        provider_order_seen = [_norm_text(p) for p in provider_order if _norm_text(p)]
+
+        fallback_applied = False
+        fallback_reason = ""
+
+        if actual_source_kind.startswith("fallback_"):
+            fallback_applied = True
+            fallback_reason = provider_selected or actual_source_kind
+        elif requested_capability == "stock_video" and actual_kind != "video":
+            fallback_applied = True
+            fallback_reason = "video_request_resolved_to_image"
+        elif requested_capability == "stock_image" and actual_kind != "image":
+            fallback_applied = True
+            fallback_reason = "image_request_resolved_to_video"
+
+        visual_enrich["runtime_requested_capability"] = requested_capability
+        visual_enrich["runtime_provider_order"] = provider_order_seen
+        visual_enrich["runtime_provider_selected"] = provider_selected
+        visual_enrich["runtime_resolved_media_kind"] = actual_kind
+        visual_enrich["runtime_resolved_source_kind"] = actual_source_kind
+        visual_enrich["runtime_fallback_applied"] = bool(fallback_applied)
+        visual_enrich["runtime_fallback_reason"] = fallback_reason
 
         if actual_kind == "video":
             assets["video"] = r["path"]
@@ -669,6 +730,13 @@ def apply_scene_builder_to_manifest(
                 "cache_hit": r["cache_hit"],
                 "cache_key": r["cache_key"],
                 "query": q,
+                "query_authority": query_authority,
+                "requested_capability": requested_capability,
+                "provider_order": provider_order_seen,
+                "resolved_media_kind": actual_kind,
+                "resolved_source_kind": actual_source_kind,
+                "fallback_applied": bool(fallback_applied),
+                "fallback_reason": fallback_reason,
                 "lang": str(ctx["lang"]),
                 "orientation": str(ctx["orientation"]),
                 "category": str(ctx["category"]),
@@ -702,6 +770,13 @@ def apply_scene_builder_to_manifest(
                 "cache_hit": r["cache_hit"],
                 "cache_key": r["cache_key"],
                 "query": q,
+                "query_authority": query_authority,
+                "requested_capability": requested_capability,
+                "provider_order": provider_order_seen,
+                "resolved_media_kind": actual_kind,
+                "resolved_source_kind": actual_source_kind,
+                "fallback_applied": bool(fallback_applied),
+                "fallback_reason": fallback_reason,
                 "lang": str(ctx["lang"]),
                 "orientation": str(ctx["orientation"]),
                 "category": str(ctx["category"]),

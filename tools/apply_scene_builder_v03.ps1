@@ -1008,6 +1008,19 @@ function Ensure-VisualCapabilityFields {
       $effectiveVideo = [string]$resolvedVideo
     }
 
+    if (-not ($scene.PSObject.Properties.Name -contains "meta") -or $null -eq $scene.meta) {
+      $scene | Add-Member -Force -NotePropertyName meta -NotePropertyValue ([pscustomobject]@{})
+    }
+
+    if (-not ($scene.meta.PSObject.Properties.Name -contains "visual_enrich") -or $null -eq $scene.meta.visual_enrich) {
+      $scene.meta | Add-Member -Force -NotePropertyName visual_enrich -NotePropertyValue ([pscustomobject]@{}) 
+    }
+    elseif ($scene.meta.visual_enrich -is [hashtable]) {
+      $scene.meta | Add-Member -Force -NotePropertyName visual_enrich -NotePropertyValue ([pscustomobject]$scene.meta.visual_enrich)
+    }
+
+    $visualMeta = $scene.meta.visual_enrich
+
     $currentVisualKind = ""
     if ($scene.PSObject.Properties.Name -contains "visual_kind") {
       try { $currentVisualKind = ([string]$scene.visual_kind).Trim().ToLowerInvariant() } catch { $currentVisualKind = "" }
@@ -1074,11 +1087,201 @@ function Ensure-VisualCapabilityFields {
       }
     }
 
+    $requestedCapability = ""
+    if ($requestedMediaType -eq "video") {
+      $requestedCapability = "stock_video"
+    }
+    elseif ($requestedMediaType -eq "image") {
+      $requestedCapability = "stock_image"
+    }
+    else {
+      $requestedCapability = if ($vk -eq "video") { "stock_video" } else { "stock_image" }
+    }
+
+    $resolvedCapability = if ($vk -eq "video") { "stock_video" } else { "stock_image" }
+
+    $runtimeQuery = ""
+    $runtimeQueryAuthority = ""
+
+    try {
+      if ($visualMeta.PSObject.Properties.Name -contains "used_query") {
+        $runtimeQuery = ([string]$visualMeta.used_query).Trim()
+      }
+    }
+    catch { $runtimeQuery = "" }
+
+    if ([string]::IsNullOrWhiteSpace($runtimeQuery)) {
+      try {
+        if ($visualMeta.PSObject.Properties.Name -contains "query") {
+          $runtimeQuery = ([string]$visualMeta.query).Trim()
+          if (-not [string]::IsNullOrWhiteSpace($runtimeQuery)) {
+            $runtimeQueryAuthority = "visual_enrich.query"
+          }
+        }
+      }
+      catch { $runtimeQuery = "" }
+    }
+    else {
+      $runtimeQueryAuthority = "visual_enrich.used_query"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($runtimeQuery)) {
+      try {
+        if ($visualMeta.PSObject.Properties.Name -contains "query_candidates" -and $visualMeta.query_candidates) {
+          $candidateIndex = 0
+          foreach ($candidate in @($visualMeta.query_candidates)) {
+            $candidateText = ([string]$candidate).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($candidateText)) {
+              $runtimeQuery = $candidateText
+              $runtimeQueryAuthority = ("visual_enrich.query_candidates[{0}]" -f $candidateIndex)
+              break
+            }
+            $candidateIndex++
+          }
+        }
+      }
+      catch { }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($runtimeQuery)) {
+      try {
+        if ($scene.PSObject.Properties.Name -contains "image_query") {
+          $runtimeQuery = ([string]$scene.image_query).Trim()
+          if (-not [string]::IsNullOrWhiteSpace($runtimeQuery)) {
+            $runtimeQueryAuthority = "scene.image_query"
+          }
+        }
+      }
+      catch { $runtimeQuery = "" }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($runtimeQuery)) {
+      try {
+        if ($scene.PSObject.Properties.Name -contains "script_text") {
+          $runtimeQuery = ([string]$scene.script_text).Trim()
+          if (-not [string]::IsNullOrWhiteSpace($runtimeQuery)) {
+            $runtimeQueryAuthority = "scene.script_text"
+          }
+        }
+      }
+      catch { $runtimeQuery = "" }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($runtimeQuery)) {
+      try {
+        if ($scene.PSObject.Properties.Name -contains "text") {
+          $runtimeQuery = ([string]$scene.text).Trim()
+          if (-not [string]::IsNullOrWhiteSpace($runtimeQuery)) {
+            $runtimeQueryAuthority = "scene.text"
+          }
+        }
+      }
+      catch { $runtimeQuery = "" }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($runtimeQuery)) {
+      $runtimeQuery = "persona escritorio agenda"
+      $runtimeQueryAuthority = "apply_scene_builder.default"
+    }
+
+    $runtimeProviderSelected = ""
+    $runtimeProviderOrder = @()
+
+    try {
+      if ($visualMeta.PSObject.Properties.Name -contains "provider") {
+        $runtimeProviderSelected = ([string]$visualMeta.provider).Trim().ToLowerInvariant()
+      }
+    }
+    catch { $runtimeProviderSelected = "" }
+
+    if (-not [string]::IsNullOrWhiteSpace($runtimeProviderSelected)) {
+      $runtimeProviderOrder = @($runtimeProviderSelected)
+    }
+    elseif ($resolvedSourceKind -match "^(stock|fallback)_(image|video)$") {
+      $runtimeProviderOrder = @("pixabay")
+    }
+
+    $fallbackApplied = $false
+    $fallbackReason = ""
+
+    if ($resolvedSourceKind -like "fallback_*") {
+      $fallbackApplied = $true
+      $fallbackReason = $resolvedSourceKind
+    }
+    elseif ($requestedCapability -eq "stock_video" -and $vk -ne "video") {
+      $fallbackApplied = $true
+      $fallbackReason = "video_request_resolved_to_image"
+    }
+    elseif ($requestedCapability -eq "stock_image" -and $vk -ne "image") {
+      $fallbackApplied = $true
+      $fallbackReason = "image_request_resolved_to_video"
+    }
+
     $scene | Add-Member -Force -NotePropertyName requested_media_type -NotePropertyValue $requestedMediaType
     $scene | Add-Member -Force -NotePropertyName visual_request_kind -NotePropertyValue $visualRequestKind
     $scene | Add-Member -Force -NotePropertyName visual_kind -NotePropertyValue $vk
     $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue $resolvedSourceKind
-    $scene | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue $(if ($vk -eq "video") { "stock_video" } else { "stock_image" })
+    $scene | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue $resolvedCapability
+    $scene | Add-Member -Force -NotePropertyName image_query -NotePropertyValue $runtimeQuery
+
+    $visualMeta | Add-Member -Force -NotePropertyName runtime_query -NotePropertyValue $runtimeQuery
+    $visualMeta | Add-Member -Force -NotePropertyName runtime_query_authority -NotePropertyValue $runtimeQueryAuthority
+    $visualMeta | Add-Member -Force -NotePropertyName runtime_requested_capability -NotePropertyValue $requestedCapability
+    $visualMeta | Add-Member -Force -NotePropertyName runtime_provider_order -NotePropertyValue @($runtimeProviderOrder)
+    $visualMeta | Add-Member -Force -NotePropertyName runtime_provider_selected -NotePropertyValue $runtimeProviderSelected
+    $visualMeta | Add-Member -Force -NotePropertyName runtime_resolved_media_kind -NotePropertyValue $vk
+    $visualMeta | Add-Member -Force -NotePropertyName runtime_resolved_source_kind -NotePropertyValue $resolvedSourceKind
+    $visualMeta | Add-Member -Force -NotePropertyName runtime_fallback_applied -NotePropertyValue ([bool]$fallbackApplied)
+    $visualMeta | Add-Member -Force -NotePropertyName runtime_fallback_reason -NotePropertyValue $fallbackReason
+
+    if ($vk -eq "video") {
+      if (-not ($scene.assets.PSObject.Properties.Name -contains "video_meta") -or $null -eq $scene.assets.video_meta) {
+        $scene.assets | Add-Member -Force -NotePropertyName video_meta -NotePropertyValue ([pscustomobject]@{})
+      }
+      elseif ($scene.assets.video_meta -is [hashtable]) {
+        $scene.assets | Add-Member -Force -NotePropertyName video_meta -NotePropertyValue ([pscustomobject]$scene.assets.video_meta)
+      }
+
+      $scene.assets.video_meta | Add-Member -Force -NotePropertyName query -NotePropertyValue $runtimeQuery
+      $scene.assets.video_meta | Add-Member -Force -NotePropertyName query_authority -NotePropertyValue $runtimeQueryAuthority
+      $scene.assets.video_meta | Add-Member -Force -NotePropertyName requested_capability -NotePropertyValue $requestedCapability
+      $scene.assets.video_meta | Add-Member -Force -NotePropertyName provider_order -NotePropertyValue @($runtimeProviderOrder)
+      $scene.assets.video_meta | Add-Member -Force -NotePropertyName resolved_media_kind -NotePropertyValue $vk
+      $scene.assets.video_meta | Add-Member -Force -NotePropertyName resolved_source_kind -NotePropertyValue $resolvedSourceKind
+      $scene.assets.video_meta | Add-Member -Force -NotePropertyName fallback_applied -NotePropertyValue ([bool]$fallbackApplied)
+      $scene.assets.video_meta | Add-Member -Force -NotePropertyName fallback_reason -NotePropertyValue $fallbackReason
+
+      try {
+        if ($scene.assets.PSObject.Properties.Name -contains "image_meta") {
+          $scene.assets.PSObject.Properties.Remove("image_meta") | Out-Null
+        }
+      }
+      catch { }
+    }
+    else {
+      if (-not ($scene.assets.PSObject.Properties.Name -contains "image_meta") -or $null -eq $scene.assets.image_meta) {
+        $scene.assets | Add-Member -Force -NotePropertyName image_meta -NotePropertyValue ([pscustomobject]@{})
+      }
+      elseif ($scene.assets.image_meta -is [hashtable]) {
+        $scene.assets | Add-Member -Force -NotePropertyName image_meta -NotePropertyValue ([pscustomobject]$scene.assets.image_meta)
+      }
+
+      $scene.assets.image_meta | Add-Member -Force -NotePropertyName query -NotePropertyValue $runtimeQuery
+      $scene.assets.image_meta | Add-Member -Force -NotePropertyName query_authority -NotePropertyValue $runtimeQueryAuthority
+      $scene.assets.image_meta | Add-Member -Force -NotePropertyName requested_capability -NotePropertyValue $requestedCapability
+      $scene.assets.image_meta | Add-Member -Force -NotePropertyName provider_order -NotePropertyValue @($runtimeProviderOrder)
+      $scene.assets.image_meta | Add-Member -Force -NotePropertyName resolved_media_kind -NotePropertyValue $vk
+      $scene.assets.image_meta | Add-Member -Force -NotePropertyName resolved_source_kind -NotePropertyValue $resolvedSourceKind
+      $scene.assets.image_meta | Add-Member -Force -NotePropertyName fallback_applied -NotePropertyValue ([bool]$fallbackApplied)
+      $scene.assets.image_meta | Add-Member -Force -NotePropertyName fallback_reason -NotePropertyValue $fallbackReason
+
+      try {
+        if ($scene.assets.PSObject.Properties.Name -contains "video_meta") {
+          $scene.assets.PSObject.Properties.Remove("video_meta") | Out-Null
+        }
+      }
+      catch { }
+    }
   }
 
   $ManifestObj.scenes_v03 = @($scenes)

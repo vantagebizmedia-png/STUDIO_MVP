@@ -80,3 +80,14 @@ video_subs.mp4
 music/*.mp3
 music/*.wav
 !music/.gitkeep
+# --- generated stock/provider debug artifacts ---
+_pixabay_smoke*/
+_pixabay_smoke_en*/
+_tmp_pixabay*/
+_tmp_pix_outfile*/
+_claude_candidate_*/
+**/_pixabay_smoke*/
+**/_pixabay_smoke_en*/
+**/_tmp_pixabay*/
+**/_tmp_pix_outfile*/
+**/_claude_candidate_*/

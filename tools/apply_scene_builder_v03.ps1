@@ -243,6 +243,111 @@ function Get-TotalAudioMs {
   return $lastEnd
 }
 
+function Get-ValidSceneTimelineFromScenes {
+  param(
+    [Parameter(Mandatory=$true)]$Scenes
+  )
+
+  $rows = @(Normalize-ToArray -Value $Scenes)
+  if (@($rows).Count -lt 1) { return @() }
+
+  $timeline = @()
+  $lastEnd = 0
+
+  for ($i = 0; $i -lt @($rows).Count; $i++) {
+    $row = $rows[$i]
+
+    $st = -1
+    $en = -1
+
+    try { $st = [int]$row.start_ms } catch { $st = -1 }
+    try { $en = [int]$row.end_ms } catch { $en = -1 }
+
+    if ($st -lt 0 -or $en -le $st -or $st -lt $lastEnd) {
+      return @()
+    }
+
+    $timeline += [pscustomobject]@{
+      index       = [int]$i
+      start_ms    = [int]$st
+      end_ms      = [int]$en
+      duration_ms = [int]($en - $st)
+    }
+
+    $lastEnd = $en
+  }
+
+  return @($timeline)
+}
+
+function Get-ValidSceneTimelineFromAudioClips {
+  param(
+    [Parameter(Mandatory=$true)]$AudioClips,
+    [Parameter(Mandatory=$true)][int]$SceneCount
+  )
+
+  $clips = @(Normalize-ToArray -Value $AudioClips)
+  if (@($clips).Count -ne $SceneCount) { return @() }
+
+  $timeline = @()
+  $lastEnd = 0
+
+  for ($i = 0; $i -lt @($clips).Count; $i++) {
+    $clip = $clips[$i]
+
+    $st = -1
+    $en = -1
+
+    try { $st = [int]$clip.start_ms } catch { $st = -1 }
+    try { $en = [int]$clip.end_ms } catch { $en = -1 }
+
+    if ($st -lt 0 -or $en -le $st -or $st -lt $lastEnd) {
+      return @()
+    }
+
+    $timeline += [pscustomobject]@{
+      index       = [int]$i
+      start_ms    = [int]$st
+      end_ms      = [int]$en
+      duration_ms = [int]($en - $st)
+    }
+
+    $lastEnd = $en
+  }
+
+  return @($timeline)
+}
+
+function Resolve-SceneTimeline {
+  param(
+    [Parameter(Mandatory=$true)]$Scenes,
+    [Parameter(Mandatory=$true)]$AudioClips,
+    [Parameter(Mandatory=$true)][int]$SceneCount,
+    [Parameter(Mandatory=$true)][int]$TotalAudioMs,
+    [Parameter(Mandatory=$true)][int]$SceneMinSec,
+    [Parameter(Mandatory=$true)][int]$SceneMaxSec,
+    [Parameter(Mandatory=$true)][int]$SeedValue
+  )
+
+  $sceneTimeline = @(Get-ValidSceneTimelineFromScenes -Scenes $Scenes)
+  if (@($sceneTimeline).Count -eq $SceneCount) {
+    Write-Host ("INFO: timeline authority=existing_scene_timings scenes={0}" -f $SceneCount) -ForegroundColor DarkCyan
+    return @($sceneTimeline)
+  }
+
+  $clipTimeline = @(Get-ValidSceneTimelineFromAudioClips -AudioClips $AudioClips -SceneCount $SceneCount)
+  if (@($clipTimeline).Count -eq $SceneCount) {
+    Write-Host ("INFO: timeline authority=audio_clips scenes={0}" -f $SceneCount) -ForegroundColor DarkCyan
+    return @($clipTimeline)
+  }
+
+  $durations = @(New-Durations -SceneCount $SceneCount -TotalAudioMs $TotalAudioMs -SceneMinSec $SceneMinSec -SceneMaxSec $SceneMaxSec -SeedValue $SeedValue)
+  $syntheticTimeline = @(Build-SceneTimelineShared -Durations $durations -TotalMs $TotalAudioMs)
+
+  Write-Host ("INFO: timeline authority=synthetic_fallback scenes={0}" -f $SceneCount) -ForegroundColor DarkYellow
+  return @($syntheticTimeline)
+}
+
 function Split-ScriptSentences {
   param([string]$Text)
 
@@ -728,8 +833,31 @@ function Ensure-Scenes {
 
   . $timingSharedPath
 
-  $durations = @(New-Durations -SceneCount $SceneCount -TotalAudioMs $TotalAudioMs -SceneMinSec $SceneMinSec -SceneMaxSec $SceneMaxSec -SeedValue $SeedValue)
-  $timeline = @(Build-SceneTimelineShared -Durations $durations -TotalMs $TotalAudioMs)
+  $sceneAudioClips = @()
+  try {
+    if ($ManifestObj.PSObject.Properties.Name -contains "audio_clips" -and $ManifestObj.audio_clips) {
+      $sceneAudioClips = @(Normalize-ToArray -Value $ManifestObj.audio_clips)
+    }
+  }
+  catch {
+    $sceneAudioClips = @()
+  }
+
+  $timeline = @(Resolve-SceneTimeline `
+    -Scenes $sc `
+    -AudioClips $sceneAudioClips `
+    -SceneCount $SceneCount `
+    -TotalAudioMs $TotalAudioMs `
+    -SceneMinSec $SceneMinSec `
+    -SceneMaxSec $SceneMaxSec `
+    -SeedValue $SeedValue)
+
+  if (@($timeline).Count -gt 0) {
+    $resolvedLastEnd = [int]$timeline[@($timeline).Count - 1].end_ms
+    if ($resolvedLastEnd -gt 0) {
+      $TotalAudioMs = $resolvedLastEnd
+    }
+  }
 
   for ($i = 0; $i -lt $SceneCount; $i++) {
     $sceneObj = $sc[$i]

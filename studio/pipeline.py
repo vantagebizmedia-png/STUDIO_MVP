@@ -529,6 +529,7 @@ class StudioPipeline:
             manifest["scene_builder_v03"] = {
                 "max_scenes": 1,
                 "total_audio_ms": int(total_audio_ms),
+                "provider_order": ["pixabay"],
                 "note": "generated in LIVE by studio/pipeline.py; single-scene fallback preserved",
             }
 

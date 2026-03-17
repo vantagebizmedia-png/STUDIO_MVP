@@ -1286,6 +1286,41 @@ function Ensure-VisualCapabilityFields {
 
   $ManifestObj.scenes_v03 = @($scenes)
 }
+function Ensure-SceneBuilderProviderOrder {
+  param(
+    [Parameter(Mandatory=$true)]$ManifestObj
+  )
+
+  if (-not ($ManifestObj.PSObject.Properties.Name -contains "scene_builder_v03") -or $null -eq $ManifestObj.scene_builder_v03) {
+    $ManifestObj | Add-Member -Force -NotePropertyName scene_builder_v03 -NotePropertyValue ([pscustomobject]@{})
+  }
+  elseif ($ManifestObj.scene_builder_v03 -is [hashtable]) {
+    $ManifestObj | Add-Member -Force -NotePropertyName scene_builder_v03 -NotePropertyValue ([pscustomobject]$ManifestObj.scene_builder_v03)
+  }
+
+  $sceneBuilderMeta = $ManifestObj.scene_builder_v03
+  $providerOrder = @()
+
+  try {
+    if ($sceneBuilderMeta.PSObject.Properties.Name -contains "provider_order" -and $sceneBuilderMeta.provider_order) {
+      $providerOrder = @(
+        $sceneBuilderMeta.provider_order |
+          ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } |
+          Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+          Select-Object -Unique
+      )
+    }
+  }
+  catch {
+    $providerOrder = @()
+  }
+
+  if (@($providerOrder).Count -lt 1) {
+    $providerOrder = @("pixabay")
+  }
+
+  $sceneBuilderMeta | Add-Member -Force -NotePropertyName provider_order -NotePropertyValue @($providerOrder)
+}
 function Sync-PackCompat {
   param(
     [Parameter(Mandatory=$true)]$ManifestObj,
@@ -1315,6 +1350,7 @@ if (-not [string]::IsNullOrWhiteSpace($liveForCompat)) {
   if (Test-Path -LiteralPath $manifestCompatPath) {
     $manifestCompatObj = Get-Content -LiteralPath $manifestCompatPath -Raw -Encoding UTF8 | ConvertFrom-Json
     Ensure-VisualCapabilityFields -ManifestObj $manifestCompatObj -LiveDir $liveForCompat
+    Ensure-SceneBuilderProviderOrder -ManifestObj $manifestCompatObj
 
     $utf8NoBomManifest = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($manifestCompatPath, ($manifestCompatObj | ConvertTo-Json -Depth 50), $utf8NoBomManifest)
@@ -1358,6 +1394,7 @@ if (-not $SkipEnrich) {
 
         $manifestPostEnrichObj = Get-Content -LiteralPath $manifestPostEnrichPath -Raw -Encoding UTF8 | ConvertFrom-Json
         Ensure-VisualCapabilityFields -ManifestObj $manifestPostEnrichObj -LiveDir $resolvedLiveDir
+        Ensure-SceneBuilderProviderOrder -ManifestObj $manifestPostEnrichObj
 
         $utf8NoBomManifest = [System.Text.UTF8Encoding]::new($false)
         [System.IO.File]::WriteAllText($manifestPostEnrichPath, ($manifestPostEnrichObj | ConvertTo-Json -Depth 50), $utf8NoBomManifest)

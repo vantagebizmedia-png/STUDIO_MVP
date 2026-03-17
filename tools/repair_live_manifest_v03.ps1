@@ -563,15 +563,29 @@ if ([string]::IsNullOrWhiteSpace($artifactAudio) -and $legacyScenes.Count -gt 0)
 }
 
 $existingNote = ""
+$existingProviderOrder = @()
+
 try {
   if ($manifest.PSObject.Properties["scene_builder_v03"] -and $manifest.scene_builder_v03) {
     $sbOld = $manifest.scene_builder_v03
+
     if ($sbOld.PSObject.Properties["note"] -and $sbOld.note) {
       $existingNote = [string]$sbOld.note
     }
+
+    if ($sbOld.PSObject.Properties["provider_order"] -and $sbOld.provider_order) {
+      $existingProviderOrder = @($sbOld.provider_order | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
   }
 }
-catch { $existingNote = "" }
+catch {
+  $existingNote = ""
+  $existingProviderOrder = @()
+}
+
+if (@($existingProviderOrder).Count -lt 1) {
+  $existingProviderOrder = @("pixabay")
+}
 
 $noteValue = "repaired_by_repair_live_manifest_v03"
 if (-not [string]::IsNullOrWhiteSpace($existingNote)) {
@@ -581,6 +595,7 @@ if (-not [string]::IsNullOrWhiteSpace($existingNote)) {
 $sceneBuilderMeta = [pscustomobject]@{
   max_scenes     = [int]$scenes.Count
   total_audio_ms = [int]$totalAudioMs
+  provider_order = @($existingProviderOrder)
   note           = [string]$noteValue
 }
 

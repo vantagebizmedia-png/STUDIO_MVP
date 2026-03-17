@@ -262,6 +262,7 @@ catch {
 $totalAudioMs = 0
 $sceneBuilderMaxScenes = @($scenes).Count
 $sceneBuilderNote = "synced_by_write_pack_compat_v03"
+$sceneBuilderProviderOrder = @("pixabay")
 
 try {
   if ($manifest.PSObject.Properties["scene_builder_v03"] -and $manifest.scene_builder_v03) {
@@ -277,6 +278,10 @@ try {
 
     if ($sb.PSObject.Properties["note"] -and -not [string]::IsNullOrWhiteSpace([string]$sb.note)) {
       $sceneBuilderNote = [string]$sb.note
+    }
+
+    if ($sb.PSObject.Properties["provider_order"] -and $sb.provider_order) {
+      $sceneBuilderProviderOrder = @($sb.provider_order | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     }
   }
 }
@@ -301,9 +306,14 @@ if ($totalAudioMs -le 0) {
   }
 }
 
+if (@($sceneBuilderProviderOrder).Count -lt 1) {
+  $sceneBuilderProviderOrder = @("pixabay")
+}
+
 $sceneBuilderMeta = [pscustomobject]@{
   max_scenes     = [int]$sceneBuilderMaxScenes
   total_audio_ms = [int]$totalAudioMs
+  provider_order = @($sceneBuilderProviderOrder)
   note           = [string]$sceneBuilderNote
 }
 

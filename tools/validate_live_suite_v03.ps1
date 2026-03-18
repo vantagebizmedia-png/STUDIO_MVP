@@ -25,6 +25,7 @@ $applyTool                = Join-Path $RepoRoot "tools\apply_scene_builder_v03.p
 $smokeTool                = Join-Path $RepoRoot "tools\smoke_live_manifest_v03.ps1"
 $providerContractTool     = Join-Path $RepoRoot "tools\smoke_live_provider_contract_v03.ps1"
 $subtitlesSmokeTool       = Join-Path $RepoRoot "tools\smoke_subtitles_live_v03.ps1"
+$voiceFallbackDurationTool = Join-Path $RepoRoot "tools\smoke_pipeline_voice_fallback_duration_v03.ps1"
 $videoCaseTool            = Join-Path $RepoRoot "tools\smoke_live_video_case_v03.ps1"
 $mixedVisualsTool         = Join-Path $RepoRoot "tools\smoke_live_mixed_visuals_v03.ps1"
 $intentImageFallbackTool  = Join-Path $RepoRoot "tools\smoke_live_intent_image_fallback_v03.ps1"
@@ -36,6 +37,7 @@ foreach ($p in @(
   $smokeTool,
   $providerContractTool,
   $subtitlesSmokeTool,
+  $voiceFallbackDurationTool,
   $videoCaseTool,
   $mixedVisualsTool,
   $intentImageFallbackTool,
@@ -98,9 +100,18 @@ if ($LASTEXITCODE -ne 0) {
   throw "smoke_subtitles_live_v03.ps1 devolvió exit code $LASTEXITCODE"
 }
 
+Write-Host ""
+Write-Host "== Paso 5: smoke_pipeline_voice_fallback_duration_v03 ==" -ForegroundColor Cyan
+& $voiceFallbackDurationTool `
+  -RepoRoot $RepoRoot `
+  -WorkspaceRoot $WorkspaceRoot
+if ($LASTEXITCODE -ne 0) {
+  throw "smoke_pipeline_voice_fallback_duration_v03.ps1 devolvió exit code $LASTEXITCODE"
+}
+
 if (-not $SkipVideoCase) {
   Write-Host ""
-  Write-Host "== Paso 5: smoke_live_video_case_v03 ==" -ForegroundColor Cyan
+  Write-Host "== Paso 6: smoke_live_video_case_v03 ==" -ForegroundColor Cyan
   & $videoCaseTool `
     -RepoRoot $RepoRoot `
     -SourceLiveDir $LiveDir `
@@ -112,12 +123,12 @@ if (-not $SkipVideoCase) {
 }
 else {
   Write-Host ""
-  Write-Host "== Paso 5: video-case omitido por flag ==" -ForegroundColor Yellow
+  Write-Host "== Paso 6: video-case omitido por flag ==" -ForegroundColor Yellow
 }
 
 if (-not $SkipMixedVisuals) {
   Write-Host ""
-  Write-Host "== Paso 6: smoke_live_mixed_visuals_v03 ==" -ForegroundColor Cyan
+  Write-Host "== Paso 7: smoke_live_mixed_visuals_v03 ==" -ForegroundColor Cyan
   & $mixedVisualsTool `
     -RepoRoot $RepoRoot `
     -SourceLiveDir $LiveDir `
@@ -129,12 +140,12 @@ if (-not $SkipMixedVisuals) {
 }
 else {
   Write-Host ""
-  Write-Host "== Paso 6: mixed visuals omitido por flag ==" -ForegroundColor Yellow
+  Write-Host "== Paso 7: mixed visuals omitido por flag ==" -ForegroundColor Yellow
 }
 
 if (-not $SkipIntentImageFallback) {
   Write-Host ""
-  Write-Host "== Paso 7: smoke_live_intent_image_fallback_v03 ==" -ForegroundColor Cyan
+  Write-Host "== Paso 8: smoke_live_intent_image_fallback_v03 ==" -ForegroundColor Cyan
   & $intentImageFallbackTool `
     -RepoRoot $RepoRoot `
     -WorkspaceRoot $WorkspaceRoot `
@@ -147,12 +158,12 @@ if (-not $SkipIntentImageFallback) {
 }
 else {
   Write-Host ""
-  Write-Host "== Paso 7: intent->image fallback omitido por flag ==" -ForegroundColor Yellow
+  Write-Host "== Paso 8: intent->image fallback omitido por flag ==" -ForegroundColor Yellow
 }
 
 if (-not $SkipIntentVideoFallback) {
   Write-Host ""
-  Write-Host "== Paso 8: smoke_live_intent_video_fallback_v03 ==" -ForegroundColor Cyan
+  Write-Host "== Paso 9: smoke_live_intent_video_fallback_v03 ==" -ForegroundColor Cyan
   & $intentVideoFallbackTool `
     -RepoRoot $RepoRoot `
     -WorkspaceRoot $WorkspaceRoot `
@@ -165,12 +176,12 @@ if (-not $SkipIntentVideoFallback) {
 }
 else {
   Write-Host ""
-  Write-Host "== Paso 8: intent->video fallback omitido por flag ==" -ForegroundColor Yellow
+  Write-Host "== Paso 9: intent->video fallback omitido por flag ==" -ForegroundColor Yellow
 }
 
 if (-not $SkipNegativeSuite) {
   Write-Host ""
-  Write-Host "== Paso 9: negative_live_suite_v03 ==" -ForegroundColor Cyan
+  Write-Host "== Paso 10: negative_live_suite_v03 ==" -ForegroundColor Cyan
   & $negativeSuiteTool `
     -RepoRoot $RepoRoot `
     -WorkspaceRoot $WorkspaceRoot `
@@ -182,7 +193,7 @@ if (-not $SkipNegativeSuite) {
 }
 else {
   Write-Host ""
-  Write-Host "== Paso 9: negative suite omitida por flag ==" -ForegroundColor Yellow
+  Write-Host "== Paso 10: negative suite omitida por flag ==" -ForegroundColor Yellow
 }
 
 Write-Host ""

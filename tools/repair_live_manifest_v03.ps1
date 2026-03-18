@@ -574,7 +574,12 @@ try {
     }
 
     if ($sbOld.PSObject.Properties["provider_order"] -and $sbOld.provider_order) {
-      $existingProviderOrder = @($sbOld.provider_order | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      $existingProviderOrder = @(
+        $sbOld.provider_order |
+          ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } |
+          Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+          Select-Object -Unique
+      )
     }
   }
 }

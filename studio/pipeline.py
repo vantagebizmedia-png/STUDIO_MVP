@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Pipeline puro de STUDIO — sin prints, sin CLI, sin I/O de consola.
 
 v0.3:
@@ -235,26 +235,71 @@ class StudioPipeline:
             f.write(_FALLBACK_PNG_1X1)
         return path
 
-    def _write_fallback_wav(self, path: str, *, duration_s: float = 20.0, sr: int = 22050) -> str:
+    def _estimate_fallback_audio_duration_s(
+        self,
+        text: str,
+        *,
+        min_s: float = 1.2,
+        max_s: float = 90.0,
+        words_per_minute: float = 150.0,
+    ) -> float:
+        clean = str(text or "").replace("\r", " ").replace("\n", " ").strip()
+        if not clean:
+            return float(min_s)
+
+        words = re.findall(r"[A-Za-zÀ-ÿ0-9']+", clean, flags=re.UNICODE)
+        word_count = len(words)
+        punctuation_count = len(re.findall(r"[\,\.;:\!\?]", clean))
+
+        if word_count > 0:
+            words_per_second = max(1.0, float(words_per_minute) / 60.0)
+            duration_s = word_count / words_per_second
+        else:
+            duration_s = max(float(min_s), len(clean) / 14.0)
+
+        duration_s += min(3.0, punctuation_count * 0.12)
+
+        if len(clean) >= 240:
+            duration_s += 0.35
+
+        if duration_s < float(min_s):
+            duration_s = float(min_s)
+        if duration_s > float(max_s):
+            duration_s = float(max_s)
+
+        return float(duration_s)
+
+    def _write_fallback_wav(
+        self,
+        path: str,
+        *,
+        duration_s: Optional[float] = None,
+        text: str = "",
+        sr: int = 22050,
+    ) -> str:
         """
         Fallback determinista (sin TTS real):
-        - Genera un WAV PCM mono 16-bit con SILENCIO (0) de duración configurable.
-        - Importante: duration_s por defecto es largo para que total_audio_ms no sea 1000ms.
+        - Genera un WAV PCM mono 16-bit con SILENCIO (0).
+        - La duración se estima desde el texto real cuando no viene forzada.
         - Permite override por env var STUDIO_FALLBACK_AUDIO_S (float).
         """
         import os
         import wave
         import struct
 
-        # Override opcional por environment (determinista si el operador lo fija)
+        resolved_duration_s: Optional[float] = duration_s
+
         try:
             env_s = os.environ.get("STUDIO_FALLBACK_AUDIO_S", "").strip()
             if env_s:
-                duration_s = float(env_s)
+                resolved_duration_s = float(env_s)
         except Exception:
             pass
 
-        duration_s = float(duration_s or 0.0)
+        if resolved_duration_s is None or float(resolved_duration_s or 0.0) <= 0.0:
+            resolved_duration_s = self._estimate_fallback_audio_duration_s(text)
+
+        duration_s = float(resolved_duration_s or 0.0)
         if duration_s < 0.2:
             duration_s = 0.2
 
@@ -273,13 +318,15 @@ class StudioPipeline:
             wf.setsampwidth(2)
             wf.setframerate(sr)
 
-            chunk = 4096
-            zero = struct.pack("<h", 0)
-            left = nframes
-            while left > 0:
-                take = chunk if left > chunk else left
-                wf.writeframes(zero * take)
-                left -= take
+            silence = struct.pack("<h", 0)
+            chunk_frames = min(nframes, sr)
+            chunk = silence * chunk_frames
+            remaining = nframes
+
+            while remaining > 0:
+                take = min(remaining, chunk_frames)
+                wf.writeframes(chunk[: take * 2])
+                remaining -= take
 
         return path
     def _copy_scene_aliases(self, *, idx: int, script_src: str, image_src: str, audio_src: str) -> dict[str, str]:
@@ -624,7 +671,7 @@ class StudioPipeline:
                 try:
                     aud = self.voice.synthesize(audio_text, ap)
                 except Exception:
-                    aud = self._write_fallback_wav(ap)
+                    aud = self._write_fallback_wav(ap, text=audio_text)
                 curr_ms += 1
 
                 aliases = self._copy_scene_aliases(
@@ -671,7 +718,7 @@ class StudioPipeline:
                 try:
                     first_aud = self.voice.synthesize(final_script, first_aud)
                 except Exception:
-                    first_aud = self._write_fallback_wav(first_aud)
+                    first_aud = self._write_fallback_wav(first_aud, text=final_script)
                 aliases = self._copy_scene_aliases(
                     idx=1,
                     script_src=first_script,

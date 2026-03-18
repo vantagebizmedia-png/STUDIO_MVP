@@ -760,11 +760,17 @@ class StudioPipeline:
         audio_path = os.path.join(self.work_dir, f"audio_{tag}.wav")
 
         self._notify("imagen", curr, total)
-        img = self.image.generate(final_script, image_path)
+        try:
+            img = self.image.generate(final_script, image_path)
+        except Exception:
+            img = self._write_fallback_png(image_path)
         curr += 1
 
         self._notify("audio", curr, total)
-        aud = self.voice.synthesize(final_script, audio_path)
+        try:
+            aud = self.voice.synthesize(final_script, audio_path)
+        except Exception:
+            aud = self._write_fallback_wav(audio_path, text=final_script)
         curr += 1
 
         self._write_manifest(script_path=script_path, img_path=img, aud_path=aud, scenes=None)

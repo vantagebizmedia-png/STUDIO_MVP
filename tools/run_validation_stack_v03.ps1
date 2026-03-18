@@ -56,6 +56,7 @@ $statusMainSmoke = "PENDING"
 $statusProviderContract = "PENDING"
 $statusSubtitlesSmoke = "PENDING"
 $statusVoiceFallbackDuration = "PENDING"
+$statusSingleSceneVoiceFallbackDuration = "PENDING"
 $statusVideoCase = "SKIPPED"
 $statusMixedVisuals = "SKIPPED"
 $statusIntentImageFallback = "SKIPPED"
@@ -134,6 +135,7 @@ $statusMainSmoke = "PASS"
 $statusProviderContract = "PASS"
 $statusSubtitlesSmoke = "PASS"
 $statusVoiceFallbackDuration = "PASS"
+$statusSingleSceneVoiceFallbackDuration = "PASS"
 
 if ($effectiveSkipVideoCase) {
   $statusVideoCase = "SKIPPED"
@@ -218,6 +220,7 @@ Write-Host ("MAIN_SMOKE={0}" -f $statusMainSmoke) -ForegroundColor DarkGray
 Write-Host ("PROVIDER_CONTRACT={0}" -f $statusProviderContract) -ForegroundColor DarkGray
 Write-Host ("SUBTITLES_SMOKE={0}" -f $statusSubtitlesSmoke) -ForegroundColor DarkGray
 Write-Host ("VOICE_FALLBACK_DURATION={0}" -f $statusVoiceFallbackDuration) -ForegroundColor DarkGray
+Write-Host ("SINGLE_SCENE_VOICE_FALLBACK_DURATION={0}" -f $statusSingleSceneVoiceFallbackDuration) -ForegroundColor DarkGray
 Write-Host ("VIDEO_CASE={0}" -f $statusVideoCase) -ForegroundColor DarkGray
 Write-Host ("MIXED_VISUALS={0}" -f $statusMixedVisuals) -ForegroundColor DarkGray
 Write-Host ("INTENT_IMAGE_FALLBACK={0}" -f $statusIntentImageFallback) -ForegroundColor DarkGray

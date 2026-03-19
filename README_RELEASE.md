@@ -1,52 +1,112 @@
-﻿# STUDIO_MVP — Release (source clean)
+# STUDIO_MVP - Release / Handoff v03
 
-Este repo está preparado para mantener el **código limpio** y enviar el **runtime** (runs/cache) fuera del repo.
+Documento de referencia del flujo vigente de release/handoff validado contractualmente en el baseline `c8b2648`.
+
+## Estado actual
+Al 2026-03-18, el flujo de release/handoff quedó validado de forma real con:
+
+- `smoke_release_handoff_contract_v03.ps1`: PASS
+- `validate_handoff.py`: PASS
+- `run_validation_stack_v03.ps1` FULL: PASS
+
+El baseline ya cubre:
+- export pack real
+- ZIP de release
+- finalize handoff real
+- validación contractual de artefactos finales
+- negativo contractual del handoff
 
 ## Requisitos
-- Python instalado (usa el mismo que tú ya usas para correr STUDIO).
-- Dependencias del proyecto instaladas (igual que en tu entorno actual).
-- Si tu pipeline usa herramientas externas (ej. ffmpeg), deben estar disponibles en PATH.
+- Python disponible en PATH
+- dependencias del proyecto instaladas
+- `ffmpeg` disponible en PATH
+- workspace operativo del proyecto
 
-## Variables de entorno
+Rutas típicas:
+- repo: `C:\Users\vanta\Documents\STUDIO_MVP`
+- workspace: `C:\Users\vanta\Documents\STUDIO_WORKSPACE`
 
-### STUDIO_WORKSPACE
-Define dónde se guardan runs y cache.
+## Flujo recomendado
 
-PowerShell:
+### 1. Crear pack de release
+Ejemplo:
 
-  $env:STUDIO_WORKSPACE = "$env:USERPROFILE\STUDIO_WORKSPACE"
-  mkdir $env:STUDIO_WORKSPACE -Force | Out-Null
-
-Si no defines STUDIO_WORKSPACE, STUDIO usa ./workspace (dentro del repo).
-
-## Smoke test (1 comando)
-Genera un video pequeño y valida que NO escribe runtime dentro del repo:
-
-  powershell -ExecutionPolicy Bypass -File .\tools\smoke_end_to_end.ps1
+`python .\tools\release_pack_v03.py --v03-config .\config\studio_v03_multiscene_text_smoke.json --script "mi guion o idea" --overwrite`
 
 Salida esperada:
-- Video final en: %STUDIO_WORKSPACE%/runs/<run_id>/render/video_final.mp4
-- workspace/runs y workspace/cache dentro del repo no cambian.
+- `PACK_DIR: <ruta_del_pack>`
+- ZIP inicial de release
+- validación de pack OK
 
-## Crear ZIP limpio (source clean)
-Genera un ZIP sin .git/, workspace/, music/, _trash/, _vcs_extract/, outputs pesados, etc:
+### 2. Finalizar handoff
+`python .\tools\finalize_handoff_v03.py --pack-dir <PACK_DIR>`
 
-  python .\tools\make_release_zip.py
+Salida esperada dentro del pack:
+- `video.mp4`
+- `video_music_auto.mp4`
+- `video_final.mp4`
+- `HANDOFF_READY.txt`
 
-Archivo:
-- .\releases\STUDIO_MVP_source_clean.zip
+Salida esperada en el parent del pack:
+- `<pack>.final_delivery.zip`
+- `<pack>.final_delivery.zip.sha256.txt`
 
-## Ejecutar
-Ejemplo rápido:
+### 3. Validar handoff
+`python .\tools\validate_handoff.py --pack-dir <PACK_DIR>`
 
-  python run.py "tema del reel" --seed 123
+Resultado esperado:
+- `RESULT: PASS`
 
-Notas:
-- El “producto estable” puede copiarse a .\output\video_final.mp4 según tu pipeline actual.
+## Smoke contractual recomendado
+Para verificar el contrato end-to-end completo:
 
-## Instalación reproducible (venv)
-PowerShell:
+`powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\smoke_release_handoff_contract_v03.ps1 -RepoRoot C:\Users\vanta\Documents\STUDIO_MVP -WorkspaceRoot C:\Users\vanta\Documents\STUDIO_WORKSPACE`
 
-  powershell -ExecutionPolicy Bypass -File .\tools\install_venv_and_smoke.ps1
+Ese smoke ejecuta realmente:
+1. `release_pack_v03.py`
+2. `finalize_handoff_v03.py`
+3. `validate_handoff.py`
 
-Esto crea .\.venv, instala dependencias desde requirements.txt y corre el smoke test.
+Además verifica:
+- artefactos obligatorios del handoff
+- ZIP + SHA
+- contenido mínimo dentro del ZIP final
+- caso negativo contractual
+
+## Contrato mínimo del handoff final
+
+Dentro de `PACK_DIR` deben existir:
+- `pack.json`
+- `manifest_v03.json`
+- `video.mp4`
+- `video_music_auto.mp4`
+- `video_final.mp4`
+- `HANDOFF_READY.txt`
+
+En el directorio padre del pack deben existir:
+- `<pack>.final_delivery.zip`
+- `<pack>.final_delivery.zip.sha256.txt`
+
+Además:
+- el SHA del sidecar debe coincidir con el ZIP real
+- `HANDOFF_READY.txt` debe alinear con:
+  - `PACK_ID`
+  - `ZIP_FILE`
+  - `ZIP_SHA256`
+  - `VIDEO_BASE`
+  - `VIDEO_MUSIC_AUTO`
+  - `VIDEO_FINAL`
+  - `AUTO_MUSIC_ENABLED`
+  - `DETERMINISTIC`
+
+## Nota operativa
+El baseline actual es determinista y no debe mutarse automáticamente. Cualquier endurecimiento adicional del flujo release/handoff debe seguir la metodología vigente:
+- inspección real
+- reemplazos por bloques enteros
+- validación reproducible después del cambio
+
+## Próximo paso después de este bloque
+1. cerrar commit documental de sincronización final
+2. ejecutar limpieza segura del repo/workspace
+3. preparar freeze operativo del MVP
+4. luego pasar a auditoría upstream de selección visual por escena

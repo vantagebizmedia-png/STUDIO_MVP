@@ -1,102 +1,108 @@
-﻿# NEXT_STEPS
+# NEXT_STEPS
 
-## Estado de referencia al 2026-03-17
+## Estado de referencia al 2026-03-18
 
-Contexto operativo ya validado:
+Contexto operativo ya validado y publicado:
 
-- `apply_scene_builder_v03.ps1` ya respeta autoridad temporal previa al fallback sintético
-- `README.md` ya fue actualizado con el estado real del baseline
-- `ROADMAP_STATUS.md` ya fue actualizado con prioridades vigentes
-- `docs\CONTRACT_manifest_v03.md` ya fue actualizado con contrato temporal y visual real
-- baseline FULL validado:
-  - `run_validation_stack_v03.ps1`: PASS
-  - mixed visuals: PASS
-  - fallbacks simétricos: PASS
-  - negative suite: PASS
+- HEAD publicado en `main`: `c8b2648`
+- `run_validation_stack_v03.ps1` FULL: PASS
+- `smoke_export_pack_contract_v03.ps1`: PASS
+- `smoke_release_handoff_contract_v03.ps1`: PASS
+- `smoke_live_intent_image_fallback_v03.ps1`: PASS
+- `smoke_live_intent_video_fallback_v03.ps1`: PASS
+- `negative_live_suite_v03.ps1`: PASS
+
+### Contratos ya cerrados
+- contract de manifest/pack compat
+- autoridad temporal de subtítulos
+- mixed visuals
+- provider contract upstream
+- fallback de audio/imagen en pipeline
+- export-pack contract
+- release/handoff contract end-to-end
 
 ---
 
 ## Objetivo inmediato
 
-Cerrar la actualización documental restante y luego pasar a una limpieza controlada, sin tocar artefactos útiles del baseline ni abrir regresiones.
+Cerrar la fase documental y de limpieza conservadora del MVP, sin tocar bloques sensibles del pipeline que ya están validados.
 
 ---
 
-## Paso 1 - actualizar `SCENE_BUILDER_DIAGNOSIS.md`
+## Paso 1 - commit documental agrupado
 
-Ese documento ya no debe describir al builder como si siempre impusiera timings sintéticos por encima del estado existente.
-
-Debe reflejar explícitamente:
-
-- que el builder conserva timings explícitos válidos cuando ya existen
-- que `audio_clips[]` puede actuar como autoridad temporal
-- que el fallback sintético sigue existiendo, pero solo como última opción
-- que el comportamiento actual ya convive con `requested_media_type`, `visual_request_kind`, `visual_kind` y escenas mixed visuals
-
-Resultado esperado del paso:
-
-- documento alineado con el comportamiento real actual
-- sin contradicciones con `README.md`, `ROADMAP_STATUS.md` y `docs\CONTRACT_manifest_v03.md`
-
----
-
-## Paso 2 - commit documental agrupado
-
-Cuando `SCENE_BUILDER_DIAGNOSIS.md` quede alineado, hacer un commit de documentación que agrupe:
+Ahora que `SCENE_BUILDER_DIAGNOSIS.md` ya quedó alineado, cerrar un commit documental agrupado con:
 
 - `ROADMAP_STATUS.md`
-- `docs\CONTRACT_manifest_v03.md`
 - `NEXT_STEPS.md`
+- `README.md`
+- `README_RELEASE.md`
 - `SCENE_BUILDER_DIAGNOSIS.md`
 
-Meta:
+Resultado esperado:
 
-- dejar un bloque documental consistente y fácil de auditar
+- bloque documental consistente
+- baseline documental alineado con `c8b2648`
+- base limpia para pasar a la fase de limpieza conservadora
 
 ---
 
-## Paso 3 - limpieza controlada del repo
+## Paso 2 - limpieza controlada del repo
 
-Después del commit documental, hacer limpieza conservadora en el repo.
+Después del ajuste documental, revisar y depurar con criterio conservador:
 
-Eliminar primero candidatos claramente residuales:
-
-- backups `.bak*` ya obsoletos de parches intermedios
-- probes puntuales ya superados
-- artefactos temporales que no formen parte del baseline ni del flujo activo
+- backups `.bak*` de parches ya integrados
+- backups específicos creados en este cierre
+- `__pycache__` residuales
+- logs puntuales no necesarios para baseline
+- probes transitorios ya superados
 
 No tocar todavía sin revisión explícita:
 
+- bundles o zips que sirvan como referencia
 - distribuciones thirdparty
-- fixtures o bundles que puedan servir de referencia
-- scripts activos
+- fixtures útiles
 - documentación viva
+- scripts activos del baseline
 
 Resultado esperado:
 
 - árbol más limpio
-- menos ruido para futuras auditorías
+- menos ruido para auditoría y freeze
 
 ---
 
-## Paso 4 - limpieza controlada del workspace
+## Paso 3 - limpieza controlada del workspace
 
 Revisar y depurar con criterio conservador:
 
-- runs de probe temporales
+- runs de prueba temporales ya cerrados
 - `_tmp_render` residuales
-- `.bak` acumulados dentro de runs clonados
-- salidas intermedias redundantes de casos smoke ya cerrados
+- salidas intermedias redundantes
+- clones negativos o de smoke que no sea necesario conservar
 
 No borrar sin revisar:
 
-- `smoke_live_latest` operativo
-- runs que todavía se estén usando como referencia viva
-- artefactos necesarios para validar o comparar regresiones
+- `smoke_live_latest`
+- runs que sigan actuando como referencia viva
+- artefactos necesarios para comparar regresiones
 
 ---
 
-## Paso 5 - siguiente foco técnico real
+## Paso 4 - checklist de freeze final del MVP
+
+Preparar un cierre operativo claro con:
+
+- baseline publicado
+- FULL PASS real
+- documentación alineada
+- árbol razonablemente limpio
+- lista explícita de contratos cerrados
+- lista explícita de frentes aún abiertos pero no bloqueantes
+
+---
+
+## Paso 5 - siguiente foco técnico real después del freeze
 
 Una vez cerrada documentación + limpieza, el siguiente foco no es rehacer el pipeline, sino endurecer el flujo upstream de selección visual por escena.
 
@@ -121,7 +127,7 @@ Auditoría objetivo:
 
 ---
 
-## Regla operativa para el siguiente bloque
+## Regla operativa vigente
 
 Seguir trabajando con la metodología actual:
 
@@ -134,4 +140,4 @@ Seguir trabajando con la metodología actual:
 
 ## Siguiente acción recomendada
 
-Actualizar ahora `SCENE_BUILDER_DIAGNOSIS.md` y dejarlo alineado con la nueva autoridad temporal del builder.
+Cerrar ahora el commit documental agrupado y, a continuación, ejecutar una limpieza segura fase 1 sobre `__pycache__`, `.pyc`, `.log` residuales y `_tmp_render`, sin tocar todavía `.bak*`, bundles, fixtures ni runs de referencia.

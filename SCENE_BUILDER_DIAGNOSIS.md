@@ -1,8 +1,8 @@
-﻿# SCENE_BUILDER_DIAGNOSIS
+# SCENE_BUILDER_DIAGNOSIS
 
-## Diagnóstico actualizado al 2026-03-17
+## Diagnóstico actualizado al 2026-03-18
 
-Este documento resume el comportamiento real vigente de `apply_scene_builder_v03.ps1` después del endurecimiento reciente de autoridad temporal.
+Este documento resume el comportamiento real vigente de `apply_scene_builder_v03.ps1` dentro del baseline actualmente publicado y validado en `main` con HEAD `c8b2648`.
 
 ---
 
@@ -31,13 +31,13 @@ Dentro del baseline validado, `apply_scene_builder_v03.ps1` ya participa correct
 - asegurar `assets.audio_clip` por escena
 - preservar compatibilidad con `pack.json` vía resincronización
 - convivir con intención visual explícita y con escenas de tipo `image` o `video`
-- operar dentro de una suite de validación que ya cubre mixed visuals, fallbacks simétricos y casos negativos
+- operar dentro de una suite de validación que ya cubre mixed visuals, fallbacks simétricos, export pack, release/handoff y casos negativos
 
 ---
 
 ## Autoridad temporal vigente
 
-El orden real de autoridad temporal al 2026-03-17 es:
+El orden real de autoridad temporal al 2026-03-18 es:
 
 1. timings explícitos válidos ya presentes en `scenes_v03`
 2. `audio_clips[]` con timeline válido y consistente
@@ -60,7 +60,7 @@ De forma resumida, el flujo vigente puede entenderse así:
 7. asegurar campos visuales, assets y estructura mínima
 8. dejar `manifest_v03.json` listo para resincronizar `pack.json`
 
-La clave del cambio reciente está en el paso 3/4/5: ahora hay una resolución explícita de autoridad temporal antes de caer en reparto sintético.
+La clave del comportamiento actual está en el paso 3/4/5: hoy existe una resolución explícita de autoridad temporal antes de caer en reparto sintético.
 
 ---
 
@@ -105,6 +105,7 @@ Esto es importante porque el diagnóstico del builder ya no puede analizar tiemp
 - compatibilidad image/video por escena
 - resincronización manifest/pack
 - subtítulos alineados al timeline final
+- compatibilidad con export pack y release/handoff posteriores
 
 ---
 
@@ -115,9 +116,14 @@ El comportamiento actual no se toma como supuesto teórico, sino como parte de u
 - `run_validation_stack_v03.ps1` FULL
 - `validate_live_suite_v03.ps1`
 - `smoke_live_manifest_v03.ps1`
+- `smoke_live_provider_contract_v03.ps1`
 - `smoke_subtitles_live_v03.ps1`
+- `smoke_pipeline_voice_fallback_duration_v03.ps1`
+- `smoke_pipeline_single_scene_voice_fallback_duration_v03.ps1`
 - `smoke_live_video_case_v03.ps1`
 - `smoke_live_mixed_visuals_v03.ps1`
+- `smoke_export_pack_contract_v03.ps1`
+- `smoke_release_handoff_contract_v03.ps1`
 - `smoke_live_intent_image_fallback_v03.ps1`
 - `smoke_live_intent_video_fallback_v03.ps1`
 - `negative_live_suite_v03.ps1`

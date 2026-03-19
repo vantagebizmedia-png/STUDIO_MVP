@@ -1,21 +1,28 @@
-﻿# ROADMAP_STATUS
+# ROADMAP_STATUS
 
-## Estado actual confirmado al 2026-03-17
+## Estado actual confirmado al 2026-03-18
 
-### Baseline validado
+### Baseline publicado vigente
+- `main` publicado en `origin/main`
+- HEAD confirmado: `c8b2648`
 - `run_validation_stack_v03.ps1` FULL: PASS
 - `validate_live_suite_v03.ps1`: PASS
 - `smoke_live_manifest_v03.ps1`: PASS
+- `smoke_live_provider_contract_v03.ps1`: PASS
 - `smoke_subtitles_live_v03.ps1`: PASS
+- `smoke_pipeline_voice_fallback_duration_v03.ps1`: PASS
+- `smoke_pipeline_single_scene_voice_fallback_duration_v03.ps1`: PASS
 - `smoke_live_video_case_v03.ps1`: PASS
 - `smoke_live_mixed_visuals_v03.ps1`: PASS
+- `smoke_export_pack_contract_v03.ps1`: PASS
+- `smoke_release_handoff_contract_v03.ps1`: PASS
 - `smoke_live_intent_image_fallback_v03.ps1`: PASS
 - `smoke_live_intent_video_fallback_v03.ps1`: PASS
 - `negative_live_suite_v03.ps1`: PASS
 
 ### Capacidades ya cerradas
 - LIVE reproducible y estable para validación
-- `Scene Builder v03` genera `scenes_v03` y normaliza estructura
+- `Scene Builder v03` genera y normaliza `scenes_v03`
 - `pack.json` queda resincronizado contra `manifest_v03.json`
 - autoridad temporal de subtítulos desde `start_ms`, `end_ms`, `duration_ms`
 - contrato explícito de intención visual:
@@ -27,14 +34,25 @@
 - fallback simétrico validado:
   - intención `video` con resolución efectiva a `image`
   - intención `image` con resolución efectiva a `video`
-- suite negativa validando conflictos y fugas estructurales
+- fallback determinista de audio/imagen en multi-scene y single-scene
+- contract smoke de export pack cerrado
+- contract smoke de release/handoff end-to-end cerrado
+- validación contractual de handoff final cerrada:
+  - `video.mp4`
+  - `video_music_auto.mp4`
+  - `video_final.mp4`
+  - `HANDOFF_READY.txt`
+  - ZIP final + SHA256
+- `export_v03_pack.py` ya soporta ids legacy tipo `s01`, `s02`, etc. en la derivación de índice de escena
+- suite negativa validando conflictos, fugas estructurales y desalineaciones reales
 
 ### Cambio técnico más reciente ya integrado
-- `apply_scene_builder_v03.ps1` ahora respeta autoridad temporal antes del fallback sintético
-- orden de autoridad temporal vigente:
-  1. timings explícitos de escena válidos
-  2. `audio_clips` con timeline válido y consistente
-  3. fallback sintético determinista como última opción
+- nuevo `tools\validate_handoff.py`
+- nuevo `tools\smoke_release_handoff_contract_v03.ps1`
+- `validate_live_suite_v03.ps1` ya integra `RELEASE_HANDOFF_CONTRACT`
+- `run_validation_stack_v03.ps1` ya resume `RELEASE_HANDOFF_CONTRACT=PASS`
+- `export_v03_pack.py` endurecido para ids legacy de escenas en la ruta de release/export
+- smokes de intent fallback ya son compatibles con runtimes PowerShell/.NET donde `Path.GetRelativePath()` no está disponible
 
 ---
 
@@ -49,30 +67,38 @@
 - `smoke_subtitles_live_v03.ps1`
 - `smoke_live_video_case_v03.ps1`
 - `smoke_live_mixed_visuals_v03.ps1`
+- `smoke_export_pack_contract_v03.ps1`
+- `validate_pack.py`
+- `release_pack_v03.py`
+- `finalize_handoff_v03.py`
+- `validate_handoff.py`
+- `smoke_release_handoff_contract_v03.ps1`
 - `smoke_live_intent_image_fallback_v03.ps1`
 - `smoke_live_intent_video_fallback_v03.ps1`
 - `negative_live_suite_v03.ps1`
 - `ensure_outputs_live_v03.ps1`
-- `finalize_handoff_v03.ps1`
 - `handoff_pack_v03.ps1`
 
 ---
 
-## Problema principal actual
+## Lectura honesta del estado actual
 
-El problema principal ya no es que el pipeline base esté roto. El baseline está estable. El frente abierto real es endurecer la capa upstream que decide y resuelve visuales por escena, para mejorar correspondencia entre:
+El pipeline base y sus capas contractuales ya no están abiertas como problema principal.
 
-- guion / narrativa
-- intención visual explícita
-- tipo de asset finalmente resuelto
-- proveedor visual utilizado
+A esta altura, el sistema ya tiene resueltos:
 
-En otras palabras: el cuello de botella actual es de calidad semántica/visual y de endurecimiento arquitectónico, no de viabilidad del pipeline.
+- baseline reproducible
+- validación FULL estable
+- export contractual
+- release/handoff contractual
+- fallbacks simétricos validados
+- suite negativa útil
+
+El frente abierto real ya no es "hacer que funcione", sino cerrar bien la fase de freeze del MVP y después seguir endureciendo la calidad upstream de selección visual.
 
 ---
 
 ## Decisión funcional vigente
-
 La dirección correcta del sistema sigue siendo:
 
 - que el contenido defina la duración
@@ -85,34 +111,31 @@ La dirección correcta del sistema sigue siendo:
 
 ## Prioridades vigentes
 
-### Prioridad A — endurecimiento upstream de selección visual por escena
+### Prioridad A - freeze documental y operativo
+- resincronizar documentación viva con el estado real `c8b2648`
+- dejar explícitos los contratos ya cerrados
+- evitar que README/roadmap/next steps contradigan el baseline real
+
+### Prioridad B - limpieza controlada
+- depurar backups y probes residuales con criterio conservador
+- no borrar fixtures, bundles o artefactos útiles de auditoría
+- mantener el árbol legible para la fase final del MVP
+
+### Prioridad C - endurecimiento upstream de selección visual por escena
 - auditar dónde se decide la query final por escena
 - endurecer trazabilidad de decisión visual
 - reducir dependencia en fallback no ideal
 - mantener coherencia entre intención visual y asset efectivo
 
-### Prioridad B — duración dinámica end-to-end
-- auditar más rutas donde todavía pueda sobrevivir lógica heredada
+### Prioridad D - duración dinámica end-to-end
+- seguir auditando rutas heredadas donde todavía pueda sobrevivir lógica fija
 - asegurar que `start_ms`, `end_ms`, `duration_ms` sean autoridad real de punta a punta
 - preparar mejor soporte para videos de duración variable según contenido
 
-### Prioridad C — arquitectura multi-provider
+### Prioridad E - arquitectura multi-provider
 - mantener baseline desacoplado de un único proveedor
 - permitir expansión futura hacia backends adicionales
 - no romper determinismo ni contrato del manifest
-
-### Prioridad D — calidad estética y narrativa
-- relevancia visual por escena
-- layout visual
-- safe margins
-- fit contain/crop más fino
-- tamaño de texto automático
-- mejor calidad del guion LIVE
-
-### Prioridad E — limpieza controlada
-- depurar backups y probes residuales
-- conservar únicamente lo útil para baseline, auditoría o recuperación real
-- evitar borrar artefactos activos de validación
 
 ---
 
@@ -122,11 +145,12 @@ La dirección correcta del sistema sigue siendo:
 - inspección real antes de modificar bloques sensibles
 - validación reproducible después de cambios importantes
 - control manual del operador
+- tratamiento de `image` y `video` como ciudadanos de primera clase
 
 ---
 
 ## Siguiente paso recomendado inmediato
-1. actualizar `docs\CONTRACT_manifest_v03.md` con autoridad temporal e intención visual
-2. actualizar `NEXT_STEPS.md` para reflejar el roadmap real actual
-3. actualizar `SCENE_BUILDER_DIAGNOSIS.md` para que no contradiga el nuevo comportamiento del builder
-4. luego ejecutar limpieza controlada de backups/probes con criterio conservador
+1. cerrar commit documental agrupado
+2. ejecutar limpieza segura fase 1 sobre residuos claramente descartables
+3. luego revisar `.bak*`, runs viejos y probes con criterio conservador
+4. preparar checklist de freeze final del MVP

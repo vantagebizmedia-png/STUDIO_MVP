@@ -1,4 +1,4 @@
-﻿# studio/live_manifest_patch_v03.py
+# studio/live_manifest_patch_v03.py
 # Fuente de verdad v03:
 # - si ya existe manifest["scenes"] legacy bien armado, derivar scenes_v03 desde ahí
 # - si no existe, usar build_scenes_v03(script_text, ...)
@@ -710,21 +710,33 @@ def apply_scene_builder_to_manifest(
         if not provider_order_seen:
             provider_order_seen = ["pixabay"]
 
-        fallback_applied = False
+        video_request_resolved_to_image = bool(r.get("video_request_resolved_to_image"))
+        image_request_resolved_to_video = bool(r.get("image_request_resolved_to_video"))
+        fallback_applied = bool(r.get("fallback_applied"))
         fallback_reason = _norm_text(r.get("fallback_reason"))
+
+        if requested_capability == "stock_video":
+            image_request_resolved_to_video = False
+            if actual_kind != "video":
+                video_request_resolved_to_image = True
+        elif requested_capability == "stock_image":
+            video_request_resolved_to_image = False
+            if actual_kind != "image":
+                image_request_resolved_to_video = True
 
         if actual_source_kind.startswith("fallback_"):
             fallback_applied = True
-            if not fallback_reason:
-                fallback_reason = actual_source_kind
-        elif requested_capability == "stock_video" and actual_kind != "video":
+        if video_request_resolved_to_image or image_request_resolved_to_video:
             fallback_applied = True
-            if not fallback_reason:
+
+        if video_request_resolved_to_image:
+            if not fallback_reason or fallback_reason == actual_source_kind:
                 fallback_reason = "video_request_resolved_to_image"
-        elif requested_capability == "stock_image" and actual_kind != "image":
-            fallback_applied = True
-            if not fallback_reason:
+        elif image_request_resolved_to_video:
+            if not fallback_reason or fallback_reason == actual_source_kind:
                 fallback_reason = "image_request_resolved_to_video"
+        elif actual_source_kind.startswith("fallback_") and not fallback_reason:
+            fallback_reason = actual_source_kind
 
         visual_enrich["runtime_requested_capability"] = requested_capability
         visual_enrich["runtime_provider_order"] = provider_order_seen
@@ -734,6 +746,8 @@ def apply_scene_builder_to_manifest(
         visual_enrich["runtime_resolved_source_kind"] = actual_source_kind
         visual_enrich["runtime_fallback_applied"] = bool(fallback_applied)
         visual_enrich["runtime_fallback_reason"] = fallback_reason
+        visual_enrich["runtime_video_request_resolved_to_image"] = bool(video_request_resolved_to_image)
+        visual_enrich["runtime_image_request_resolved_to_video"] = bool(image_request_resolved_to_video)
 
         if actual_kind == "video":
             assets["video"] = r["path"]
@@ -759,6 +773,8 @@ def apply_scene_builder_to_manifest(
                 "resolved_source_kind": actual_source_kind,
                 "fallback_applied": bool(fallback_applied),
                 "fallback_reason": fallback_reason,
+                "video_request_resolved_to_image": bool(video_request_resolved_to_image),
+                "image_request_resolved_to_video": bool(image_request_resolved_to_video),
                 "lang": str(ctx["lang"]),
                 "orientation": str(ctx["orientation"]),
                 "category": str(ctx["category"]),
@@ -800,6 +816,8 @@ def apply_scene_builder_to_manifest(
                 "resolved_source_kind": actual_source_kind,
                 "fallback_applied": bool(fallback_applied),
                 "fallback_reason": fallback_reason,
+                "video_request_resolved_to_image": bool(video_request_resolved_to_image),
+                "image_request_resolved_to_video": bool(image_request_resolved_to_video),
                 "lang": str(ctx["lang"]),
                 "orientation": str(ctx["orientation"]),
                 "category": str(ctx["category"]),

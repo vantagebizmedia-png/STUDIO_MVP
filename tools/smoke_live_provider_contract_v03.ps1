@@ -1,4 +1,4 @@
-﻿param(
+param(
   [Parameter(Mandatory=$true)][string]$LiveDir
 )
 
@@ -231,12 +231,71 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     Fail "$sceneLabel runtime_resolved_source_kind vacío"
   }
 
+  if ($visualEnrich.PSObject.Properties.Name -notcontains "runtime_video_request_resolved_to_image") {
+    Fail "$sceneLabel runtime_video_request_resolved_to_image ausente"
+  }
+  if ($visualEnrich.PSObject.Properties.Name -notcontains "runtime_image_request_resolved_to_video") {
+    Fail "$sceneLabel runtime_image_request_resolved_to_video ausente"
+  }
+
+  $runtimeVideoRequestResolvedToImage = [bool](Get-ObjectPropertyValue -Object $visualEnrich -Name "runtime_video_request_resolved_to_image")
+  $runtimeImageRequestResolvedToVideo = [bool](Get-ObjectPropertyValue -Object $visualEnrich -Name "runtime_image_request_resolved_to_video")
+
+  if ($runtimeVideoRequestResolvedToImage -and $runtimeImageRequestResolvedToVideo) {
+    Fail "$sceneLabel runtime cross-media flags conflictivos"
+  }
+
+  if ($runtimeRequestedCapability -eq "stock_video") {
+    $expectedRuntimeVideoRequestResolvedToImage = ($runtimeResolvedMediaKind -eq "image")
+    if ($runtimeVideoRequestResolvedToImage -ne $expectedRuntimeVideoRequestResolvedToImage) {
+      Fail "$sceneLabel runtime_video_request_resolved_to_image inconsistente con requested_capability='$runtimeRequestedCapability' y resolved_media_kind='$runtimeResolvedMediaKind'"
+    }
+    if ($runtimeImageRequestResolvedToVideo) {
+      Fail "$sceneLabel runtime_image_request_resolved_to_video no aplica para requested_capability='stock_video'"
+    }
+  }
+  elseif ($runtimeRequestedCapability -eq "stock_image") {
+    $expectedRuntimeImageRequestResolvedToVideo = ($runtimeResolvedMediaKind -eq "video")
+    if ($runtimeImageRequestResolvedToVideo -ne $expectedRuntimeImageRequestResolvedToVideo) {
+      Fail "$sceneLabel runtime_image_request_resolved_to_video inconsistente con requested_capability='$runtimeRequestedCapability' y resolved_media_kind='$runtimeResolvedMediaKind'"
+    }
+    if ($runtimeVideoRequestResolvedToImage) {
+      Fail "$sceneLabel runtime_video_request_resolved_to_image no aplica para requested_capability='stock_image'"
+    }
+  }
+
   $runtimeFallbackApplied = [bool](Get-ObjectPropertyValue -Object $visualEnrich -Name "runtime_fallback_applied")
   $runtimeFallbackReason = Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $visualEnrich -Name "runtime_fallback_reason")
 
   if ($runtimeFallbackApplied -and [string]::IsNullOrWhiteSpace($runtimeFallbackReason)) {
     Fail "$sceneLabel runtime_fallback_applied=true pero runtime_fallback_reason vacío"
   }
+
+  if ($runtimeVideoRequestResolvedToImage) {
+    if (-not $runtimeFallbackApplied) {
+      Fail "$sceneLabel runtime_video_request_resolved_to_image=true requiere runtime_fallback_applied=true"
+    }
+    if ($runtimeFallbackReason -ne "video_request_resolved_to_image") {
+      Fail "$sceneLabel runtime_fallback_reason debe ser 'video_request_resolved_to_image' cuando runtime_video_request_resolved_to_image=true"
+    }
+  }
+
+  if ($runtimeImageRequestResolvedToVideo) {
+    if (-not $runtimeFallbackApplied) {
+      Fail "$sceneLabel runtime_image_request_resolved_to_video=true requiere runtime_fallback_applied=true"
+    }
+    if ($runtimeFallbackReason -ne "image_request_resolved_to_video") {
+      Fail "$sceneLabel runtime_fallback_reason debe ser 'image_request_resolved_to_video' cuando runtime_image_request_resolved_to_video=true"
+    }
+  }
+
+  if ((-not $runtimeVideoRequestResolvedToImage) -and ($runtimeFallbackReason -eq "video_request_resolved_to_image")) {
+    Fail "$sceneLabel runtime_fallback_reason='video_request_resolved_to_image' sin runtime_video_request_resolved_to_image=true"
+  }
+  if ((-not $runtimeImageRequestResolvedToVideo) -and ($runtimeFallbackReason -eq "image_request_resolved_to_video")) {
+    Fail "$sceneLabel runtime_fallback_reason='image_request_resolved_to_video' sin runtime_image_request_resolved_to_video=true"
+  }
+
   if (-not [string]::IsNullOrWhiteSpace($runtimeProviderDetailRaw) -and -not [string]::IsNullOrWhiteSpace($runtimeFallbackReason)) {
     if ($runtimeFallbackReason.ToLowerInvariant() -eq $runtimeProviderDetail) {
       Fail "$sceneLabel runtime_fallback_reason depende de runtime_provider_detail"
@@ -301,6 +360,20 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     Fail "$sceneLabel $assetMetaName.resolved_source_kind='$assetResolvedSourceKind' != runtime_resolved_source_kind='$runtimeResolvedSourceKind'"
   }
 
+  if ($assetMeta.PSObject.Properties.Name -notcontains "video_request_resolved_to_image") {
+    Fail "$sceneLabel $assetMetaName.video_request_resolved_to_image ausente"
+  }
+  if ($assetMeta.PSObject.Properties.Name -notcontains "image_request_resolved_to_video") {
+    Fail "$sceneLabel $assetMetaName.image_request_resolved_to_video ausente"
+  }
+
+  $assetVideoRequestResolvedToImage = [bool](Get-ObjectPropertyValue -Object $assetMeta -Name "video_request_resolved_to_image")
+  $assetImageRequestResolvedToVideo = [bool](Get-ObjectPropertyValue -Object $assetMeta -Name "image_request_resolved_to_video")
+
+  if ($assetVideoRequestResolvedToImage -and $assetImageRequestResolvedToVideo) {
+    Fail "$sceneLabel $assetMetaName cross-media flags conflictivos"
+  }
+
   $assetFallbackApplied = [bool](Get-ObjectPropertyValue -Object $assetMeta -Name "fallback_applied")
   $assetFallbackReason = Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $assetMeta -Name "fallback_reason")
 
@@ -309,6 +382,12 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   }
   if ($assetFallbackReason -ne $runtimeFallbackReason) {
     Fail "$sceneLabel $assetMetaName.fallback_reason != runtime_fallback_reason"
+  }
+  if ($assetVideoRequestResolvedToImage -ne $runtimeVideoRequestResolvedToImage) {
+    Fail "$sceneLabel $assetMetaName.video_request_resolved_to_image != runtime_video_request_resolved_to_image"
+  }
+  if ($assetImageRequestResolvedToVideo -ne $runtimeImageRequestResolvedToVideo) {
+    Fail "$sceneLabel $assetMetaName.image_request_resolved_to_video != runtime_image_request_resolved_to_video"
   }
 }
 

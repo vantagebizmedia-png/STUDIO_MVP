@@ -1,4 +1,4 @@
-﻿param(
+param(
   [Parameter(Mandatory=$false)][string]$WorkspaceRoot,
   [Parameter(Mandatory=$false)][string]$PackDir,
 
@@ -1288,20 +1288,38 @@ function Ensure-VisualCapabilityFields {
       $assetProviderValue = [string]$runtimeProviderOrder[0]
     }
 
+    $videoRequestResolvedToImage = $false
+    $imageRequestResolvedToVideo = $false
+
+    if ($requestedCapability -eq "stock_video") {
+      if ($vk -ne "video") {
+        $videoRequestResolvedToImage = $true
+      }
+    }
+    elseif ($requestedCapability -eq "stock_image") {
+      if ($vk -ne "image") {
+        $imageRequestResolvedToVideo = $true
+      }
+    }
+
     $fallbackApplied = $false
     $fallbackReason = ""
 
     if ($resolvedSourceKind -like "fallback_*") {
       $fallbackApplied = $true
-      $fallbackReason = $resolvedSourceKind
     }
-    elseif ($requestedCapability -eq "stock_video" -and $vk -ne "video") {
+    if ($videoRequestResolvedToImage -or $imageRequestResolvedToVideo) {
       $fallbackApplied = $true
+    }
+
+    if ($videoRequestResolvedToImage) {
       $fallbackReason = "video_request_resolved_to_image"
     }
-    elseif ($requestedCapability -eq "stock_image" -and $vk -ne "image") {
-      $fallbackApplied = $true
+    elseif ($imageRequestResolvedToVideo) {
       $fallbackReason = "image_request_resolved_to_video"
+    }
+    elseif ($resolvedSourceKind -like "fallback_*") {
+      $fallbackReason = $resolvedSourceKind
     }
 
     $scene | Add-Member -Force -NotePropertyName requested_media_type -NotePropertyValue $requestedMediaType
@@ -1320,6 +1338,8 @@ function Ensure-VisualCapabilityFields {
     $visualMeta | Add-Member -Force -NotePropertyName runtime_resolved_source_kind -NotePropertyValue $resolvedSourceKind
     $visualMeta | Add-Member -Force -NotePropertyName runtime_fallback_applied -NotePropertyValue ([bool]$fallbackApplied)
     $visualMeta | Add-Member -Force -NotePropertyName runtime_fallback_reason -NotePropertyValue $fallbackReason
+    $visualMeta | Add-Member -Force -NotePropertyName runtime_video_request_resolved_to_image -NotePropertyValue ([bool]$videoRequestResolvedToImage)
+    $visualMeta | Add-Member -Force -NotePropertyName runtime_image_request_resolved_to_video -NotePropertyValue ([bool]$imageRequestResolvedToVideo)
 
     if ($vk -eq "video") {
       if (-not ($scene.assets.PSObject.Properties.Name -contains "video_meta") -or $null -eq $scene.assets.video_meta) {
@@ -1338,6 +1358,8 @@ function Ensure-VisualCapabilityFields {
       $scene.assets.video_meta | Add-Member -Force -NotePropertyName resolved_source_kind -NotePropertyValue $resolvedSourceKind
       $scene.assets.video_meta | Add-Member -Force -NotePropertyName fallback_applied -NotePropertyValue ([bool]$fallbackApplied)
       $scene.assets.video_meta | Add-Member -Force -NotePropertyName fallback_reason -NotePropertyValue $fallbackReason
+      $scene.assets.video_meta | Add-Member -Force -NotePropertyName video_request_resolved_to_image -NotePropertyValue ([bool]$videoRequestResolvedToImage)
+      $scene.assets.video_meta | Add-Member -Force -NotePropertyName image_request_resolved_to_video -NotePropertyValue ([bool]$imageRequestResolvedToVideo)
 
       try {
         if ($scene.assets.PSObject.Properties.Name -contains "image_meta") {
@@ -1363,6 +1385,8 @@ function Ensure-VisualCapabilityFields {
       $scene.assets.image_meta | Add-Member -Force -NotePropertyName resolved_source_kind -NotePropertyValue $resolvedSourceKind
       $scene.assets.image_meta | Add-Member -Force -NotePropertyName fallback_applied -NotePropertyValue ([bool]$fallbackApplied)
       $scene.assets.image_meta | Add-Member -Force -NotePropertyName fallback_reason -NotePropertyValue $fallbackReason
+      $scene.assets.image_meta | Add-Member -Force -NotePropertyName video_request_resolved_to_image -NotePropertyValue ([bool]$videoRequestResolvedToImage)
+      $scene.assets.image_meta | Add-Member -Force -NotePropertyName image_request_resolved_to_video -NotePropertyValue ([bool]$imageRequestResolvedToVideo)
 
       try {
         if ($scene.assets.PSObject.Properties.Name -contains "video_meta") {

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
@@ -257,11 +257,36 @@ def _finalize_provider_result(
     if not source_kind:
         source_kind = _default_source_kind_for_media_kind(media_kind)
 
+    fallback_reason = _norm_text(finalized.get("fallback_reason"))
+    video_request_resolved_to_image = (
+        requested_capability == "stock_video" and media_kind == "image"
+    )
+    image_request_resolved_to_video = (
+        requested_capability == "stock_image" and media_kind == "video"
+    )
+    fallback_applied = bool(
+        source_kind.startswith("fallback_")
+        or fallback_reason
+        or video_request_resolved_to_image
+        or image_request_resolved_to_video
+    )
+
+    if not fallback_reason:
+        if video_request_resolved_to_image:
+            fallback_reason = "video_request_resolved_to_image"
+        elif image_request_resolved_to_video:
+            fallback_reason = "image_request_resolved_to_video"
+        elif source_kind.startswith("fallback_"):
+            fallback_reason = source_kind
+
     finalized["path"] = _norm_text(finalized.get("path")).replace("\\", "/")
     finalized["cache_hit"] = bool(finalized.get("cache_hit"))
     finalized["cache_key"] = _norm_text(finalized.get("cache_key"))
     finalized["media_kind"] = media_kind
     finalized["source_kind"] = source_kind
+    finalized["fallback_applied"] = bool(fallback_applied)
+    finalized["video_request_resolved_to_image"] = bool(video_request_resolved_to_image)
+    finalized["image_request_resolved_to_video"] = bool(image_request_resolved_to_video)
 
     finalized["provider"] = provider_name
     finalized["provider_selected"] = provider_name
@@ -273,7 +298,6 @@ def _finalize_provider_result(
     if "thumbnail_url" in finalized and not _norm_text(finalized.get("thumbnail_url")):
         finalized["thumbnail_url"] = None
 
-    fallback_reason = _norm_text(finalized.get("fallback_reason"))
     if fallback_reason:
         finalized["fallback_reason"] = fallback_reason
     elif "fallback_reason" in finalized:

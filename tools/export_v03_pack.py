@@ -297,16 +297,29 @@ def main() -> int:
 
     def _scene_index_local(row: dict, ordinal: int) -> int:
         sid = str(row.get("id") or "").strip().lower()
+
         if sid.startswith("scene_"):
             tail = sid.split("_")[-1]
             if tail.isdigit():
                 parsed = int(tail)
                 if parsed > 0:
                     return parsed
+
+        if sid.startswith("s"):
+            tail = sid[1:]
+            if tail.isdigit():
+                parsed = int(tail)
+                if parsed > 0:
+                    return parsed
+
         idx = _safe_int_local(row.get("index"), 0)
         if idx > 0:
             return idx
-        return ordinal
+
+        if ordinal > 0:
+            return ordinal
+
+        return 0
 
     def _normalize_visual_kind_local(value: object, has_image: bool, has_video: bool) -> str:
         raw = str(value or "").strip().lower()

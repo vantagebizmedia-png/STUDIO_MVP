@@ -1,4 +1,4 @@
-﻿param(
+param(
   [Parameter(Mandatory=$true)][string]$WorkspaceRoot,
   [Parameter(Mandatory=$false)][string]$RepoRoot = "",
   [Parameter(Mandatory=$false)][string]$SourceLiveDir = "",
@@ -15,7 +15,26 @@ function Get-NormalizedRelativePath {
     [Parameter(Mandatory=$true)][string]$Path
   )
 
-  $rel = [System.IO.Path]::GetRelativePath($BaseDir, $Path)
+  $baseFull = [System.IO.Path]::GetFullPath($BaseDir)
+  $pathFull = [System.IO.Path]::GetFullPath($Path)
+
+  $baseSep = [System.IO.Path]::DirectorySeparatorChar
+  $altSep = [System.IO.Path]::AltDirectorySeparatorChar
+
+  if ((-not $baseFull.EndsWith($baseSep)) -and (-not $baseFull.EndsWith($altSep))) {
+    $baseFull += $baseSep
+  }
+
+  $baseUri = [System.Uri]::new($baseFull)
+  $pathUri = [System.Uri]::new($pathFull)
+
+  if ($baseUri.Scheme -ne $pathUri.Scheme) {
+    return ($pathFull -replace '\\','/').Trim()
+  }
+
+  $relUri = $baseUri.MakeRelativeUri($pathUri)
+  $rel = [System.Uri]::UnescapeDataString($relUri.ToString())
+
   return ($rel -replace '\\','/').Trim()
 }
 

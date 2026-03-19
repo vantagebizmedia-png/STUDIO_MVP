@@ -1,4 +1,4 @@
-﻿param(
+param(
   [Parameter(Mandatory=$false)][string]$RepoRoot = "C:\Users\vanta\Documents\STUDIO_MVP",
   [Parameter(Mandatory=$false)][string]$WorkspaceRoot = "C:\Users\vanta\Documents\STUDIO_WORKSPACE",
   [Parameter(Mandatory=$false)][string]$LiveDir = "",
@@ -21,17 +21,28 @@ if (-not (Test-Path -LiteralPath $WorkspaceRoot -PathType Container)) {
   throw "No existe WorkspaceRoot: $WorkspaceRoot"
 }
 
-$applyTool                = Join-Path $RepoRoot "tools\apply_scene_builder_v03.ps1"
-$smokeTool                = Join-Path $RepoRoot "tools\smoke_live_manifest_v03.ps1"
-$providerContractTool     = Join-Path $RepoRoot "tools\smoke_live_provider_contract_v03.ps1"
-$subtitlesSmokeTool       = Join-Path $RepoRoot "tools\smoke_subtitles_live_v03.ps1"
-$voiceFallbackDurationTool = Join-Path $RepoRoot "tools\smoke_pipeline_voice_fallback_duration_v03.ps1"
+if ([string]::IsNullOrWhiteSpace($LiveDir)) {
+  $LiveDir = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
+}
+
+$videoCaseLiveDir            = Join-Path $WorkspaceRoot "runs\smoke_live_video_case"
+$mixedVisualsLiveDir         = Join-Path $WorkspaceRoot "runs\smoke_live_mixed_visuals"
+$exportPackContractRoot      = Join-Path $WorkspaceRoot "runs\smoke_export_pack_contract"
+$intentImageFallbackLiveDir  = Join-Path $WorkspaceRoot "runs\smoke_live_intent_image_fallback"
+$intentVideoFallbackLiveDir  = Join-Path $WorkspaceRoot "runs\smoke_live_intent_video_fallback"
+
+$applyTool                          = Join-Path $RepoRoot "tools\apply_scene_builder_v03.ps1"
+$smokeTool                          = Join-Path $RepoRoot "tools\smoke_live_manifest_v03.ps1"
+$providerContractTool               = Join-Path $RepoRoot "tools\smoke_live_provider_contract_v03.ps1"
+$subtitlesSmokeTool                 = Join-Path $RepoRoot "tools\smoke_subtitles_live_v03.ps1"
+$voiceFallbackDurationTool          = Join-Path $RepoRoot "tools\smoke_pipeline_voice_fallback_duration_v03.ps1"
 $singleSceneVoiceFallbackDurationTool = Join-Path $RepoRoot "tools\smoke_pipeline_single_scene_voice_fallback_duration_v03.ps1"
-$videoCaseTool            = Join-Path $RepoRoot "tools\smoke_live_video_case_v03.ps1"
-$mixedVisualsTool         = Join-Path $RepoRoot "tools\smoke_live_mixed_visuals_v03.ps1"
-$intentImageFallbackTool  = Join-Path $RepoRoot "tools\smoke_live_intent_image_fallback_v03.ps1"
-$intentVideoFallbackTool  = Join-Path $RepoRoot "tools\smoke_live_intent_video_fallback_v03.ps1"
-$negativeSuiteTool        = Join-Path $RepoRoot "tools\negative_live_suite_v03.ps1"
+$videoCaseTool                      = Join-Path $RepoRoot "tools\smoke_live_video_case_v03.ps1"
+$mixedVisualsTool                   = Join-Path $RepoRoot "tools\smoke_live_mixed_visuals_v03.ps1"
+$exportPackContractTool             = Join-Path $RepoRoot "tools\smoke_export_pack_contract_v03.ps1"
+$intentImageFallbackTool            = Join-Path $RepoRoot "tools\smoke_live_intent_image_fallback_v03.ps1"
+$intentVideoFallbackTool            = Join-Path $RepoRoot "tools\smoke_live_intent_video_fallback_v03.ps1"
+$negativeSuiteTool                  = Join-Path $RepoRoot "tools\negative_live_suite_v03.ps1"
 
 foreach ($p in @(
   $applyTool,
@@ -42,6 +53,7 @@ foreach ($p in @(
   $singleSceneVoiceFallbackDurationTool,
   $videoCaseTool,
   $mixedVisualsTool,
+  $exportPackContractTool,
   $intentImageFallbackTool,
   $intentVideoFallbackTool,
   $negativeSuiteTool
@@ -50,15 +62,6 @@ foreach ($p in @(
     throw "No existe tool requerido: $p"
   }
 }
-
-if ([string]::IsNullOrWhiteSpace($LiveDir)) {
-  $LiveDir = Join-Path $WorkspaceRoot "runs\smoke_live_latest"
-}
-
-$videoCaseLiveDir            = Join-Path $WorkspaceRoot "runs\smoke_live_video_case"
-$mixedVisualsLiveDir         = Join-Path $WorkspaceRoot "runs\smoke_live_mixed_visuals"
-$intentImageFallbackLiveDir  = Join-Path $WorkspaceRoot "runs\smoke_live_intent_image_fallback"
-$intentVideoFallbackLiveDir  = Join-Path $WorkspaceRoot "runs\smoke_live_intent_video_fallback"
 
 Write-Host "== VALIDATE SUITE V03 ==" -ForegroundColor Magenta
 Write-Host ("RepoRoot                : {0}" -f $RepoRoot) -ForegroundColor DarkGray
@@ -148,15 +151,29 @@ if (-not $SkipMixedVisuals) {
   if ($LASTEXITCODE -ne 0) {
     throw "smoke_live_mixed_visuals_v03.ps1 devolvió exit code $LASTEXITCODE"
   }
+
+  Write-Host ""
+  Write-Host "== Paso 9: smoke_export_pack_contract_v03 ==" -ForegroundColor Cyan
+  & $exportPackContractTool `
+    -RepoRoot $RepoRoot `
+    -WorkspaceRoot $WorkspaceRoot `
+    -SourceLiveDir $mixedVisualsLiveDir `
+    -OutputRoot $exportPackContractRoot
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "smoke_export_pack_contract_v03.ps1 devolvió exit code $LASTEXITCODE"
+  }
 }
 else {
   Write-Host ""
   Write-Host "== Paso 8: mixed visuals omitido por flag ==" -ForegroundColor Yellow
+  Write-Host ""
+  Write-Host "== Paso 9: export-pack contract omitido porque mixed visuals fue omitido ==" -ForegroundColor Yellow
 }
 
 if (-not $SkipIntentImageFallback) {
   Write-Host ""
-  Write-Host "== Paso 9: smoke_live_intent_image_fallback_v03 ==" -ForegroundColor Cyan
+  Write-Host "== Paso 10: smoke_live_intent_image_fallback_v03 ==" -ForegroundColor Cyan
   & $intentImageFallbackTool `
     -RepoRoot $RepoRoot `
     -WorkspaceRoot $WorkspaceRoot `
@@ -169,12 +186,12 @@ if (-not $SkipIntentImageFallback) {
 }
 else {
   Write-Host ""
-  Write-Host "== Paso 9: intent->image fallback omitido por flag ==" -ForegroundColor Yellow
+  Write-Host "== Paso 10: intent->image fallback omitido por flag ==" -ForegroundColor Yellow
 }
 
 if (-not $SkipIntentVideoFallback) {
   Write-Host ""
-  Write-Host "== Paso 10: smoke_live_intent_video_fallback_v03 ==" -ForegroundColor Cyan
+  Write-Host "== Paso 11: smoke_live_intent_video_fallback_v03 ==" -ForegroundColor Cyan
   & $intentVideoFallbackTool `
     -RepoRoot $RepoRoot `
     -WorkspaceRoot $WorkspaceRoot `
@@ -187,12 +204,12 @@ if (-not $SkipIntentVideoFallback) {
 }
 else {
   Write-Host ""
-  Write-Host "== Paso 10: intent->video fallback omitido por flag ==" -ForegroundColor Yellow
+  Write-Host "== Paso 11: intent->video fallback omitido por flag ==" -ForegroundColor Yellow
 }
 
 if (-not $SkipNegativeSuite) {
   Write-Host ""
-  Write-Host "== Paso 11: negative_live_suite_v03 ==" -ForegroundColor Cyan
+  Write-Host "== Paso 12: negative_live_suite_v03 ==" -ForegroundColor Cyan
   & $negativeSuiteTool `
     -RepoRoot $RepoRoot `
     -WorkspaceRoot $WorkspaceRoot `
@@ -204,7 +221,7 @@ if (-not $SkipNegativeSuite) {
 }
 else {
   Write-Host ""
-  Write-Host "== Paso 11: negative suite omitida por flag ==" -ForegroundColor Yellow
+  Write-Host "== Paso 12: negative suite omitida por flag ==" -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -217,6 +234,7 @@ if (-not $SkipVideoCase) {
 
 if (-not $SkipMixedVisuals) {
   Write-Host ("LIVE_MIXED_VISUALS={0}" -f $mixedVisualsLiveDir) -ForegroundColor DarkGray
+  Write-Host ("EXPORT_PACK_CONTRACT_ROOT={0}" -f $exportPackContractRoot) -ForegroundColor DarkGray
 }
 
 if (-not $SkipIntentImageFallback) {
@@ -225,8 +243,4 @@ if (-not $SkipIntentImageFallback) {
 
 if (-not $SkipIntentVideoFallback) {
   Write-Host ("LIVE_INTENT_VIDEO_FALLBACK={0}" -f $intentVideoFallbackLiveDir) -ForegroundColor DarkGray
-}
-
-if (-not $SkipNegativeSuite) {
-  Write-Host ("NEGATIVE_SOURCE={0}" -f $LiveDir) -ForegroundColor DarkGray
 }

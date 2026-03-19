@@ -1,4 +1,4 @@
-﻿param(
+param(
   [Parameter(Mandatory=$false)][string]$RepoRoot = "C:\Users\vanta\Documents\STUDIO_MVP",
   [Parameter(Mandatory=$false)][string]$WorkspaceRoot = "C:\Users\vanta\Documents\STUDIO_WORKSPACE",
   [Parameter(Mandatory=$false)][string]$LiveDir = "",
@@ -23,9 +23,9 @@ if (-not (Test-Path -LiteralPath $WorkspaceRoot -PathType Container)) {
   throw "No existe WorkspaceRoot: $WorkspaceRoot"
 }
 
-$validateTool = Join-Path $RepoRoot "tools\validate_live_suite_v03.ps1"
-if (-not (Test-Path -LiteralPath $validateTool -PathType Leaf)) {
-  throw "No existe validate_live_suite_v03.ps1: $validateTool"
+$validateSuiteTool = Join-Path $RepoRoot "tools\validate_live_suite_v03.ps1"
+if (-not (Test-Path -LiteralPath $validateSuiteTool -PathType Leaf)) {
+  throw "No existe validate suite tool: $validateSuiteTool"
 }
 
 if ([string]::IsNullOrWhiteSpace($LiveDir)) {
@@ -59,158 +59,80 @@ $statusVoiceFallbackDuration = "PENDING"
 $statusSingleSceneVoiceFallbackDuration = "PENDING"
 $statusVideoCase = "SKIPPED"
 $statusMixedVisuals = "SKIPPED"
+$statusExportPackContract = "SKIPPED"
 $statusIntentImageFallback = "SKIPPED"
 $statusIntentVideoFallback = "SKIPPED"
 $statusNegative = "SKIPPED"
 $statusGit = "SKIPPED"
 
-if (-not $effectiveSkipVideoCase) {
-  $statusVideoCase = "PENDING"
-}
-
-if (-not $effectiveSkipMixedVisuals) {
-  $statusMixedVisuals = "PENDING"
-}
-
-if (-not $effectiveSkipIntentImageFallback) {
-  $statusIntentImageFallback = "PENDING"
-}
-
-if (-not $effectiveSkipIntentVideoFallback) {
-  $statusIntentVideoFallback = "PENDING"
-}
-
-if (-not $effectiveSkipNegativeSuite) {
-  $statusNegative = "PENDING"
-}
-
 Write-Host "== RUN VALIDATION STACK V03 ==" -ForegroundColor Magenta
-Write-Host ("Mode                     : {0}" -f $mode) -ForegroundColor DarkGray
-Write-Host ("RepoRoot                 : {0}" -f $RepoRoot) -ForegroundColor DarkGray
-Write-Host ("WorkspaceRoot            : {0}" -f $WorkspaceRoot) -ForegroundColor DarkGray
-Write-Host ("LiveDir                  : {0}" -f $LiveDir) -ForegroundColor DarkGray
-Write-Host ("SkipVideoCase            : {0}" -f $effectiveSkipVideoCase) -ForegroundColor DarkGray
-Write-Host ("SkipMixedVisuals         : {0}" -f $effectiveSkipMixedVisuals) -ForegroundColor DarkGray
-Write-Host ("SkipIntentImageFallback  : {0}" -f $effectiveSkipIntentImageFallback) -ForegroundColor DarkGray
-Write-Host ("SkipIntentVideoFallback  : {0}" -f $effectiveSkipIntentVideoFallback) -ForegroundColor DarkGray
-Write-Host ("SkipNegative             : {0}" -f $effectiveSkipNegativeSuite) -ForegroundColor DarkGray
-Write-Host ("ShowGitStatus            : {0}" -f [bool]$ShowGitStatus) -ForegroundColor DarkGray
+Write-Host ("MODE                    : {0}" -f $mode) -ForegroundColor DarkGray
+Write-Host ("RepoRoot                : {0}" -f $RepoRoot) -ForegroundColor DarkGray
+Write-Host ("WorkspaceRoot           : {0}" -f $WorkspaceRoot) -ForegroundColor DarkGray
+Write-Host ("LiveDir                 : {0}" -f $LiveDir) -ForegroundColor DarkGray
+Write-Host ("SkipVideoCase           : {0}" -f $effectiveSkipVideoCase) -ForegroundColor DarkGray
+Write-Host ("SkipMixedVisuals        : {0}" -f $effectiveSkipMixedVisuals) -ForegroundColor DarkGray
+Write-Host ("SkipIntentImageFallback : {0}" -f $effectiveSkipIntentImageFallback) -ForegroundColor DarkGray
+Write-Host ("SkipIntentVideoFallback : {0}" -f $effectiveSkipIntentVideoFallback) -ForegroundColor DarkGray
+Write-Host ("SkipNegativeSuite       : {0}" -f $effectiveSkipNegativeSuite) -ForegroundColor DarkGray
+Write-Host ("ShowGitStatus           : {0}" -f [bool]$ShowGitStatus) -ForegroundColor DarkGray
 
-$invokeArgs = @{
-  RepoRoot      = $RepoRoot
-  WorkspaceRoot = $WorkspaceRoot
-  LiveDir       = $LiveDir
-}
-
-if ($effectiveSkipVideoCase) {
-  $invokeArgs.SkipVideoCase = $true
-}
-
-if ($effectiveSkipMixedVisuals) {
-  $invokeArgs.SkipMixedVisuals = $true
-}
-
-if ($effectiveSkipIntentImageFallback) {
-  $invokeArgs.SkipIntentImageFallback = $true
-}
-
-if ($effectiveSkipIntentVideoFallback) {
-  $invokeArgs.SkipIntentVideoFallback = $true
-}
-
-if ($effectiveSkipNegativeSuite) {
-  $invokeArgs.SkipNegativeSuite = $true
-}
-
-Write-Host ""
-Write-Host "== Ejecutando validate_live_suite_v03 ==" -ForegroundColor Cyan
-& $validateTool @invokeArgs
-
-if ($LASTEXITCODE -ne 0) {
-  throw "validate_live_suite_v03.ps1 devolvio exit code $LASTEXITCODE"
-}
-
-$statusValidate = "PASS"
-$statusMainSmoke = "PASS"
-$statusProviderContract = "PASS"
-$statusSubtitlesSmoke = "PASS"
-$statusVoiceFallbackDuration = "PASS"
-$statusSingleSceneVoiceFallbackDuration = "PASS"
-
-if ($effectiveSkipVideoCase) {
-  $statusVideoCase = "SKIPPED"
-}
-else {
-  $statusVideoCase = "PASS"
-}
-
-if ($effectiveSkipMixedVisuals) {
-  $statusMixedVisuals = "SKIPPED"
-}
-else {
-  $statusMixedVisuals = "PASS"
-}
-
-if ($effectiveSkipIntentImageFallback) {
-  $statusIntentImageFallback = "SKIPPED"
-}
-else {
-  $statusIntentImageFallback = "PASS"
-}
-
-if ($effectiveSkipIntentVideoFallback) {
-  $statusIntentVideoFallback = "SKIPPED"
-}
-else {
-  $statusIntentVideoFallback = "PASS"
-}
-
-if ($effectiveSkipNegativeSuite) {
-  $statusNegative = "SKIPPED"
-}
-else {
-  $statusNegative = "PASS"
-}
-
-if ($ShowGitStatus) {
-  Write-Host ""
-  Write-Host "== Git status ==" -ForegroundColor Cyan
-
-  Push-Location $RepoRoot
-  try {
-    $gitStatusOutput = (& git --no-pager status --short 2>&1 | Out-String).TrimEnd()
-    $gitStatusExit = $LASTEXITCODE
-    if ($gitStatusExit -ne 0) {
-      throw "git status fallo con exit code $gitStatusExit"
-    }
-
-    if ([string]::IsNullOrWhiteSpace($gitStatusOutput)) {
-      Write-Host "(working tree clean)" -ForegroundColor DarkGray
-    }
-    else {
-      Write-Host $gitStatusOutput
-    }
-
+Push-Location $RepoRoot
+try {
+  if ($ShowGitStatus) {
     Write-Host ""
-    Write-Host "== HEAD reciente ==" -ForegroundColor Cyan
-
-    $gitLogOutput = (& git --no-pager log --oneline -8 2>&1 | Out-String).TrimEnd()
-    $gitLogExit = $LASTEXITCODE
-    if ($gitLogExit -ne 0) {
-      throw "git log fallo con exit code $gitLogExit"
-    }
-
-    if ([string]::IsNullOrWhiteSpace($gitLogOutput)) {
-      throw "git log devolvio salida vacia"
-    }
-
-    Write-Host $gitLogOutput
-  }
-  finally {
-    Pop-Location
+    Write-Host "== GIT STATUS ==" -ForegroundColor Cyan
+    git status --short
+    git rev-parse --short HEAD
+    $statusGit = "PASS"
   }
 
-  $statusGit = "PASS"
+  Write-Host ""
+  Write-Host "== VALIDATE SUITE ==" -ForegroundColor Cyan
+  & $validateSuiteTool `
+    -RepoRoot $RepoRoot `
+    -WorkspaceRoot $WorkspaceRoot `
+    -LiveDir $LiveDir `
+    -SkipVideoCase:$effectiveSkipVideoCase `
+    -SkipMixedVisuals:$effectiveSkipMixedVisuals `
+    -SkipIntentImageFallback:$effectiveSkipIntentImageFallback `
+    -SkipIntentVideoFallback:$effectiveSkipIntentVideoFallback `
+    -SkipNegativeSuite:$effectiveSkipNegativeSuite
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "validate_live_suite_v03.ps1 devolvió exit code $LASTEXITCODE"
+  }
+
+  $statusValidate = "PASS"
+  $statusMainSmoke = "PASS"
+  $statusProviderContract = "PASS"
+  $statusSubtitlesSmoke = "PASS"
+  $statusVoiceFallbackDuration = "PASS"
+  $statusSingleSceneVoiceFallbackDuration = "PASS"
+
+  if (-not $effectiveSkipVideoCase) {
+    $statusVideoCase = "PASS"
+  }
+
+  if (-not $effectiveSkipMixedVisuals) {
+    $statusMixedVisuals = "PASS"
+    $statusExportPackContract = "PASS"
+  }
+
+  if (-not $effectiveSkipIntentImageFallback) {
+    $statusIntentImageFallback = "PASS"
+  }
+
+  if (-not $effectiveSkipIntentVideoFallback) {
+    $statusIntentVideoFallback = "PASS"
+  }
+
+  if (-not $effectiveSkipNegativeSuite) {
+    $statusNegative = "PASS"
+  }
+}
+finally {
+  Pop-Location
 }
 
 Write-Host ""
@@ -223,6 +145,7 @@ Write-Host ("VOICE_FALLBACK_DURATION={0}" -f $statusVoiceFallbackDuration) -Fore
 Write-Host ("SINGLE_SCENE_VOICE_FALLBACK_DURATION={0}" -f $statusSingleSceneVoiceFallbackDuration) -ForegroundColor DarkGray
 Write-Host ("VIDEO_CASE={0}" -f $statusVideoCase) -ForegroundColor DarkGray
 Write-Host ("MIXED_VISUALS={0}" -f $statusMixedVisuals) -ForegroundColor DarkGray
+Write-Host ("EXPORT_PACK_CONTRACT={0}" -f $statusExportPackContract) -ForegroundColor DarkGray
 Write-Host ("INTENT_IMAGE_FALLBACK={0}" -f $statusIntentImageFallback) -ForegroundColor DarkGray
 Write-Host ("INTENT_VIDEO_FALLBACK={0}" -f $statusIntentVideoFallback) -ForegroundColor DarkGray
 Write-Host ("NEGATIVE_SUITE={0}" -f $statusNegative) -ForegroundColor DarkGray

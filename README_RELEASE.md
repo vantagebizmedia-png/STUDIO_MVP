@@ -1,9 +1,9 @@
 # STUDIO_MVP - Release / Handoff v03
 
-Documento de referencia del flujo vigente de release/handoff validado contractualmente en el baseline `c8b2648`.
+Documento de referencia del flujo vigente de release/handoff validado contractualmente en el baseline técnico `26fefcd` y resincronizado durante el cierre documental posterior a `be2a2df`.
 
 ## Estado actual
-Al 2026-03-18, el flujo de release/handoff quedó validado de forma real con:
+Al 2026-03-19, el flujo de release/handoff quedó validado de forma real con:
 
 - `smoke_release_handoff_contract_v03.ps1`: PASS
 - `validate_handoff.py`: PASS
@@ -78,35 +78,16 @@ Además verifica:
 Dentro de `PACK_DIR` deben existir:
 - `pack.json`
 - `manifest_v03.json`
+- `captions_v03.srt`
+- `subtitles.srt`
 - `video.mp4`
 - `video_music_auto.mp4`
 - `video_final.mp4`
 - `HANDOFF_READY.txt`
 
-En el directorio padre del pack deben existir:
+En el parent del pack deben existir:
 - `<pack>.final_delivery.zip`
 - `<pack>.final_delivery.zip.sha256.txt`
 
-Además:
-- el SHA del sidecar debe coincidir con el ZIP real
-- `HANDOFF_READY.txt` debe alinear con:
-  - `PACK_ID`
-  - `ZIP_FILE`
-  - `ZIP_SHA256`
-  - `VIDEO_BASE`
-  - `VIDEO_MUSIC_AUTO`
-  - `VIDEO_FINAL`
-  - `AUTO_MUSIC_ENABLED`
-  - `DETERMINISTIC`
-
 ## Nota operativa
-El baseline actual es determinista y no debe mutarse automáticamente. Cualquier endurecimiento adicional del flujo release/handoff debe seguir la metodología vigente:
-- inspección real
-- reemplazos por bloques enteros
-- validación reproducible después del cambio
-
-## Próximo paso después de este bloque
-1. cerrar commit documental de sincronización final
-2. ejecutar limpieza segura del repo/workspace
-3. preparar freeze operativo del MVP
-4. luego pasar a auditoría upstream de selección visual por escena
+La resincronización documental posterior al baseline `26fefcd` no cambia el contrato del handoff; solo deja explícita la referencia correcta entre baseline técnico validado y HEAD documental actual.

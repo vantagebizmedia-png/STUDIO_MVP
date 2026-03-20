@@ -4,9 +4,10 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 
 ## Estado operativo al 2026-03-19
 
-### Baseline publicado
-- rama: `main`
-- HEAD: `26fefcd`
+### Referencias oficiales del freeze
+- rama publicada: `main`
+- referencia documental previa al cierre: `be2a2df`
+- baseline técnico/contractual validado: `26fefcd`
 
 ### Validación real cerrada
 - `run_validation_stack_v03.ps1` FULL: PASS
@@ -57,6 +58,17 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
   - `HANDOFF_READY.txt`
   - ZIP final + SHA256
 
+## Limpieza conservadora ya ejecutada
+- `__pycache__` y compilados `.pyc/.pyo` removidos del repo
+- runs negativos temporales removidos del workspace:
+  - `smoke_live_neg_video_missing`
+  - `smoke_live_neg_image_with_video_leak`
+  - `smoke_live_neg_pack_audio_mismatch`
+  - `smoke_live_neg_intent_conflict`
+- run legacy `runs\20260308_232312` archivado en:
+  - `archive\legacy_runs\20260308_232312`
+- bundles, distribuciones thirdparty y artefactos útiles de referencia preservados
+
 ## Outputs asegurados en el baseline
 - `manifest_v03.json`
 - `pack.json`
@@ -89,11 +101,10 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 - `.ps1` y `.py` del repo en UTF-8 sin BOM y LF
 
 ## Estado honesto
-El proyecto no está roto. El baseline técnico y contractual está operativo, validado, reproducible y publicado en `main`. El frente abierto real ya no es hacer que funcione el MVP base, sino cerrar bien la fase documental/operativa, ejecutar limpieza conservadora y luego endurecer el flujo upstream real de selección visual por escena sin romper el baseline determinista.
+El MVP base no está roto. El baseline técnico y contractual está operativo, validado, reproducible y publicado en `main`. El frente abierto real ya no es hacer que funcione el MVP base, sino cerrar el freeze operativo/documental y luego endurecer el flujo upstream real de selección visual por escena sin romper el baseline determinista.
 
 ## Siguiente foco
-1. cerrar sincronización documental mínima del baseline `26fefcd`
-2. ejecutar limpieza segura fase 1
-3. revisar limpieza conservadora fase 2 sobre `.bak*` y runs antiguos
-4. preparar freeze operativo/documental del MVP
-5. luego auditar y endurecer flujo upstream real de selección visual por escena
+1. cerrar freeze documental/operativo mínimo del MVP
+2. dejar checklist explícito del freeze ya cumplido
+3. luego auditar y endurecer flujo upstream real de selección visual por escena
+4. mantener guardas de duración dinámica y arquitectura multi-provider sin romper baseline

@@ -1,10 +1,11 @@
 # NEXT_STEPS
 
-## Estado de referencia al 2026-03-18
+## Estado de referencia al 2026-03-19
 
 Contexto operativo ya validado y publicado:
 
-- HEAD publicado en `main`: `c8b2648`
+- referencia documental previa al cierre: `be2a2df`
+- baseline técnico/contractual validado: `26fefcd`
 - `run_validation_stack_v03.ps1` FULL: PASS
 - `smoke_export_pack_contract_v03.ps1`: PASS
 - `smoke_release_handoff_contract_v03.ps1`: PASS
@@ -17,94 +18,54 @@ Contexto operativo ya validado y publicado:
 - autoridad temporal de subtítulos
 - mixed visuals
 - provider contract upstream
+- persistencia explícita de flags cross-media en runtime/asset meta
 - fallback de audio/imagen en pipeline
 - export-pack contract
 - release/handoff contract end-to-end
+
+### Limpieza ya ejecutada
+- `__pycache__` removidos del repo
+- compilados `.pyc/.pyo` removidos del repo
+- runs negativos temporales removidos del workspace
+- run legacy `20260308_232312` archivado en `archive\legacy_runs\20260308_232312`
 
 ---
 
 ## Objetivo inmediato
 
-Cerrar la fase documental y de limpieza conservadora del MVP, sin tocar bloques sensibles del pipeline que ya están validados.
+Cerrar el freeze documental/operativo del MVP sin tocar bloques sensibles del pipeline que ya están validados.
 
 ---
 
-## Paso 1 - commit documental agrupado
+## Paso 1 - resincronización documental final
+Dejar consistentes entre sí:
 
-Ahora que `SCENE_BUILDER_DIAGNOSIS.md` ya quedó alineado, cerrar un commit documental agrupado con:
-
+- `README.md`
 - `ROADMAP_STATUS.md`
 - `NEXT_STEPS.md`
-- `README.md`
 - `README_RELEASE.md`
-- `SCENE_BUILDER_DIAGNOSIS.md`
 
 Resultado esperado:
 
-- bloque documental consistente
-- baseline documental alineado con `c8b2648`
-- base limpia para pasar a la fase de limpieza conservadora
+- documentos vivos sin contradicciones
+- diferencia explícita entre HEAD documental y baseline técnico
+- limpieza conservadora ya reflejada en docs
 
 ---
 
-## Paso 2 - limpieza controlada del repo
+## Paso 2 - checklist corto de freeze
+El freeze documental/operativo debe dejar explícito:
 
-Después del ajuste documental, revisar y depurar con criterio conservador:
-
-- backups `.bak*` de parches ya integrados
-- backups específicos creados en este cierre
-- `__pycache__` residuales
-- logs puntuales no necesarios para baseline
-- probes transitorios ya superados
-
-No tocar todavía sin revisión explícita:
-
-- bundles o zips que sirvan como referencia
-- distribuciones thirdparty
-- fixtures útiles
-- documentación viva
-- scripts activos del baseline
-
-Resultado esperado:
-
-- árbol más limpio
-- menos ruido para auditoría y freeze
-
----
-
-## Paso 3 - limpieza controlada del workspace
-
-Revisar y depurar con criterio conservador:
-
-- runs de prueba temporales ya cerrados
-- `_tmp_render` residuales
-- salidas intermedias redundantes
-- clones negativos o de smoke que no sea necesario conservar
-
-No borrar sin revisar:
-
-- `smoke_live_latest`
-- runs que sigan actuando como referencia viva
-- artefactos necesarios para comparar regresiones
-
----
-
-## Paso 4 - checklist de freeze final del MVP
-
-Preparar un cierre operativo claro con:
-
-- baseline publicado
+- baseline técnico validado
 - FULL PASS real
-- documentación alineada
-- árbol razonablemente limpio
-- lista explícita de contratos cerrados
-- lista explícita de frentes aún abiertos pero no bloqueantes
+- contratos cerrados
+- limpieza conservadora ya ejecutada
+- frentes aún abiertos pero no bloqueantes
 
 ---
 
-## Paso 5 - siguiente foco técnico real después del freeze
-
-Una vez cerrada documentación + limpieza, el siguiente foco no es rehacer el pipeline, sino endurecer el flujo upstream de selección visual por escena.
+## Paso 3 - siguiente foco técnico real después del freeze
+Una vez cerrado el freeze, el siguiente foco no es rehacer el pipeline, sino endurecer el flujo upstream de selección visual por escena.
 
 Auditoría objetivo:
 
@@ -117,7 +78,6 @@ Auditoría objetivo:
 ---
 
 ## Riesgos a evitar
-
 - tocar archivos sensibles sin inspección previa
 - borrar evidencia útil de validaciones reales
 - romper compatibilidad entre `manifest_v03.json` y `pack.json`
@@ -128,7 +88,6 @@ Auditoría objetivo:
 ---
 
 ## Regla operativa vigente
-
 Seguir trabajando con la metodología actual:
 
 - PowerShell como vía principal
@@ -138,6 +97,5 @@ Seguir trabajando con la metodología actual:
 
 ---
 
-## Siguiente acción recomendada
-
-Cerrar ahora el commit documental agrupado y, a continuación, ejecutar una limpieza segura fase 1 sobre `__pycache__`, `.pyc`, `.log` residuales y `_tmp_render`, sin tocar todavía `.bak*`, bundles, fixtures ni runs de referencia.
+## Acción recomendada ahora
+Aplicar esta resincronización documental final, verificar diff limpio y cerrar un commit documental único de freeze.

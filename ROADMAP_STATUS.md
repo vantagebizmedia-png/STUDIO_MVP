@@ -1,10 +1,13 @@
 # ROADMAP_STATUS
 
-## Estado actual confirmado al 2026-03-18
+## Estado actual confirmado al 2026-03-19
 
-### Baseline publicado vigente
-- `main` publicado en `origin/main`
-- HEAD confirmado: `c8b2648`
+### Referencias oficiales
+- rama publicada: `main`
+- referencia documental previa al cierre: `be2a2df`
+- baseline técnico/contractual validado: `26fefcd`
+
+### Validación real cerrada
 - `run_validation_stack_v03.ps1` FULL: PASS
 - `validate_live_suite_v03.ps1`: PASS
 - `smoke_live_manifest_v03.ps1`: PASS
@@ -37,22 +40,26 @@
 - fallback determinista de audio/imagen en multi-scene y single-scene
 - contract smoke de export pack cerrado
 - contract smoke de release/handoff end-to-end cerrado
+- persistencia explícita del contrato cross-media en provider/runtime cerrada:
+  - `runtime_video_request_resolved_to_image`
+  - `runtime_image_request_resolved_to_video`
+  - `video_request_resolved_to_image`
+  - `image_request_resolved_to_video`
+- consistencia contractual entre resolver, manifest patch, scene builder y provider smoke validada
 - validación contractual de handoff final cerrada:
   - `video.mp4`
   - `video_music_auto.mp4`
   - `video_final.mp4`
   - `HANDOFF_READY.txt`
   - ZIP final + SHA256
-- `export_v03_pack.py` ya soporta ids legacy tipo `s01`, `s02`, etc. en la derivación de índice de escena
 - suite negativa validando conflictos, fugas estructurales y desalineaciones reales
 
-### Cambio técnico más reciente ya integrado
-- nuevo `tools\validate_handoff.py`
-- nuevo `tools\smoke_release_handoff_contract_v03.ps1`
-- `validate_live_suite_v03.ps1` ya integra `RELEASE_HANDOFF_CONTRACT`
-- `run_validation_stack_v03.ps1` ya resume `RELEASE_HANDOFF_CONTRACT=PASS`
-- `export_v03_pack.py` endurecido para ids legacy de escenas en la ruta de release/export
-- smokes de intent fallback ya son compatibles con runtimes PowerShell/.NET donde `Path.GetRelativePath()` no está disponible
+### Limpieza conservadora ya ejecutada
+- repo sin `__pycache__`
+- repo sin compilados `.pyc/.pyo`
+- runs negativos temporales removidos del workspace
+- run legacy `20260308_232312` archivado en `archive\legacy_runs`
+- bundles, thirdparty packs y documentos históricos preservados
 
 ---
 
@@ -81,20 +88,8 @@
 
 ---
 
-## Lectura honesta del estado actual
-
-El pipeline base y sus capas contractuales ya no están abiertas como problema principal.
-
-A esta altura, el sistema ya tiene resueltos:
-
-- baseline reproducible
-- validación FULL estable
-- export contractual
-- release/handoff contractual
-- fallbacks simétricos validados
-- suite negativa útil
-
-El frente abierto real ya no es "hacer que funcione", sino cerrar bien la fase de freeze del MVP y después seguir endureciendo la calidad upstream de selección visual.
+## Fase actual del proyecto
+El MVP base técnico está cerrado. El frente abierto real ya no es "hacer que funcione", sino completar el freeze operativo/documental y, después, seguir endureciendo la calidad upstream de selección visual sin romper el baseline ya validado.
 
 ---
 
@@ -112,27 +107,22 @@ La dirección correcta del sistema sigue siendo:
 ## Prioridades vigentes
 
 ### Prioridad A - freeze documental y operativo
-- resincronizar documentación viva con el estado real `c8b2648`
-- dejar explícitos los contratos ya cerrados
-- evitar que README/roadmap/next steps contradigan el baseline real
+- dejar explícita la diferencia entre HEAD documental (`be2a2df`) y baseline técnico validado (`26fefcd`)
+- mantener README/roadmap/next steps/release docs sin contradicciones
+- dejar constancia de la limpieza conservadora ya ejecutada
 
-### Prioridad B - limpieza controlada
-- depurar backups y probes residuales con criterio conservador
-- no borrar fixtures, bundles o artefactos útiles de auditoría
-- mantener el árbol legible para la fase final del MVP
-
-### Prioridad C - endurecimiento upstream de selección visual por escena
-- auditar dónde se decide la query final por escena
+### Prioridad B - endurecimiento upstream de selección visual por escena
+- auditar dónde nace la query final por escena
 - endurecer trazabilidad de decisión visual
 - reducir dependencia en fallback no ideal
 - mantener coherencia entre intención visual y asset efectivo
 
-### Prioridad D - duración dinámica end-to-end
+### Prioridad C - duración dinámica end-to-end
 - seguir auditando rutas heredadas donde todavía pueda sobrevivir lógica fija
 - asegurar que `start_ms`, `end_ms`, `duration_ms` sean autoridad real de punta a punta
 - preparar mejor soporte para videos de duración variable según contenido
 
-### Prioridad E - arquitectura multi-provider
+### Prioridad D - arquitectura multi-provider
 - mantener baseline desacoplado de un único proveedor
 - permitir expansión futura hacia backends adicionales
 - no romper determinismo ni contrato del manifest
@@ -150,7 +140,7 @@ La dirección correcta del sistema sigue siendo:
 ---
 
 ## Siguiente paso recomendado inmediato
-1. cerrar commit documental agrupado
-2. ejecutar limpieza segura fase 1 sobre residuos claramente descartables
-3. luego revisar `.bak*`, runs viejos y probes con criterio conservador
-4. preparar checklist de freeze final del MVP
+1. cerrar el ajuste documental final del freeze
+2. verificar `git diff --check` y consistencia textual
+3. cerrar commit documental único
+4. pasar después a auditoría/endurecimiento upstream de selección visual por escena

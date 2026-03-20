@@ -1,4 +1,4 @@
-﻿param(
+param(
   [Parameter(Mandatory=$false)][string]$RepoRoot = "C:\Users\vanta\Documents\STUDIO_MVP",
   [Parameter(Mandatory=$false)][string]$WorkspaceRoot = "C:\Users\vanta\Documents\STUDIO_WORKSPACE",
   [Parameter(Mandatory=$false)][string]$SourceLiveDir = ""
@@ -85,6 +85,42 @@ function Invoke-SmokeExpectFailure {
     [Parameter(Mandatory=$true)][string]$ExpectedSubstring
   )
 
+  function Repair-LikelyMojibake {
+    param([string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+      return ""
+    }
+
+    try {
+      $bytes = [System.Text.Encoding]::GetEncoding(1252).GetBytes($Text)
+      return [System.Text.Encoding]::UTF8.GetString($bytes)
+    }
+    catch {
+      return $Text
+    }
+  }
+
+  function Remove-Diacritics {
+    param([string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+      return ""
+    }
+
+    $normalized = $Text.Normalize([System.Text.NormalizationForm]::FormD)
+    $sb = New-Object System.Text.StringBuilder
+
+    foreach ($ch in $normalized.ToCharArray()) {
+      $cat = [System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($ch)
+      if ($cat -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
+        [void]$sb.Append($ch)
+      }
+    }
+
+    return $sb.ToString().Normalize([System.Text.NormalizationForm]::FormC)
+  }
+
   $stdoutLog = Join-Path $LiveDir ("{0}.stdout.log" -f $CaseName)
   $stderrLog = Join-Path $LiveDir ("{0}.stderr.log" -f $CaseName)
 
@@ -94,8 +130,17 @@ function Invoke-SmokeExpectFailure {
     }
   }
 
+  $shellPath = "powershell.exe"
+  try {
+    $pwshCmd = Get-Command pwsh -ErrorAction Stop
+    if ($pwshCmd -and -not [string]::IsNullOrWhiteSpace($pwshCmd.Source)) {
+      $shellPath = $pwshCmd.Source
+    }
+  }
+  catch { }
+
   $proc = Start-Process `
-    -FilePath "powershell.exe" `
+    -FilePath $shellPath `
     -ArgumentList @(
       "-NoLogo",
       "-NoProfile",
@@ -141,20 +186,43 @@ function Invoke-SmokeExpectFailure {
     throw ("{0}: smoke debía fallar y devolvió exit code 0" -f $CaseName)
   }
 
-  $combined = ($stdoutText + "`r`n" + $stderrText)
+  $combinedRaw = ($stdoutText + "`r`n" + $stderrText)
 
-  if ([string]::IsNullOrWhiteSpace($combined)) {
+  if ([string]::IsNullOrWhiteSpace($combinedRaw)) {
     throw ("{0}: smoke falló pero no produjo salida útil" -f $CaseName)
   }
 
-  if ($combined.IndexOf($ExpectedSubstring, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+  $combinedCandidates = @(
+    $combinedRaw,
+    (Repair-LikelyMojibake -Text $combinedRaw),
+    (Remove-Diacritics -Text $combinedRaw),
+    (Remove-Diacritics -Text (Repair-LikelyMojibake -Text $combinedRaw))
+  ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+
+  $expectedCandidates = @(
+    $ExpectedSubstring,
+    (Remove-Diacritics -Text $ExpectedSubstring)
+  ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+
+  $matched = $false
+
+  foreach ($candidateText in $combinedCandidates) {
+    foreach ($expectedText in $expectedCandidates) {
+      if ($candidateText.IndexOf($expectedText, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        $matched = $true
+        break
+      }
+    }
+
+    if ($matched) { break }
+  }
+
+  if (-not $matched) {
     throw ("{0}: salida no contiene texto esperado: {1}" -f $CaseName, $ExpectedSubstring)
   }
 
   Write-Host ("OK: {0} detectó el fallo esperado" -f $CaseName) -ForegroundColor Green
-}
-
-$caseA = Join-Path $WorkspaceRoot "runs\smoke_live_neg_video_missing"
+}$caseA = Join-Path $WorkspaceRoot "runs\smoke_live_neg_video_missing"
 $caseB = Join-Path $WorkspaceRoot "runs\smoke_live_neg_image_with_video_leak"
 $caseC = Join-Path $WorkspaceRoot "runs\smoke_live_neg_pack_audio_mismatch"
 $caseD = Join-Path $WorkspaceRoot "runs\smoke_live_neg_intent_conflict"

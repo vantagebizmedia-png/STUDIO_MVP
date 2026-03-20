@@ -177,6 +177,102 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     Fail "$sceneLabel no tiene meta.visual_enrich"
   }
 
+  $runtimeQueryRaw = Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $visualEnrich -Name "runtime_query")
+  if ([string]::IsNullOrWhiteSpace($runtimeQueryRaw)) {
+    Fail "$sceneLabel runtime_query vacío"
+  }
+
+  $runtimeQueryAuthority = Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $visualEnrich -Name "runtime_query_authority")
+  if ([string]::IsNullOrWhiteSpace($runtimeQueryAuthority)) {
+    Fail "$sceneLabel runtime_query_authority vacío"
+  }
+
+  $sceneImageQueryRaw = Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $scene -Name "image_query")
+  if ([string]::IsNullOrWhiteSpace($sceneImageQueryRaw)) {
+    Fail "$sceneLabel image_query vacío en scene"
+  }
+  if ($sceneImageQueryRaw -ne $runtimeQueryRaw) {
+    Fail "$sceneLabel image_query='$sceneImageQueryRaw' != runtime_query='$runtimeQueryRaw'"
+  }
+
+  $queryRaw = Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $visualEnrich -Name "query")
+  $usedQueryRaw = Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $visualEnrich -Name "used_query")
+
+  $rawQueryCandidatesValue = Get-ObjectPropertyValue -Object $visualEnrich -Name "query_candidates"
+  $queryCandidates = @()
+
+  if (($rawQueryCandidatesValue -is [System.Collections.IEnumerable]) -and -not ($rawQueryCandidatesValue -is [string])) {
+    foreach ($candidate in @($rawQueryCandidatesValue)) {
+      $candidateText = Get-StringOrEmpty -Value $candidate
+      if (-not [string]::IsNullOrWhiteSpace($candidateText)) {
+        $queryCandidates += $candidateText
+      }
+    }
+  }
+  elseif ($null -ne $rawQueryCandidatesValue) {
+    $singleCandidate = Get-StringOrEmpty -Value $rawQueryCandidatesValue
+    if (-not [string]::IsNullOrWhiteSpace($singleCandidate)) {
+      $queryCandidates += $singleCandidate
+    }
+  }
+
+  if ($queryCandidates.Count -lt 1) {
+    Fail "$sceneLabel visual_enrich.query_candidates vacío"
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($queryRaw) -and $queryRaw -ne $queryCandidates[0]) {
+    Fail "$sceneLabel visual_enrich.query debe coincidir con query_candidates[0]"
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($usedQueryRaw) -and $usedQueryRaw -notin $queryCandidates) {
+    Fail "$sceneLabel visual_enrich.used_query debe pertenecer a query_candidates"
+  }
+
+  $candidateAuthorityMatch = [regex]::Match($runtimeQueryAuthority, '^visual_enrich\.query_candidates\[(\d+)\]$')
+
+  if ($runtimeQueryAuthority -eq "visual_enrich.used_query") {
+    if ([string]::IsNullOrWhiteSpace($usedQueryRaw)) {
+      Fail "$sceneLabel runtime_query_authority='visual_enrich.used_query' pero used_query vacío"
+    }
+    if ($runtimeQueryRaw -ne $usedQueryRaw) {
+      Fail "$sceneLabel runtime_query no coincide con used_query"
+    }
+  }
+  elseif ($runtimeQueryAuthority -eq "visual_enrich.query") {
+    if ([string]::IsNullOrWhiteSpace($queryRaw)) {
+      Fail "$sceneLabel runtime_query_authority='visual_enrich.query' pero query vacío"
+    }
+    if ($runtimeQueryRaw -ne $queryRaw) {
+      Fail "$sceneLabel runtime_query no coincide con query"
+    }
+  }
+  elseif ($candidateAuthorityMatch.Success) {
+    $candidateIndex = [int]$candidateAuthorityMatch.Groups[1].Value
+    if ($candidateIndex -lt 0 -or $candidateIndex -ge $queryCandidates.Count) {
+      Fail "$sceneLabel runtime_query_authority fuera de rango: '$runtimeQueryAuthority'"
+    }
+    if ($runtimeQueryRaw -ne $queryCandidates[$candidateIndex]) {
+      Fail "$sceneLabel runtime_query no coincide con $runtimeQueryAuthority"
+    }
+  }
+  elseif ($runtimeQueryAuthority -eq "live_manifest_patch._pick_visual_query") {
+    if ($runtimeQueryRaw -ne $sceneImageQueryRaw) {
+      Fail "$sceneLabel runtime_query_authority='live_manifest_patch._pick_visual_query' pero image_query no coincide"
+    }
+  }
+  elseif ($runtimeQueryAuthority -in @(
+    "visual_enrich.runtime_query",
+    "scene.image_query",
+    "scene.script_text",
+    "scene.text",
+    "apply_scene_builder.default"
+  )) {
+    Fail "$sceneLabel runtime_query_authority no permitida para contrato upstream: '$runtimeQueryAuthority'"
+  }
+  else {
+    Fail "$sceneLabel runtime_query_authority no reconocida: '$runtimeQueryAuthority'"
+  }
+
   $runtimeRequestedCapability = (Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $visualEnrich -Name "runtime_requested_capability")).ToLowerInvariant()
   if ($runtimeRequestedCapability -notin @("stock_image", "stock_video")) {
     Fail "$sceneLabel runtime_requested_capability inválido: '$runtimeRequestedCapability'"
@@ -311,6 +407,22 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   $assetMeta = Get-ObjectPropertyValue -Object $sceneAssets -Name $assetMetaName
   if (-not $assetMeta) {
     Fail "$sceneLabel no tiene assets.$assetMetaName"
+  }
+
+  $assetQueryRaw = Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $assetMeta -Name "query")
+  if ([string]::IsNullOrWhiteSpace($assetQueryRaw)) {
+    Fail "$sceneLabel $assetMetaName.query vacío"
+  }
+  if ($assetQueryRaw -ne $runtimeQueryRaw) {
+    Fail "$sceneLabel $assetMetaName.query='$assetQueryRaw' != runtime_query='$runtimeQueryRaw'"
+  }
+
+  $assetQueryAuthority = Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $assetMeta -Name "query_authority")
+  if ([string]::IsNullOrWhiteSpace($assetQueryAuthority)) {
+    Fail "$sceneLabel $assetMetaName.query_authority vacío"
+  }
+  if ($assetQueryAuthority -ne $runtimeQueryAuthority) {
+    Fail "$sceneLabel $assetMetaName.query_authority='$assetQueryAuthority' != runtime_query_authority='$runtimeQueryAuthority'"
   }
 
   $assetProviderRaw = Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $assetMeta -Name "provider")

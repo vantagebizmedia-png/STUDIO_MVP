@@ -1,4 +1,4 @@
-﻿param(
+param(
   [Parameter(Mandatory=$true)][string]$LiveDir,
   [int]$MaxScenes = 6,
   [int]$AudioDurationToleranceMs = 250
@@ -296,6 +296,26 @@ for ($i = 0; $i -lt $scCount; $i++) {
   $pkAudio = Get-StringOrEmpty -Value $p.audio
   if ($pkAudio -ne $clip) {
     Fail "$sceneLabel pack audio mismatch: manifest='$clip' pack='$pkAudio'"
+  }
+
+  $manifestImageQuery = ""
+  if ($s.PSObject.Properties.Name -contains "image_query") {
+    $manifestImageQuery = Get-StringOrEmpty -Value $s.image_query
+  }
+  if ([string]::IsNullOrWhiteSpace($manifestImageQuery)) {
+    Fail "$sceneLabel image_query vacío en manifest"
+  }
+
+  $packImageQuery = ""
+  if ($p.PSObject.Properties.Name -contains "image_query") {
+    $packImageQuery = Get-StringOrEmpty -Value $p.image_query
+  }
+  if ([string]::IsNullOrWhiteSpace($packImageQuery)) {
+    Fail "$sceneLabel image_query vacío en pack"
+  }
+
+  if ($packImageQuery -ne $manifestImageQuery) {
+    Fail "$sceneLabel pack image_query mismatch: manifest='$manifestImageQuery' pack='$packImageQuery'"
   }
 
   $visualKind = (Get-StringOrEmpty -Value $s.visual_kind).ToLowerInvariant()

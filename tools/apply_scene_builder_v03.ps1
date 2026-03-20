@@ -1133,11 +1133,35 @@ function Ensure-VisualCapabilityFields {
     $runtimeQueryAuthority = ""
 
     try {
-      if ($visualMeta.PSObject.Properties.Name -contains "used_query") {
-        $runtimeQuery = ([string]$visualMeta.used_query).Trim()
+      if ($visualMeta.PSObject.Properties.Name -contains "runtime_query") {
+        $runtimeQuery = ([string]$visualMeta.runtime_query).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($runtimeQuery)) {
+          $runtimeQueryAuthority = "visual_enrich.runtime_query"
+          try {
+            if ($visualMeta.PSObject.Properties.Name -contains "runtime_query_authority") {
+              $authorityCandidate = ([string]$visualMeta.runtime_query_authority).Trim()
+              if (-not [string]::IsNullOrWhiteSpace($authorityCandidate)) {
+                $runtimeQueryAuthority = $authorityCandidate
+              }
+            }
+          }
+          catch { }
+        }
       }
     }
     catch { $runtimeQuery = "" }
+
+    if ([string]::IsNullOrWhiteSpace($runtimeQuery)) {
+      try {
+        if ($visualMeta.PSObject.Properties.Name -contains "used_query") {
+          $runtimeQuery = ([string]$visualMeta.used_query).Trim()
+          if (-not [string]::IsNullOrWhiteSpace($runtimeQuery)) {
+            $runtimeQueryAuthority = "visual_enrich.used_query"
+          }
+        }
+      }
+      catch { $runtimeQuery = "" }
+    }
 
     if ([string]::IsNullOrWhiteSpace($runtimeQuery)) {
       try {
@@ -1149,9 +1173,6 @@ function Ensure-VisualCapabilityFields {
         }
       }
       catch { $runtimeQuery = "" }
-    }
-    else {
-      $runtimeQueryAuthority = "visual_enrich.used_query"
     }
 
     if ([string]::IsNullOrWhiteSpace($runtimeQuery)) {

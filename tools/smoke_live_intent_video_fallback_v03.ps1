@@ -52,10 +52,11 @@ if ([string]::IsNullOrWhiteSpace($OutputLiveDir)) {
 
 $applyBuilder = Join-Path $RepoRoot "tools\apply_scene_builder_v03.ps1"
 $smokeManifest = Join-Path $RepoRoot "tools\smoke_live_manifest_v03.ps1"
+$smokeProvider = Join-Path $RepoRoot "tools\smoke_live_provider_contract_v03.ps1"
 $packPathName = "pack.json"
 $manifestName = "manifest_v03.json"
 
-foreach ($path in @($RepoRoot, $WorkspaceRoot, $SourceLiveDir, $applyBuilder, $smokeManifest)) {
+foreach ($path in @($RepoRoot, $WorkspaceRoot, $SourceLiveDir, $applyBuilder, $smokeManifest, $smokeProvider)) {
   if (-not (Test-Path -LiteralPath $path)) {
     throw "No existe ruta requerida: $path"
   }
@@ -213,8 +214,30 @@ $scene1.assets.video = $videoRel
 if (-not ($scene1.PSObject.Properties.Name -contains "meta") -or -not $scene1.meta) {
   $scene1 | Add-Member -Force -NotePropertyName meta -NotePropertyValue ([pscustomobject]@{})
 }
-if ($scene1.meta.PSObject.Properties.Name -contains "visual_enrich") {
-  $scene1.meta.visual_enrich = [pscustomobject]@{}
+if (-not ($scene1.meta.PSObject.Properties.Name -contains "visual_enrich") -or -not $scene1.meta.visual_enrich) {
+  $scene1.meta | Add-Member -Force -NotePropertyName visual_enrich -NotePropertyValue ([pscustomobject]@{})
+}
+elseif ($scene1.meta.visual_enrich -is [hashtable]) {
+  $scene1.meta | Add-Member -Force -NotePropertyName visual_enrich -NotePropertyValue ([pscustomobject]$scene1.meta.visual_enrich)
+}
+
+foreach ($runtimeProp in @(
+  "runtime_query",
+  "runtime_query_authority",
+  "runtime_requested_capability",
+  "runtime_provider_order",
+  "runtime_provider_selected",
+  "runtime_provider_detail",
+  "runtime_resolved_media_kind",
+  "runtime_resolved_source_kind",
+  "runtime_fallback_applied",
+  "runtime_fallback_reason",
+  "runtime_video_request_resolved_to_image",
+  "runtime_image_request_resolved_to_video"
+)) {
+  if ($scene1.meta.visual_enrich.PSObject.Properties.Name -contains $runtimeProp) {
+    [void]$scene1.meta.visual_enrich.PSObject.Properties.Remove($runtimeProp)
+  }
 }
 
 $manifest.scenes_v03 = @($scenes)
@@ -333,6 +356,12 @@ Write-Host "== Smoke sobre LIVE intent->video fallback ==" -ForegroundColor Cyan
 & $smokeManifest -LiveDir $OutputLiveDir
 if ($LASTEXITCODE -ne 0) {
   throw "smoke_live_manifest_v03.ps1 falló sobre LIVE intent->video fallback"
+}
+
+Write-Host "== Provider contract sobre LIVE intent->video fallback ==" -ForegroundColor Cyan
+& $smokeProvider -LiveDir $OutputLiveDir
+if ($LASTEXITCODE -ne 0) {
+  throw "smoke_live_provider_contract_v03.ps1 falló sobre LIVE intent->video fallback"
 }
 
 Write-Host "OK: intención image preservada con fallback efectivo a video" -ForegroundColor Green

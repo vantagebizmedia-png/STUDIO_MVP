@@ -167,6 +167,30 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     Fail "$sceneLabel visual_kind inválido: '$visualKind'"
   }
 
+  $sceneVisualSourceKind = (Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $scene -Name "visual_source_kind")).ToLowerInvariant()
+  if ([string]::IsNullOrWhiteSpace($sceneVisualSourceKind)) {
+    Fail "$sceneLabel visual_source_kind vacío"
+  }
+  if ($sceneVisualSourceKind -notmatch "(^|_)(image|video)$") {
+    Fail "$sceneLabel visual_source_kind inválido: '$sceneVisualSourceKind'"
+  }
+  if (($visualKind -eq "image") -and ($sceneVisualSourceKind -notmatch "(^|_)image$")) {
+    Fail "$sceneLabel visual_source_kind incompatible con visual_kind=image: '$sceneVisualSourceKind'"
+  }
+  if (($visualKind -eq "video") -and ($sceneVisualSourceKind -notmatch "(^|_)video$")) {
+    Fail "$sceneLabel visual_source_kind incompatible con visual_kind=video: '$sceneVisualSourceKind'"
+  }
+
+  $sceneVisualCapability = (Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $scene -Name "visual_capability")).ToLowerInvariant()
+  if ($sceneVisualCapability -notin @("stock_image", "stock_video")) {
+    Fail "$sceneLabel visual_capability inválido: '$sceneVisualCapability'"
+  }
+
+  $expectedSceneVisualCapability = if ($visualKind -eq "video") { "stock_video" } else { "stock_image" }
+  if ($sceneVisualCapability -ne $expectedSceneVisualCapability) {
+    Fail "$sceneLabel visual_capability='$sceneVisualCapability' incompatible con visual_kind='$visualKind'"
+  }
+
   $sceneMeta = Get-ObjectPropertyValue -Object $scene -Name "meta"
   if (-not $sceneMeta) {
     Fail "$sceneLabel no tiene meta"
@@ -326,6 +350,20 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   if ([string]::IsNullOrWhiteSpace($runtimeResolvedSourceKind)) {
     Fail "$sceneLabel runtime_resolved_source_kind vacío"
   }
+  if ($runtimeResolvedSourceKind -notmatch "(^|_)(image|video)$") {
+    Fail "$sceneLabel runtime_resolved_source_kind inválido: '$runtimeResolvedSourceKind'"
+  }
+  if (($runtimeResolvedMediaKind -eq "image") -and ($runtimeResolvedSourceKind -notmatch "(^|_)image$")) {
+    Fail "$sceneLabel runtime_resolved_source_kind incompatible con runtime_resolved_media_kind=image: '$runtimeResolvedSourceKind'"
+  }
+  if (($runtimeResolvedMediaKind -eq "video") -and ($runtimeResolvedSourceKind -notmatch "(^|_)video$")) {
+    Fail "$sceneLabel runtime_resolved_source_kind incompatible con runtime_resolved_media_kind=video: '$runtimeResolvedSourceKind'"
+  }
+
+  $runtimeResolvedCapability = if ($runtimeResolvedMediaKind -eq "video") { "stock_video" } else { "stock_image" }
+  if ($sceneVisualCapability -ne $runtimeResolvedCapability) {
+    Fail "$sceneLabel visual_capability='$sceneVisualCapability' != runtime_resolved_capability='$runtimeResolvedCapability'"
+  }
 
   if ($visualEnrich.PSObject.Properties.Name -notcontains "runtime_video_request_resolved_to_image") {
     Fail "$sceneLabel runtime_video_request_resolved_to_image ausente"
@@ -467,7 +505,27 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     Fail "$sceneLabel $assetMetaName.resolved_media_kind='$assetResolvedMediaKind' != runtime_resolved_media_kind='$runtimeResolvedMediaKind'"
   }
 
+  $assetResolvedCapability = if ($assetResolvedMediaKind -eq "video") { "stock_video" } else { "stock_image" }
+  if ($assetResolvedCapability -ne $runtimeResolvedCapability) {
+    Fail "$sceneLabel $assetMetaName.resolved_capability='$assetResolvedCapability' != runtime_resolved_capability='$runtimeResolvedCapability'"
+  }
+  if ($assetResolvedCapability -ne $sceneVisualCapability) {
+    Fail "$sceneLabel $assetMetaName.resolved_capability='$assetResolvedCapability' != scene.visual_capability='$sceneVisualCapability'"
+  }
+
   $assetResolvedSourceKind = (Get-StringOrEmpty -Value (Get-ObjectPropertyValue -Object $assetMeta -Name "resolved_source_kind")).ToLowerInvariant()
+  if ([string]::IsNullOrWhiteSpace($assetResolvedSourceKind)) {
+    Fail "$sceneLabel $assetMetaName.resolved_source_kind vacío"
+  }
+  if ($assetResolvedSourceKind -notmatch "(^|_)(image|video)$") {
+    Fail "$sceneLabel $assetMetaName.resolved_source_kind inválido: '$assetResolvedSourceKind'"
+  }
+  if (($assetResolvedMediaKind -eq "image") -and ($assetResolvedSourceKind -notmatch "(^|_)image$")) {
+    Fail "$sceneLabel $assetMetaName.resolved_source_kind incompatible con resolved_media_kind=image: '$assetResolvedSourceKind'"
+  }
+  if (($assetResolvedMediaKind -eq "video") -and ($assetResolvedSourceKind -notmatch "(^|_)video$")) {
+    Fail "$sceneLabel $assetMetaName.resolved_source_kind incompatible con resolved_media_kind=video: '$assetResolvedSourceKind'"
+  }
   if ($assetResolvedSourceKind -ne $runtimeResolvedSourceKind) {
     Fail "$sceneLabel $assetMetaName.resolved_source_kind='$assetResolvedSourceKind' != runtime_resolved_source_kind='$runtimeResolvedSourceKind'"
   }

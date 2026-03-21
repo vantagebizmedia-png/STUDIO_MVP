@@ -138,20 +138,28 @@ $m1 = @($manifestCheck.scenes_v03)[0]
 $p1 = @($packCheck.scenes)[0]
 
 [pscustomobject]@{
-  source      = "manifest_v03"
-  id          = [string]$m1.id
-  visual_kind = [string]$m1.visual_kind
-  image       = [string]$m1.assets.image
-  video       = [string]$m1.assets.video
-  audio       = [string]$m1.assets.audio_clip
+  source               = "manifest_v03"
+  id                   = [string]$m1.id
+  requested_media_type = [string]$m1.requested_media_type
+  visual_request_kind  = [string]$m1.visual_request_kind
+  visual_kind          = [string]$m1.visual_kind
+  visual_source_kind   = [string]$m1.visual_source_kind
+  visual_capability    = [string]$m1.visual_capability
+  image                = [string]$m1.assets.image
+  video                = [string]$m1.assets.video
+  audio                = [string]$m1.assets.audio_clip
 },
 [pscustomobject]@{
-  source      = "pack_json"
-  id          = [string]$p1.id
-  visual_kind = [string]$p1.visual_kind
-  image       = [string]$p1.image
-  video       = [string]$p1.video
-  audio       = [string]$p1.audio
+  source               = "pack_json"
+  id                   = [string]$p1.id
+  requested_media_type = [string]$p1.requested_media_type
+  visual_request_kind  = [string]$p1.visual_request_kind
+  visual_kind          = [string]$p1.visual_kind
+  visual_source_kind   = [string]$p1.visual_source_kind
+  visual_capability    = [string]$p1.visual_capability
+  image                = [string]$p1.image
+  video                = [string]$p1.video
+  audio                = [string]$p1.audio
 } | Format-Table -AutoSize
 
 if ([string]$m1.visual_kind -ne "video") {
@@ -163,6 +171,12 @@ if ([string]$m1.requested_media_type -ne "video") {
 if ([string]$m1.visual_request_kind -ne "video") {
   throw "manifest_v03 scene_001 no quedó en visual_request_kind=video"
 }
+if ([string]$m1.visual_source_kind -ne "stock_video") {
+  throw "manifest_v03 scene_001 no quedó en visual_source_kind=stock_video"
+}
+if ([string]$m1.visual_capability -ne "stock_video") {
+  throw "manifest_v03 scene_001 no quedó en visual_capability=stock_video"
+}
 if (-not [string]::IsNullOrWhiteSpace([string]$m1.assets.image)) {
   throw "manifest_v03 scene_001 dejó image no vacío"
 }
@@ -171,6 +185,24 @@ if ([string]::IsNullOrWhiteSpace([string]$m1.assets.video)) {
 }
 if ([string]$p1.visual_kind -ne "video") {
   throw "pack.json scene_001 no quedó en visual_kind=video"
+}
+if ([string]$p1.requested_media_type -ne "video") {
+  throw "pack.json scene_001 no quedó en requested_media_type=video"
+}
+if ([string]$p1.visual_request_kind -ne "video") {
+  throw "pack.json scene_001 no quedó en visual_request_kind=video"
+}
+if ([string]$p1.visual_source_kind -ne "stock_video") {
+  throw "pack.json scene_001 no quedó en visual_source_kind=stock_video"
+}
+if ([string]$p1.visual_capability -ne "stock_video") {
+  throw "pack.json scene_001 no quedó en visual_capability=stock_video"
+}
+if ([string]$p1.visual_source_kind -ne [string]$m1.visual_source_kind) {
+  throw "pack.json scene_001 dejó visual_source_kind desalineado respecto a manifest_v03"
+}
+if ([string]$p1.visual_capability -ne [string]$m1.visual_capability) {
+  throw "pack.json scene_001 dejó visual_capability desalineado respecto a manifest_v03"
 }
 if (-not [string]::IsNullOrWhiteSpace([string]$p1.image)) {
   throw "pack.json scene_001 dejó image no vacío"

@@ -16,7 +16,9 @@ function Assert-SceneVisualState {
     [switch]$IsPack
   )
 
-  $kind = [string]$SceneObj.visual_kind
+  $kind = ([string]$SceneObj.visual_kind).Trim().ToLowerInvariant()
+  $visualSourceKind = ([string]$SceneObj.visual_source_kind).Trim().ToLowerInvariant()
+  $visualCapability = ([string]$SceneObj.visual_capability).Trim().ToLowerInvariant()
 
   $imageValue = ""
   $videoValue = ""
@@ -29,6 +31,9 @@ function Assert-SceneVisualState {
     $imageValue = [string]$SceneObj.assets.image
     $videoValue = [string]$SceneObj.assets.video
   }
+
+  $expectedVisualSourceKind = if ($ExpectedMediaType -eq "video") { "stock_video" } else { "stock_image" }
+  $expectedVisualCapability = if ($ExpectedMediaType -eq "video") { "stock_video" } else { "stock_image" }
 
   if (-not $IsPack) {
     $requestedMediaType = ""
@@ -63,6 +68,14 @@ function Assert-SceneVisualState {
 
   if ($kind -ne $ExpectedMediaType) {
     throw "$Label visual_kind esperado='$ExpectedMediaType' actual='$kind'"
+  }
+
+  if ($visualSourceKind -ne $expectedVisualSourceKind) {
+    throw "$Label visual_source_kind esperado='$expectedVisualSourceKind' actual='$visualSourceKind'"
+  }
+
+  if ($visualCapability -ne $expectedVisualCapability) {
+    throw "$Label visual_capability esperado='$expectedVisualCapability' actual='$visualCapability'"
   }
 
   if ($ExpectedMediaType -eq "video") {
@@ -252,21 +265,25 @@ foreach ($spec in $sceneSpecs) {
   $p = @($packCheck.scenes)[$n - 1]
 
   $inspectRows += [pscustomobject]@{
-    source      = "manifest_v03"
-    id          = [string]$m.id
-    visual_kind = [string]$m.visual_kind
-    image       = [string]$m.assets.image
-    video       = [string]$m.assets.video
-    audio       = [string]$m.assets.audio_clip
+    source             = "manifest_v03"
+    id                 = [string]$m.id
+    visual_kind        = [string]$m.visual_kind
+    visual_source_kind = [string]$m.visual_source_kind
+    visual_capability  = [string]$m.visual_capability
+    image              = [string]$m.assets.image
+    video              = [string]$m.assets.video
+    audio              = [string]$m.assets.audio_clip
   }
 
   $inspectRows += [pscustomobject]@{
-    source      = "pack_json"
-    id          = [string]$p.id
-    visual_kind = [string]$p.visual_kind
-    image       = [string]$p.image
-    video       = [string]$p.video
-    audio       = [string]$p.audio
+    source             = "pack_json"
+    id                 = [string]$p.id
+    visual_kind        = [string]$p.visual_kind
+    visual_source_kind = [string]$p.visual_source_kind
+    visual_capability  = [string]$p.visual_capability
+    image              = [string]$p.image
+    video              = [string]$p.video
+    audio              = [string]$p.audio
   }
 }
 

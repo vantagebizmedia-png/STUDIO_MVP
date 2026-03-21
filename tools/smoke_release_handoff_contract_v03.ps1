@@ -272,6 +272,80 @@ try {
     }
   }
 
+  $finalPackObj = Get-Content -LiteralPath (Join-Path $packDir "pack.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+  $finalManifestObj = Get-Content -LiteralPath (Join-Path $packDir "manifest_v03.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+  $finalPackScenes = @($finalPackObj.scenes)
+  $finalManifestScenes = @($finalManifestObj.scenes_v03)
+
+  if ($finalPackScenes.Count -ne $finalManifestScenes.Count) {
+    Fail "handoff final no preservó mismo número de escenas entre pack.json y manifest_v03.json"
+  }
+
+  Write-Host ""
+  Write-Host "== INSPECCION VISUAL FINAL ==" -ForegroundColor Cyan
+  $finalPackScenes |
+    Select-Object -First 6 id,index,visual_kind,visual_source_kind,visual_capability,image,video,audio,start_ms,end_ms,duration_ms |
+    Format-Table -AutoSize
+
+  for ($i = 0; $i -lt $finalPackScenes.Count; $i++) {
+    $p = $finalPackScenes[$i]
+    $m = $finalManifestScenes[$i]
+
+    $sceneLabel = [string]$p.id
+    if ([string]::IsNullOrWhiteSpace($sceneLabel)) {
+      $sceneLabel = [string]$m.id
+    }
+    if ([string]::IsNullOrWhiteSpace($sceneLabel)) {
+      $sceneLabel = "scene_$($i + 1)"
+    }
+
+    $pkVisualKind = ([string]$p.visual_kind).Trim().ToLowerInvariant()
+    $pkVisualSourceKind = ([string]$p.visual_source_kind).Trim().ToLowerInvariant()
+    $pkVisualCapability = ([string]$p.visual_capability).Trim().ToLowerInvariant()
+
+    $mfVisualKind = ([string]$m.visual_kind).Trim().ToLowerInvariant()
+    $mfVisualSourceKind = ([string]$m.visual_source_kind).Trim().ToLowerInvariant()
+    $mfVisualCapability = ([string]$m.visual_capability).Trim().ToLowerInvariant()
+
+    $expectedPackSource = if ($pkVisualKind -eq "video") { "stock_video" } else { "stock_image" }
+    $expectedPackCapability = if ($pkVisualKind -eq "video") { "stock_video" } else { "stock_image" }
+    $expectedManifestSource = if ($mfVisualKind -eq "video") { "stock_video" } else { "stock_image" }
+    $expectedManifestCapability = if ($mfVisualKind -eq "video") { "stock_video" } else { "stock_image" }
+
+    if ([string]::IsNullOrWhiteSpace($pkVisualSourceKind)) {
+      Fail "$sceneLabel visual_source_kind vacío en pack final"
+    }
+    if ([string]::IsNullOrWhiteSpace($pkVisualCapability)) {
+      Fail "$sceneLabel visual_capability vacío en pack final"
+    }
+    if ([string]::IsNullOrWhiteSpace($mfVisualSourceKind)) {
+      Fail "$sceneLabel visual_source_kind vacío en manifest final"
+    }
+    if ([string]::IsNullOrWhiteSpace($mfVisualCapability)) {
+      Fail "$sceneLabel visual_capability vacío en manifest final"
+    }
+
+    if ($pkVisualSourceKind -ne $expectedPackSource) {
+      Fail "$sceneLabel visual_source_kind incompatible con visual_kind en pack final: kind='$pkVisualKind' source='$pkVisualSourceKind'"
+    }
+    if ($pkVisualCapability -ne $expectedPackCapability) {
+      Fail "$sceneLabel visual_capability incompatible con visual_kind en pack final: kind='$pkVisualKind' capability='$pkVisualCapability'"
+    }
+    if ($mfVisualSourceKind -ne $expectedManifestSource) {
+      Fail "$sceneLabel visual_source_kind incompatible con visual_kind en manifest final: kind='$mfVisualKind' source='$mfVisualSourceKind'"
+    }
+    if ($mfVisualCapability -ne $expectedManifestCapability) {
+      Fail "$sceneLabel visual_capability incompatible con visual_kind en manifest final: kind='$mfVisualKind' capability='$mfVisualCapability'"
+    }
+
+    if ($pkVisualSourceKind -ne $mfVisualSourceKind) {
+      Fail "$sceneLabel visual_source_kind pack/manifest final mismatch: pack='$pkVisualSourceKind' manifest='$mfVisualSourceKind'"
+    }
+    if ($pkVisualCapability -ne $mfVisualCapability) {
+      Fail "$sceneLabel visual_capability pack/manifest final mismatch: pack='$pkVisualCapability' manifest='$mfVisualCapability'"
+    }
+  }
+
   Write-Host ""
   Write-Host "== NEGATIVE: FALTA video_final.mp4 ==" -ForegroundColor Cyan
   $brokenParent = Join-Path $negativeRoot "broken_parent"

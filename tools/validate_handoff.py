@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import zipfile
 from pathlib import Path
@@ -81,6 +82,117 @@ def parse_sha_sidecar(path: Path) -> Tuple[str, str]:
     if not m:
         return "", ""
     return m.group(1).lower(), m.group(2).strip()
+
+
+def _load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def _scene_visual_kind(scene: dict) -> str:
+    raw = str(scene.get("visual_kind") or "").strip().lower()
+    if raw in ("image", "video"):
+        return raw
+
+    image_rel = str(scene.get("image") or "").strip()
+    video_rel = str(scene.get("video") or "").strip()
+
+    assets = scene.get("assets") or {}
+    artifacts = scene.get("artifacts") or {}
+
+    if not image_rel:
+        image_rel = str(assets.get("image") or artifacts.get("image") or "").strip()
+    if not video_rel:
+        video_rel = str(assets.get("video") or artifacts.get("video") or "").strip()
+
+    if video_rel and not image_rel:
+        return "video"
+    if image_rel and not video_rel:
+        return "image"
+    if video_rel:
+        return "video"
+    return "image"
+
+
+def _expected_visual_contract(visual_kind: str) -> Tuple[str, str]:
+    if visual_kind == "video":
+        return ("stock_video", "stock_video")
+    return ("stock_image", "stock_image")
+
+
+def _validate_scene_visual_contract(
+    pack_scene: dict,
+    manifest_scene: dict,
+    label: str,
+    problems: List[str],
+) -> None:
+    pack_visual_kind = _scene_visual_kind(pack_scene)
+    manifest_visual_kind = _scene_visual_kind(manifest_scene)
+
+    if pack_visual_kind != manifest_visual_kind:
+        problems.append(
+            f"{label} visual_kind pack/manifest mismatch: "
+            f"pack={pack_visual_kind} manifest={manifest_visual_kind}"
+        )
+
+    expected_pack_source, expected_pack_capability = _expected_visual_contract(pack_visual_kind)
+    expected_manifest_source, expected_manifest_capability = _expected_visual_contract(manifest_visual_kind)
+
+    pack_visual_source_kind = str(pack_scene.get("visual_source_kind") or "").strip().lower()
+    pack_visual_capability = str(pack_scene.get("visual_capability") or "").strip().lower()
+    manifest_visual_source_kind = str(manifest_scene.get("visual_source_kind") or "").strip().lower()
+    manifest_visual_capability = str(manifest_scene.get("visual_capability") or "").strip().lower()
+
+    if not pack_visual_source_kind:
+        problems.append(f"{label} visual_source_kind vacío en pack final")
+    elif pack_visual_source_kind not in ("stock_image", "stock_video"):
+        problems.append(f"{label} visual_source_kind inválido en pack final: {pack_visual_source_kind}")
+    elif pack_visual_source_kind != expected_pack_source:
+        problems.append(
+            f"{label} visual_source_kind incompatible con visual_kind={pack_visual_kind} en pack final: "
+            f"{pack_visual_source_kind}"
+        )
+
+    if not pack_visual_capability:
+        problems.append(f"{label} visual_capability vacío en pack final")
+    elif pack_visual_capability not in ("stock_image", "stock_video"):
+        problems.append(f"{label} visual_capability inválido en pack final: {pack_visual_capability}")
+    elif pack_visual_capability != expected_pack_capability:
+        problems.append(
+            f"{label} visual_capability incompatible con visual_kind={pack_visual_kind} en pack final: "
+            f"{pack_visual_capability}"
+        )
+
+    if not manifest_visual_source_kind:
+        problems.append(f"{label} visual_source_kind vacío en manifest final")
+    elif manifest_visual_source_kind not in ("stock_image", "stock_video"):
+        problems.append(f"{label} visual_source_kind inválido en manifest final: {manifest_visual_source_kind}")
+    elif manifest_visual_source_kind != expected_manifest_source:
+        problems.append(
+            f"{label} visual_source_kind incompatible con visual_kind={manifest_visual_kind} en manifest final: "
+            f"{manifest_visual_source_kind}"
+        )
+
+    if not manifest_visual_capability:
+        problems.append(f"{label} visual_capability vacío en manifest final")
+    elif manifest_visual_capability not in ("stock_image", "stock_video"):
+        problems.append(f"{label} visual_capability inválido en manifest final: {manifest_visual_capability}")
+    elif manifest_visual_capability != expected_manifest_capability:
+        problems.append(
+            f"{label} visual_capability incompatible con visual_kind={manifest_visual_kind} en manifest final: "
+            f"{manifest_visual_capability}"
+        )
+
+    if pack_visual_source_kind and manifest_visual_source_kind and pack_visual_source_kind != manifest_visual_source_kind:
+        problems.append(
+            f"{label} visual_source_kind pack/manifest mismatch en handoff final: "
+            f"pack={pack_visual_source_kind} manifest={manifest_visual_source_kind}"
+        )
+
+    if pack_visual_capability and manifest_visual_capability and pack_visual_capability != manifest_visual_capability:
+        problems.append(
+            f"{label} visual_capability pack/manifest mismatch en handoff final: "
+            f"pack={pack_visual_capability} manifest={manifest_visual_capability}"
+        )
 
 
 def validate(pack_dir: Path) -> List[str]:
@@ -173,6 +285,29 @@ def validate(pack_dir: Path) -> List[str]:
         fp = pack_dir / rel
         if fp.exists() and fp.is_file() and fp.stat().st_size <= 0:
             problems.append(f"video vacio: {rel}")
+
+    pack_json_path = pack_dir / "pack.json"
+    manifest_json_path = pack_dir / "manifest_v03.json"
+    if pack_json_path.exists() and manifest_json_path.exists():
+        try:
+            pack_obj = _load_json(pack_json_path)
+            manifest_obj = _load_json(manifest_json_path)
+        except Exception as exc:
+            problems.append(f"no se pudo leer pack/manifest final para contrato visual: {exc}")
+        else:
+            pack_scenes = list(pack_obj.get("scenes") or [])
+            manifest_scenes = list(manifest_obj.get("scenes_v03") or [])
+            if len(pack_scenes) != len(manifest_scenes):
+                problems.append(
+                    f"handoff final scenes count mismatch pack/manifest: "
+                    f"pack={len(pack_scenes)} manifest={len(manifest_scenes)}"
+                )
+            else:
+                for idx, (pack_scene, manifest_scene) in enumerate(zip(pack_scenes, manifest_scenes), start=1):
+                    label = str(pack_scene.get("id") or manifest_scene.get("id") or f"scene_{idx:03d}").strip()
+                    if not label:
+                        label = f"scene_{idx:03d}"
+                    _validate_scene_visual_contract(pack_scene, manifest_scene, label, problems)
 
     if zip_path.exists() and zip_path.is_file():
         try:

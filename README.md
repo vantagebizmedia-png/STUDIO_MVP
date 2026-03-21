@@ -2,12 +2,12 @@
 
 Pipeline determinista para generar videos verticales tipo reels/shorts a partir de un flujo LIVE reproducible, con conversión a `scenes_v03`, resincronización de `pack.json`, subtítulos, export pack y handoff final validados contractualmente.
 
-## Estado operativo al 2026-03-19
+## Estado operativo del baseline `aae617e`
 
 ### Referencias oficiales del freeze
 - rama publicada: `main`
-- referencia documental previa al cierre: `be2a2df`
-- baseline técnico/contractual validado: `26fefcd`
+- `origin/main` alineado con el baseline actual
+- baseline operativo/documental vigente: `aae617e`
 
 ### Validación real cerrada
 - `run_validation_stack_v03.ps1` FULL: PASS
@@ -39,18 +39,17 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
   - intención `video` con resolución efectiva a `image`
   - intención `image` con resolución efectiva a `video`
 - fallback determinista de audio/imagen en multi-scene y single-scene
-- export pack contractual validado
-- release/handoff contractual validado
-- persistencia explícita del contrato cross-media en provider runtime:
-  - `runtime_video_request_resolved_to_image`
-  - `runtime_image_request_resolved_to_video`
-  - `video_request_resolved_to_image`
-  - `image_request_resolved_to_video`
-- consistencia contractual de fallback entre:
-  - `stock_resolver_v03.py`
-  - `live_manifest_patch_v03.py`
-  - `apply_scene_builder_v03.ps1`
-  - `smoke_live_provider_contract_v03.ps1`
+- trazabilidad contractual de `visual_query`
+- preservación contractual de:
+  - `visual_kind`
+  - `visual_source_kind`
+  - `visual_capability`
+- coherencia contractual entre:
+  - provider/runtime
+  - `manifest_v03.json`
+  - `pack.json`
+  - export pack
+  - release/handoff final
 - validación final de:
   - `video.mp4`
   - `video_music_auto.mp4`
@@ -60,13 +59,8 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 
 ## Limpieza conservadora ya ejecutada
 - `__pycache__` y compilados `.pyc/.pyo` removidos del repo
-- runs negativos temporales removidos del workspace:
-  - `smoke_live_neg_video_missing`
-  - `smoke_live_neg_image_with_video_leak`
-  - `smoke_live_neg_pack_audio_mismatch`
-  - `smoke_live_neg_intent_conflict`
-- run legacy `runs\20260308_232312` archivado en:
-  - `archive\legacy_runs\20260308_232312`
+- runs negativos temporales removidos del workspace cuando correspondía
+- `_tmp/` fuera del repo
 - bundles, distribuciones thirdparty y artefactos útiles de referencia preservados
 
 ## Outputs asegurados en el baseline
@@ -97,14 +91,14 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 - smoke/stack después de tocar bloques sensibles
 - `image` y `video` como ciudadanos de primera clase
 - duración dependiente del contenido real
-- arquitectura visual lista para línea multi-provider sin romper baseline
+- arquitectura visual multi-provider sin romper baseline
 - `.ps1` y `.py` del repo en UTF-8 sin BOM y LF
 
 ## Estado honesto
-El MVP base no está roto. El baseline técnico y contractual está operativo, validado, reproducible y publicado en `main`. El frente abierto real ya no es hacer que funcione el MVP base, sino cerrar el freeze operativo/documental y luego endurecer el flujo upstream real de selección visual por escena sin romper el baseline determinista.
+El MVP base no está roto. El baseline técnico y contractual actual está operativo, validado, reproducible y publicado en `main`. El frente abierto real ya no es hacer funcionar el baseline, sino conservar el freeze operativo/documental y luego endurecer únicamente bordes upstream concretos sin romper el contrato ya cerrado.
 
 ## Siguiente foco
-1. cerrar freeze documental/operativo mínimo del MVP
-2. dejar checklist explícito del freeze ya cumplido
-3. luego auditar y endurecer flujo upstream real de selección visual por escena
+1. conservar freeze documental/operativo del baseline `aae617e`
+2. mantener checklist explícito del freeze ya cumplido
+3. auditar solo bordes reales que queden fuera del contrato visual ya endurecido
 4. mantener guardas de duración dinámica y arquitectura multi-provider sin romper baseline

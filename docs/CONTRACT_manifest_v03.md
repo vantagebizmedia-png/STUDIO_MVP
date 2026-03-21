@@ -1,8 +1,8 @@
-﻿# CONTRACT: manifest_v03 (STUDIO_MVP)
+# CONTRACT: manifest_v03 (STUDIO_MVP)
 
 ## Objetivo
 
-Definir el contrato operativo rígido y determinista para `manifest_v03.json`, su relación con `pack.json` y la validación estructural de escenas LIVE dentro del baseline v0.3.
+Definir el contrato operativo rígido y determinista para `manifest_v03.json`, su relación con `pack.json` y la validación estructural de escenas LIVE dentro del baseline v0.3, incluyendo preservación contractual de intención, visual efectivo, capacidad visual y origen visual a través de runtime, export y handoff final.
 
 ---
 
@@ -13,6 +13,7 @@ Definir el contrato operativo rígido y determinista para `manifest_v03.json`, s
 - `manifest_v03.json` es la fuente estructural principal de escenas LIVE
 - `pack.json` debe quedar resincronizado contra el estado efectivo del manifest
 - los campos temporales y visuales deben ser coherentes entre manifest y pack
+- export y handoff final no deben degradar ni perder campos contractuales relevantes
 
 ---
 
@@ -49,7 +50,7 @@ Campos visuales esperados en baseline actual:
 - `visual_request_kind` (string, puede ser vacío solo en casos legacy controlados)
 - `visual_kind` (string efectivo: `image` o `video`)
 - `visual_source_kind` (string descriptivo del origen efectivo cuando aplique)
-- `visual_capability` (string descriptivo cuando aplique)
+- `visual_capability` (string descriptivo de la capacidad efectiva cuando aplique)
 
 Campo de audio esperado por escena:
 
@@ -80,34 +81,24 @@ En forma práctica:
 
 ---
 
-## Autoridad temporal vigente del Scene Builder
+## Contrato temporal global
 
-El orden de autoridad temporal válido al 2026-03-17 es:
+A nivel global, el timeline efectivo debe ser coherente con el cierre del manifest:
 
-1. timings explícitos de escena ya válidos en `scenes_v03`
-2. `audio_clips[]` con timeline válido y consistente
-3. fallback sintético determinista como última opción
-
-Esto implica que `apply_scene_builder_v03.ps1` no debe sobrescribir un timeline explícito válido solo por recalcular uno sintético.
+- `last_end` debe coincidir con el final efectivo de la última escena válida
+- la suma lógica de escenas no puede producir gaps o solapes inválidos fuera de los casos explícitamente permitidos
+- si existe audio total, la relación con la duración efectiva debe permanecer dentro de tolerancias del smoke correspondiente
 
 ---
 
-## Contrato de `audio_clips[]`
+## Contrato de audio por escena
 
-Si `audio_clips[]` existe en root:
+Cada escena válida en flujo LIVE v03 debe mantener audio utilizable y alineado:
 
-- debe poder normalizarse como arreglo
-- idealmente su count debe corresponder al número de escenas cuando se use como autoridad temporal
-- cada clip útil para timeline debe traer:
-  - `start_ms`
-  - `end_ms`
-- su timeline debe ser válido, creciente y consistente
-
-Cuando `audio_clips[]` sea la autoridad temporal efectiva:
-
-- `scenes_v03[i].start_ms` debe alinearse con el clip correspondiente
-- `scenes_v03[i].end_ms` debe alinearse con el clip correspondiente
-- `duration_ms` debe derivarse de esa pareja temporal
+- `assets.audio_clip` debe apuntar a un clip resoluble
+- la escena no debe quedar sin audio efectivo salvo caso de prueba negativa explícita
+- los smokes de duración/voice fallback son autoridad práctica sobre la tolerancia aceptable
+- `duration_ms` debe derivarse de la pareja temporal `start_ms` / `end_ms`
 
 ---
 
@@ -153,6 +144,23 @@ El smoke debe fallar si hay fuga de asset no permitido para el `visual_kind` efe
 
 ---
 
+## Contrato de trazabilidad visual
+
+Cuando aplique, la escena debe preservar además:
+
+- `visual_source_kind` como descripción del origen efectivo del visual resuelto
+- `visual_capability` como descripción de la capacidad efectiva involucrada en la resolución
+- coherencia entre intención visual, visual efectivo y trazabilidad del fallback
+
+Esto aplica especialmente a rutas donde:
+
+- una solicitud `image` termina resolviendo a `video`
+- una solicitud `video` termina resolviendo a `image`
+- provider/runtime reescriben la resolución efectiva
+- export/handoff deben reflejar el mismo estado contractual efectivo
+
+---
+
 ## Contrato de sincronización con `pack.json`
 
 `pack.json` debe reflejar el estado efectivo de `manifest_v03.json` en los campos operativos relevantes.
@@ -167,9 +175,24 @@ Por escena, pack debe mantenerse alineado al menos en:
 - `visual_request_kind` cuando aplique
 - `visual_kind`
 - `visual_source_kind` cuando aplique
+- `visual_capability` cuando aplique
 - asset visual efectivo
 
 El smoke debe fallar si manifest y pack divergen en campos contractuales relevantes.
+
+---
+
+## Contrato de preservación en export y handoff
+
+Los artefactos finales derivados del pack no deben degradar el contrato visual ya endurecido.
+
+Cuando aplique, deben preservarse de forma coherente:
+
+- `visual_kind`
+- `visual_source_kind`
+- `visual_capability`
+
+La validación final de handoff/export debe fallar si esos campos divergen entre manifest, pack y artefactos contractuales finales en rutas donde el baseline exige su conservación.
 
 ---
 
@@ -179,9 +202,12 @@ El LIVE válido debe cumplir simultáneamente:
 
 - estructura temporal válida
 - coherencia visual por escena
+- coherencia entre intención y visual efectivo
+- preservación de trazabilidad visual cuando aplique
 - coherencia entre manifest y pack
 - coherencia entre duración de escena y audio dentro de tolerancias del smoke cuando aplique
 - coherencia de subtítulos respecto al timeline de escenas
+- preservación contractual en export y handoff final
 
 ---
 
@@ -191,12 +217,16 @@ Los siguientes scripts forman parte de la validación práctica de este contrato
 
 - `tools\smoke_manifest_contract_v03.ps1`
 - `tools\smoke_live_manifest_v03.ps1`
+- `tools\smoke_live_provider_contract_v03.ps1`
 - `tools\smoke_subtitles_live_v03.ps1`
 - `tools\smoke_live_video_case_v03.ps1`
 - `tools\smoke_live_mixed_visuals_v03.ps1`
 - `tools\smoke_live_intent_image_fallback_v03.ps1`
 - `tools\smoke_live_intent_video_fallback_v03.ps1`
+- `tools\smoke_export_pack_contract_v03.ps1`
+- `tools\smoke_release_handoff_contract_v03.ps1`
 - `tools\negative_live_suite_v03.ps1`
+- `tools\run_validation_stack_v03.ps1`
 
 La autoridad final del comportamiento válido es el baseline validado por estas pruebas, no definiciones teóricas que contradigan el comportamiento ya endurecido del sistema.
 
@@ -204,4 +234,4 @@ La autoridad final del comportamiento válido es el baseline validado por estas 
 
 ## Resumen contractual
 
-Un `manifest_v03.json` válido en STUDIO_MVP v0.3 debe conservar un timeline coherente, intención visual no conflictiva, visual efectivo consistente, audio por escena alineado y sincronización real con `pack.json`, todo bajo reglas deterministas y auditables.
+Un `manifest_v03.json` válido en STUDIO_MVP v0.3 debe conservar un timeline coherente, intención visual no conflictiva, visual efectivo consistente, trazabilidad visual cuando aplique, audio por escena alineado y sincronización real con `pack.json`, preservando además `visual_kind`, `visual_source_kind` y `visual_capability` en las rutas donde el baseline exige su conservación, todo bajo reglas deterministas y auditables.

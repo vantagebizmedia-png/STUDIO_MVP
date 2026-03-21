@@ -345,6 +345,7 @@ def main() -> int:
         out["visual_request_kind"] = exported_scene["visual_request_kind"]
         out["visual_kind"] = exported_scene["visual_kind"]
         out["visual_source_kind"] = exported_scene["visual_source_kind"]
+        out["visual_capability"] = exported_scene["visual_capability"]
         out["start_ms"] = exported_scene["start_ms"]
         out["end_ms"] = exported_scene["end_ms"]
         out["duration_ms"] = exported_scene["duration_ms"]
@@ -450,6 +451,7 @@ def main() -> int:
         requested_media_type = str(row.get("requested_media_type") or row.get("visual_request_kind") or visual_kind).strip().lower()
         visual_request_kind = str(row.get("visual_request_kind") or row.get("requested_media_type") or requested_media_type or visual_kind).strip().lower()
         visual_source_kind = str(row.get("visual_source_kind") or ("stock_video" if visual_kind == "video" else "stock_image")).strip().lower()
+        visual_capability = str(row.get("visual_capability") or ("stock_video" if visual_kind == "video" else "stock_image")).strip().lower()
 
         exported_scene = {
             "id": str(row.get("id") or f"scene_{idx:03d}"),
@@ -465,6 +467,7 @@ def main() -> int:
             "visual_request_kind": visual_request_kind,
             "visual_kind": visual_kind,
             "visual_source_kind": visual_source_kind,
+            "visual_capability": visual_capability,
             "script": f"artifacts/scenes/scene_{idx:02d}/script.txt",
             "image": image_rel,
             "video": video_rel,
@@ -565,6 +568,7 @@ def main() -> int:
                 "visual_request_kind": sc["visual_request_kind"],
                 "visual_kind": sc["visual_kind"],
                 "visual_source_kind": sc["visual_source_kind"],
+                "visual_capability": sc["visual_capability"],
                 "start_ms": sc["start_ms"],
                 "end_ms": sc["end_ms"],
                 "duration_ms": sc["duration_ms"],

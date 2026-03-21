@@ -4,7 +4,7 @@ Valida un pack exportado (pack_v03_*) y opcionalmente agrega hashes.
 
 Contrato soportado:
 - Base compat: pack.json, manifest_v03.json, artifacts/script.txt, artifacts/image.png, artifacts/audio.wav
-- Escenas ricas en pack.json.scenes[] con visual_kind=image|video
+- Escenas ricas en pack.json.scenes[] con visual_kind=image|video, visual_source_kind y visual_capability
 - Timing explícito por escena: start_ms / end_ms / duration_ms
 - Coherencia contractual: id / index / scene path / manifest
 """
@@ -170,6 +170,8 @@ def validate_scene(
     video_rel = asset_value(scene.get("video"))
     audio_rel = asset_value(scene.get("audio"))
     visual_kind = infer_visual_kind(scene)
+    visual_source_kind = str(scene.get("visual_source_kind") or "").strip().lower()
+    visual_capability = str(scene.get("visual_capability") or "").strip().lower()
 
     check_rel_file(pack_dir, script_rel, f"{label} script", problems)
     check_rel_file(pack_dir, audio_rel, f"{label} audio", problems)
@@ -182,6 +184,27 @@ def validate_scene(
         check_rel_file(pack_dir, image_rel, f"{label} image", problems)
         if normalize_rel(video_rel):
             problems.append(f"{label} visual_kind=image pero video no vacío: {video_rel}")
+
+    expected_visual_source_kind = "stock_video" if visual_kind == "video" else "stock_image"
+    expected_visual_capability = "stock_video" if visual_kind == "video" else "stock_image"
+
+    if not visual_source_kind:
+        problems.append(f"{label} visual_source_kind vacío")
+    elif visual_source_kind not in ("stock_image", "stock_video"):
+        problems.append(f"{label} visual_source_kind inválido: {visual_source_kind}")
+    elif visual_source_kind != expected_visual_source_kind:
+        problems.append(
+            f"{label} visual_source_kind incompatible con visual_kind={visual_kind}: {visual_source_kind}"
+        )
+
+    if not visual_capability:
+        problems.append(f"{label} visual_capability vacío")
+    elif visual_capability not in ("stock_image", "stock_video"):
+        problems.append(f"{label} visual_capability inválido: {visual_capability}")
+    elif visual_capability != expected_visual_capability:
+        problems.append(
+            f"{label} visual_capability incompatible con visual_kind={visual_kind}: {visual_capability}"
+        )
 
     for rel_name, rel_value in [
         ("script", script_rel),
@@ -236,6 +259,8 @@ def validate_scene(
         manifest_id = str(manifest_scene.get("id") or "").strip()
         manifest_index = safe_int(manifest_scene.get("index"), 0)
         manifest_visual_kind = infer_visual_kind(manifest_scene)
+        manifest_visual_source_kind = str(manifest_scene.get("visual_source_kind") or "").strip().lower()
+        manifest_visual_capability = str(manifest_scene.get("visual_capability") or "").strip().lower()
 
         if manifest_id and sid and manifest_id != sid:
             problems.append(f"{label} id pack/manifest mismatch: pack={sid} manifest={manifest_id}")
@@ -246,6 +271,40 @@ def validate_scene(
         if manifest_visual_kind != visual_kind:
             problems.append(
                 f"{label} visual_kind pack/manifest mismatch: pack={visual_kind} manifest={manifest_visual_kind}"
+            )
+
+        if not manifest_visual_source_kind:
+            problems.append(f"{label} manifest visual_source_kind vacío")
+        elif manifest_visual_source_kind not in ("stock_image", "stock_video"):
+            problems.append(
+                f"{label} manifest visual_source_kind inválido: {manifest_visual_source_kind}"
+            )
+        elif manifest_visual_source_kind != manifest_visual_kind.replace("image", "stock_image").replace("video", "stock_video"):
+            problems.append(
+                f"{label} manifest visual_source_kind incompatible con visual_kind={manifest_visual_kind}: "
+                f"{manifest_visual_source_kind}"
+            )
+        elif manifest_visual_source_kind != visual_source_kind:
+            problems.append(
+                f"{label} visual_source_kind pack/manifest mismatch: "
+                f"pack={visual_source_kind} manifest={manifest_visual_source_kind}"
+            )
+
+        if not manifest_visual_capability:
+            problems.append(f"{label} manifest visual_capability vacío")
+        elif manifest_visual_capability not in ("stock_image", "stock_video"):
+            problems.append(
+                f"{label} manifest visual_capability inválido: {manifest_visual_capability}"
+            )
+        elif manifest_visual_capability != manifest_visual_kind.replace("image", "stock_image").replace("video", "stock_video"):
+            problems.append(
+                f"{label} manifest visual_capability incompatible con visual_kind={manifest_visual_kind}: "
+                f"{manifest_visual_capability}"
+            )
+        elif manifest_visual_capability != visual_capability:
+            problems.append(
+                f"{label} visual_capability pack/manifest mismatch: "
+                f"pack={visual_capability} manifest={manifest_visual_capability}"
             )
 
         for field_name in ("start_ms", "end_ms", "duration_ms"):

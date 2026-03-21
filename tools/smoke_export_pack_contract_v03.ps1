@@ -133,7 +133,7 @@ try {
   } | Format-List
 
   $packScenes |
-    Select-Object -First 6 id,index,visual_kind,image,video,audio,start_ms,end_ms,duration_ms |
+    Select-Object -First 6 id,index,visual_kind,visual_source_kind,visual_capability,image,video,audio,start_ms,end_ms,duration_ms |
     Format-Table -AutoSize
 
   Write-Host ""
@@ -167,6 +167,46 @@ try {
   & python -u .\tools\validate_pack.py --pack-dir $packDir 2>&1 | ForEach-Object { $_.ToString() }
   if ($LASTEXITCODE -ne 0) {
     Fail "validate_pack.py final falló con exit code $LASTEXITCODE"
+  }
+
+  $exportManifestPath = Join-Path $packDir "manifest_v03.json"
+  $exportManifestObj = Get-Content -LiteralPath $exportManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+  $exportManifestScenes = @($exportManifestObj.scenes_v03)
+  if ($exportManifestScenes.Count -ne $packScenes.Count) {
+    Fail "manifest_v03 exportado no preservó el mismo número de scenes_v03 que pack.json"
+  }
+
+  for ($i = 0; $i -lt $packScenes.Count; $i++) {
+    $p = $packScenes[$i]
+    $m = $exportManifestScenes[$i]
+    $sceneLabel = [string]($p.id)
+    if ([string]::IsNullOrWhiteSpace($sceneLabel)) {
+      $sceneLabel = "scene_$($i + 1)"
+    }
+
+    $pkVisualSourceKind = ([string]$p.visual_source_kind).Trim().ToLowerInvariant()
+    $pkVisualCapability = ([string]$p.visual_capability).Trim().ToLowerInvariant()
+    $mfVisualSourceKind = ([string]$m.visual_source_kind).Trim().ToLowerInvariant()
+    $mfVisualCapability = ([string]$m.visual_capability).Trim().ToLowerInvariant()
+
+    if ([string]::IsNullOrWhiteSpace($pkVisualSourceKind)) {
+      Fail "$sceneLabel visual_source_kind vacío en pack exportado"
+    }
+    if ([string]::IsNullOrWhiteSpace($pkVisualCapability)) {
+      Fail "$sceneLabel visual_capability vacío en pack exportado"
+    }
+    if ([string]::IsNullOrWhiteSpace($mfVisualSourceKind)) {
+      Fail "$sceneLabel visual_source_kind vacío en manifest exportado"
+    }
+    if ([string]::IsNullOrWhiteSpace($mfVisualCapability)) {
+      Fail "$sceneLabel visual_capability vacío en manifest exportado"
+    }
+    if ($pkVisualSourceKind -ne $mfVisualSourceKind) {
+      Fail "$sceneLabel visual_source_kind pack/manifest export mismatch: pack='$pkVisualSourceKind' manifest='$mfVisualSourceKind'"
+    }
+    if ($pkVisualCapability -ne $mfVisualCapability) {
+      Fail "$sceneLabel visual_capability pack/manifest export mismatch: pack='$pkVisualCapability' manifest='$mfVisualCapability'"
+    }
   }
 
   foreach ($mustExist in @(

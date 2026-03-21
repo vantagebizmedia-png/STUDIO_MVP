@@ -137,6 +137,7 @@ try {
   $pyTargets = @(
     ".\tools\release_pack_v03.py",
     ".\tools\finalize_handoff_v03.py",
+    ".\tools\validate_pack.py",
     ".\tools\validate_handoff.py"
   )
 
@@ -220,6 +221,23 @@ try {
 
   if ($finalizeRun.ExitCode -ne 0) {
     Fail "finalize_handoff_v03.py devolvió exit code $($finalizeRun.ExitCode)"
+  }
+
+  Write-Host ""
+  Write-Host "== VALIDATE PACK FINAL ==" -ForegroundColor Cyan
+  $validatePackRun = Invoke-PythonLogged `
+    -WorkingDirectory $RepoRoot `
+    -Arguments @(
+      "-u",
+      ".\tools\validate_pack.py",
+      "--pack-dir",
+      $packDir
+    ) `
+    -Label "validate_pack_final" `
+    -LogRoot $OutputRoot
+
+  if ($validatePackRun.ExitCode -ne 0) {
+    Fail "validate_pack.py devolvió exit code $($validatePackRun.ExitCode) tras finalize_handoff"
   }
 
   Write-Host ""

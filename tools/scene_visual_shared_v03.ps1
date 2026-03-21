@@ -1,4 +1,4 @@
-﻿Set-StrictMode -Version Latest
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 function Convert-ToPackRelativePathShared {
@@ -97,4 +97,49 @@ function Get-ResolvedVisualKindShared {
   if ($hasVideo) { return "video" }
 
   return "image"
+}
+
+function Get-ResolvedVisualSourceKindShared {
+  param(
+    [Parameter(Mandatory=$false)][string]$CurrentVisualSourceKind,
+    [Parameter(Mandatory=$false)][string]$RuntimeResolvedSourceKind,
+    [Parameter(Mandatory=$false)][string]$AssetResolvedSourceKind,
+    [Parameter(Mandatory=$false)][string]$VisualKind
+  )
+
+  $vk = ""
+  try { $vk = ([string]$VisualKind).Trim().ToLowerInvariant() } catch { $vk = "" }
+  if ($vk -notin @("image","video")) { $vk = "" }
+
+  $currentSource = ""
+  try { $currentSource = ([string]$CurrentVisualSourceKind).Trim().ToLowerInvariant() } catch { $currentSource = "" }
+  if ($currentSource -notmatch "(^|_)(image|video)$") { $currentSource = "" }
+
+  $runtimeSource = ""
+  try { $runtimeSource = ([string]$RuntimeResolvedSourceKind).Trim().ToLowerInvariant() } catch { $runtimeSource = "" }
+  if ($runtimeSource -notmatch "(^|_)(image|video)$") { $runtimeSource = "" }
+
+  $assetSource = ""
+  try { $assetSource = ([string]$AssetResolvedSourceKind).Trim().ToLowerInvariant() } catch { $assetSource = "" }
+  if ($assetSource -notmatch "(^|_)(image|video)$") { $assetSource = "" }
+
+  if ($vk -eq "video") {
+    if ($currentSource -match "(^|_)video$") { return $currentSource }
+    if ($runtimeSource -match "(^|_)video$") { return $runtimeSource }
+    if ($assetSource -match "(^|_)video$") { return $assetSource }
+    return "stock_video"
+  }
+
+  if ($vk -eq "image") {
+    if ($currentSource -match "(^|_)image$") { return $currentSource }
+    if ($runtimeSource -match "(^|_)image$") { return $runtimeSource }
+    if ($assetSource -match "(^|_)image$") { return $assetSource }
+    return "stock_image"
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($currentSource)) { return $currentSource }
+  if (-not [string]::IsNullOrWhiteSpace($runtimeSource)) { return $runtimeSource }
+  if (-not [string]::IsNullOrWhiteSpace($assetSource)) { return $assetSource }
+
+  return "stock_image"
 }

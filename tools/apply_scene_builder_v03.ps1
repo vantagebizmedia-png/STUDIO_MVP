@@ -1091,30 +1091,55 @@ function Ensure-VisualCapabilityFields {
       -ResolvedImage $resolvedImage `
       -ResolvedVideo $resolvedVideo
 
-    $resolvedSourceKind = ""
+    $runtimeResolvedSourceKind = ""
+    try {
+      if ($visualMeta.PSObject.Properties.Name -contains "runtime_resolved_source_kind") {
+        $runtimeResolvedSourceKind = ([string]$visualMeta.runtime_resolved_source_kind).Trim().ToLowerInvariant()
+      }
+    }
+    catch { $runtimeResolvedSourceKind = "" }
+    if ($runtimeResolvedSourceKind -notmatch "(^|_)(image|video)$") { $runtimeResolvedSourceKind = "" }
+
+    $assetResolvedSourceKind = ""
 
     if ($vk -eq "video") {
       $scene.assets.video = [string]$effectiveVideo
       $scene.assets.image = ""
 
-      if ($currentVisualSourceKind -match "(^|_)video$") {
-        $resolvedSourceKind = $currentVisualSourceKind
+      try {
+        if (
+          ($scene.assets.PSObject.Properties.Name -contains "video_meta") -and
+          $null -ne $scene.assets.video_meta -and
+          ($scene.assets.video_meta.PSObject.Properties.Name -contains "resolved_source_kind")
+        ) {
+          $assetResolvedSourceKind = ([string]$scene.assets.video_meta.resolved_source_kind).Trim().ToLowerInvariant()
+        }
       }
-      else {
-        $resolvedSourceKind = "stock_video"
-      }
+      catch { $assetResolvedSourceKind = "" }
     }
     else {
       $scene.assets.image = [string]$effectiveImage
       $scene.assets.video = ""
 
-      if ($currentVisualSourceKind -match "(^|_)image$") {
-        $resolvedSourceKind = $currentVisualSourceKind
+      try {
+        if (
+          ($scene.assets.PSObject.Properties.Name -contains "image_meta") -and
+          $null -ne $scene.assets.image_meta -and
+          ($scene.assets.image_meta.PSObject.Properties.Name -contains "resolved_source_kind")
+        ) {
+          $assetResolvedSourceKind = ([string]$scene.assets.image_meta.resolved_source_kind).Trim().ToLowerInvariant()
+        }
       }
-      else {
-        $resolvedSourceKind = "stock_image"
-      }
+      catch { $assetResolvedSourceKind = "" }
     }
+
+    if ($assetResolvedSourceKind -notmatch "(^|_)(image|video)$") { $assetResolvedSourceKind = "" }
+
+    $resolvedSourceKind = Get-ResolvedVisualSourceKindShared `
+      -CurrentVisualSourceKind $currentVisualSourceKind `
+      -RuntimeResolvedSourceKind $runtimeResolvedSourceKind `
+      -AssetResolvedSourceKind $assetResolvedSourceKind `
+      -VisualKind $vk
 
     $requestedCapability = ""
     if ($requestedMediaType -eq "video") {

@@ -370,9 +370,31 @@ for ($i = 0; $i -lt $scCount; $i++) {
     Fail "$sceneLabel visual_source_kind incompatible con visual_kind=video: '$visualSourceKind'"
   }
 
+  $visualCapability = ""
+  if ($s.PSObject.Properties.Name -contains "visual_capability") {
+    $visualCapability = (Get-StringOrEmpty -Value $s.visual_capability).ToLowerInvariant()
+  }
+
+  if ([string]::IsNullOrWhiteSpace($visualCapability)) {
+    Fail "$sceneLabel visual_capability vacío en manifest"
+  }
+
+  if ($visualCapability -notin @("stock_image","stock_video")) {
+    Fail "$sceneLabel visual_capability inválido en manifest: '$visualCapability'"
+  }
+
+  if (($visualKind -eq "image") -and ($visualCapability -ne "stock_image")) {
+    Fail "$sceneLabel visual_capability incompatible con visual_kind=image: '$visualCapability'"
+  }
+
+  if (($visualKind -eq "video") -and ($visualCapability -ne "stock_video")) {
+    Fail "$sceneLabel visual_capability incompatible con visual_kind=video: '$visualCapability'"
+  }
+
   $pkRequestedMediaType = (Get-StringOrEmpty -Value $p.requested_media_type).ToLowerInvariant()
   $pkVisualRequestKind  = (Get-StringOrEmpty -Value $p.visual_request_kind).ToLowerInvariant()
   $pkVisualSourceKind   = (Get-StringOrEmpty -Value $p.visual_source_kind).ToLowerInvariant()
+  $pkVisualCapability   = (Get-StringOrEmpty -Value $p.visual_capability).ToLowerInvariant()
 
   if ($pkRequestedMediaType -ne $requestedMediaType) {
     Fail "$sceneLabel pack requested_media_type mismatch: manifest='$requestedMediaType' pack='$pkRequestedMediaType'"
@@ -384,6 +406,10 @@ for ($i = 0; $i -lt $scCount; $i++) {
 
   if ($pkVisualSourceKind -ne $visualSourceKind) {
     Fail "$sceneLabel pack visual_source_kind mismatch: manifest='$visualSourceKind' pack='$pkVisualSourceKind'"
+  }
+
+  if ($pkVisualCapability -ne $visualCapability) {
+    Fail "$sceneLabel pack visual_capability mismatch: manifest='$visualCapability' pack='$pkVisualCapability'"
   }
   $imgPath = Get-AssetPathValue -AssetsObj $s.assets -Key "image"
   $vidPath = Get-AssetPathValue -AssetsObj $s.assets -Key "video"

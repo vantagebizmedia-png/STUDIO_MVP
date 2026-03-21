@@ -197,7 +197,7 @@ Write-Host "== Inspección scene_001 manifest + pack ==" -ForegroundColor Cyan
   visual_request_kind  = [string]$p1.visual_request_kind
   visual_kind          = [string]$p1.visual_kind
   visual_source_kind   = [string]$p1.visual_source_kind
-  visual_capability    = ""
+  visual_capability    = [string]$p1.visual_capability
   start_ms             = [int]$p1.start_ms
   end_ms               = [int]$p1.end_ms
   duration_ms          = [int]$p1.duration_ms
@@ -242,6 +242,12 @@ if ([string]$p1.visual_kind -ne "image") {
 }
 if ([string]$p1.visual_source_kind -ne "stock_image") {
   throw "pack.json scene_001 no resolvió visual_source_kind=stock_image"
+}
+if ([string]$p1.visual_capability -ne "stock_image") {
+  throw "pack.json scene_001 no resolvió visual_capability=stock_image"
+}
+if ([string]$p1.visual_capability -ne [string]$m1.visual_capability) {
+  throw "pack.json scene_001 dejó visual_capability desalineado respecto a manifest_v03"
 }
 if ([int]$p1.duration_ms -ne ([int]$p1.end_ms - [int]$p1.start_ms)) {
   throw "pack.json scene_001 dejó duration_ms inconsistente"

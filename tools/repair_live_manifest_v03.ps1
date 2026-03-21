@@ -1,4 +1,4 @@
-﻿param(
+param(
   [Parameter(Mandatory=$true)][string]$LiveDir
 )
 
@@ -319,20 +319,63 @@ elseif ($manifest.PSObject.Properties["scenes"] -and $manifest.scenes) {
     }
     catch { }
 
+    $currentRequestedMediaType = ""
+    $currentVisualRequestKind = ""
+    $currentVisualSourceKind = ""
+    $currentVisualCapability = ""
+
+    try {
+      if ($row.PSObject.Properties["requested_media_type"] -and $row.requested_media_type) {
+        $currentRequestedMediaType = ([string]$row.requested_media_type).Trim().ToLowerInvariant()
+      }
+    }
+    catch { $currentRequestedMediaType = "" }
+    if ($currentRequestedMediaType -notin @("image","video")) { $currentRequestedMediaType = "" }
+
+    try {
+      if ($row.PSObject.Properties["visual_request_kind"] -and $row.visual_request_kind) {
+        $currentVisualRequestKind = ([string]$row.visual_request_kind).Trim().ToLowerInvariant()
+      }
+    }
+    catch { $currentVisualRequestKind = "" }
+    if ($currentVisualRequestKind -notin @("image","video")) { $currentVisualRequestKind = "" }
+
+    try {
+      if ($row.PSObject.Properties["visual_source_kind"] -and $row.visual_source_kind) {
+        $currentVisualSourceKind = ([string]$row.visual_source_kind).Trim().ToLowerInvariant()
+      }
+    }
+    catch { $currentVisualSourceKind = "" }
+    if ($currentVisualSourceKind -notmatch "(^|_)(image|video)$") { $currentVisualSourceKind = "" }
+
+    try {
+      if ($row.PSObject.Properties["visual_capability"] -and $row.visual_capability) {
+        $currentVisualCapability = ([string]$row.visual_capability).Trim().ToLowerInvariant()
+      }
+    }
+    catch { $currentVisualCapability = "" }
+    if ($currentVisualCapability -notin @("stock_image","stock_video")) { $currentVisualCapability = "" }
+
+    $initialVisualKind = $(if (-not [string]::IsNullOrWhiteSpace($videoValue) -and [string]::IsNullOrWhiteSpace($imageValue)) { "video" } else { "image" })
+    $initialVisualSourceKind = $(if (-not [string]::IsNullOrWhiteSpace($currentVisualSourceKind)) { $currentVisualSourceKind } elseif ($initialVisualKind -eq "video") { "stock_video" } else { "stock_image" })
+    $initialVisualCapability = $(if (-not [string]::IsNullOrWhiteSpace($currentVisualCapability)) { $currentVisualCapability } elseif ($initialVisualKind -eq "video") { "stock_video" } else { "stock_image" })
+
     $scenes += [pscustomobject]@{
-      id                 = ("scene_{0:000}" -f ($i + 1))
-      index              = [int]$i
-      start_ms           = Get-IntOrZero -Value $row.start_ms
-      end_ms             = Get-IntOrZero -Value $row.end_ms
-      duration_ms        = Get-IntOrZero -Value $row.duration_ms
-      text               = [string]$textValue
-      script_text        = [string]$textValue
-      image_query        = ""
-      query              = ""
-      visual_kind        = $(if (-not [string]::IsNullOrWhiteSpace($videoValue) -and [string]::IsNullOrWhiteSpace($imageValue)) { "video" } else { "image" })
-      visual_source_kind = $(if (-not [string]::IsNullOrWhiteSpace($videoValue) -and [string]::IsNullOrWhiteSpace($imageValue)) { "stock_video" } else { "stock_image" })
-      visual_capability  = $(if (-not [string]::IsNullOrWhiteSpace($videoValue) -and [string]::IsNullOrWhiteSpace($imageValue)) { "stock_video" } else { "stock_image" })
-      assets             = [pscustomobject]@{
+      id                   = ("scene_{0:000}" -f ($i + 1))
+      index                = [int]$i
+      start_ms             = Get-IntOrZero -Value $row.start_ms
+      end_ms               = Get-IntOrZero -Value $row.end_ms
+      duration_ms          = Get-IntOrZero -Value $row.duration_ms
+      text                 = [string]$textValue
+      script_text          = [string]$textValue
+      image_query          = ""
+      query                = ""
+      requested_media_type = [string]$currentRequestedMediaType
+      visual_request_kind  = [string]$currentVisualRequestKind
+      visual_kind          = [string]$initialVisualKind
+      visual_source_kind   = [string]$initialVisualSourceKind
+      visual_capability    = [string]$initialVisualCapability
+      assets               = [pscustomobject]@{
         audio_clip = [string]$audioValue
         image      = [string]$imageValue
         video      = [string]$videoValue
@@ -389,6 +432,13 @@ if (-not (Test-Path -LiteralPath $visualMetaSharedPath -PathType Leaf)) {
 
 . $visualMetaSharedPath
 
+$visualSharedPath = Join-Path $PSScriptRoot "scene_visual_shared_v03.ps1"
+if (-not (Test-Path -LiteralPath $visualSharedPath -PathType Leaf)) {
+  throw ("No existe helper visual compartido: {0}" -f $visualSharedPath)
+}
+
+. $visualSharedPath
+
 $durations = @(Normalize-DurationsToTotal -Durations $rawDurations -TotalMs $totalAudioMs)
 $timeline = @(Build-SceneTimelineShared -Durations $durations -TotalMs $totalAudioMs)
 
@@ -415,6 +465,34 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     }
   }
   catch { $currentVisualKind = "" }
+  if ($currentVisualKind -notin @("image","video")) { $currentVisualKind = "" }
+
+  $currentRequestedMediaType = ""
+  try {
+    if ($scene.PSObject.Properties["requested_media_type"] -and $scene.requested_media_type) {
+      $currentRequestedMediaType = ([string]$scene.requested_media_type).Trim().ToLowerInvariant()
+    }
+  }
+  catch { $currentRequestedMediaType = "" }
+  if ($currentRequestedMediaType -notin @("image","video")) { $currentRequestedMediaType = "" }
+
+  $currentVisualRequestKind = ""
+  try {
+    if ($scene.PSObject.Properties["visual_request_kind"] -and $scene.visual_request_kind) {
+      $currentVisualRequestKind = ([string]$scene.visual_request_kind).Trim().ToLowerInvariant()
+    }
+  }
+  catch { $currentVisualRequestKind = "" }
+  if ($currentVisualRequestKind -notin @("image","video")) { $currentVisualRequestKind = "" }
+
+  $currentVisualSourceKind = ""
+  try {
+    if ($scene.PSObject.Properties["visual_source_kind"] -and $scene.visual_source_kind) {
+      $currentVisualSourceKind = ([string]$scene.visual_source_kind).Trim().ToLowerInvariant()
+    }
+  }
+  catch { $currentVisualSourceKind = "" }
+  if ($currentVisualSourceKind -notmatch "(^|_)(image|video)$") { $currentVisualSourceKind = "" }
 
   $resolvedAudio = Resolve-ExistingFileRelative -BaseDir $live -Candidates @(
     [string]$scene.assets.audio_clip,
@@ -449,11 +527,69 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   $hasImage = -not [string]::IsNullOrWhiteSpace($resolvedImage)
   $hasVideo = -not [string]::IsNullOrWhiteSpace($resolvedVideo)
 
-  $finalVisualKind = Get-ResolvedSceneVisualKind -CurrentVisualKind $currentVisualKind -ResolvedImage $resolvedImage -ResolvedVideo $resolvedVideo
+  $finalVisualKind = Get-ResolvedVisualKindShared `
+    -CurrentVisualKind $currentVisualKind `
+    -RequestedMediaType $currentRequestedMediaType `
+    -VisualRequestKind $currentVisualRequestKind `
+    -ResolvedImage $resolvedImage `
+    -ResolvedVideo $resolvedVideo
 
   if ((-not $hasImage) -and (-not $hasVideo)) {
     $warnings.Add(("scene_{0:d2}: no se encontró image/video real" -f $ord)) | Out-Null
   }
+
+  $runtimeResolvedSourceKind = ""
+  try {
+    if (
+      $scene.PSObject.Properties["meta"] -and
+      $scene.meta -and
+      $scene.meta.PSObject.Properties["visual_enrich"] -and
+      $scene.meta.visual_enrich -and
+      $scene.meta.visual_enrich.PSObject.Properties["runtime_resolved_source_kind"] -and
+      $scene.meta.visual_enrich.runtime_resolved_source_kind
+    ) {
+      $runtimeResolvedSourceKind = ([string]$scene.meta.visual_enrich.runtime_resolved_source_kind).Trim().ToLowerInvariant()
+    }
+  }
+  catch { $runtimeResolvedSourceKind = "" }
+  if ($runtimeResolvedSourceKind -notmatch "(^|_)(image|video)$") { $runtimeResolvedSourceKind = "" }
+
+  $assetResolvedSourceKind = ""
+  if ($finalVisualKind -eq "video") {
+    try {
+      if (
+        $scene.assets.PSObject.Properties["video_meta"] -and
+        $scene.assets.video_meta -and
+        $scene.assets.video_meta.PSObject.Properties["resolved_source_kind"] -and
+        $scene.assets.video_meta.resolved_source_kind
+      ) {
+        $assetResolvedSourceKind = ([string]$scene.assets.video_meta.resolved_source_kind).Trim().ToLowerInvariant()
+      }
+    }
+    catch { $assetResolvedSourceKind = "" }
+  }
+  else {
+    try {
+      if (
+        $scene.assets.PSObject.Properties["image_meta"] -and
+        $scene.assets.image_meta -and
+        $scene.assets.image_meta.PSObject.Properties["resolved_source_kind"] -and
+        $scene.assets.image_meta.resolved_source_kind
+      ) {
+        $assetResolvedSourceKind = ([string]$scene.assets.image_meta.resolved_source_kind).Trim().ToLowerInvariant()
+      }
+    }
+    catch { $assetResolvedSourceKind = "" }
+  }
+  if ($assetResolvedSourceKind -notmatch "(^|_)(image|video)$") { $assetResolvedSourceKind = "" }
+
+  $finalVisualSourceKind = Get-ResolvedVisualSourceKindShared `
+    -CurrentVisualSourceKind $currentVisualSourceKind `
+    -RuntimeResolvedSourceKind $runtimeResolvedSourceKind `
+    -AssetResolvedSourceKind $assetResolvedSourceKind `
+    -VisualKind $finalVisualKind
+
+  $finalVisualCapability = $(if ($finalVisualKind -eq "video") { "stock_video" } else { "stock_image" })
 
   $slot = $timeline[$i]
 
@@ -470,6 +606,14 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
   $scene | Add-Member -Force -NotePropertyName end_ms -NotePropertyValue ([int]$en)
   $scene | Add-Member -Force -NotePropertyName duration_ms -NotePropertyValue ([int]($en - $st))
 
+  if (-not [string]::IsNullOrWhiteSpace($currentRequestedMediaType)) {
+    $scene | Add-Member -Force -NotePropertyName requested_media_type -NotePropertyValue ([string]$currentRequestedMediaType)
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($currentVisualRequestKind)) {
+    $scene | Add-Member -Force -NotePropertyName visual_request_kind -NotePropertyValue ([string]$currentVisualRequestKind)
+  }
+
   $scene.assets.audio_clip = [string]$resolvedAudio
 
   if ($finalVisualKind -eq "video") {
@@ -477,20 +621,60 @@ for ($i = 0; $i -lt $scenes.Count; $i++) {
     $scene.assets.image = ""
 
     $scene | Add-Member -Force -NotePropertyName visual_kind -NotePropertyValue "video"
-    $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue "stock_video"
-    $scene | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue "stock_video"
+    $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue ([string]$finalVisualSourceKind)
+    $scene | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue ([string]$finalVisualCapability)
 
     Update-SceneVisualMetaShared -Scene $scene -Kind "video" -Query ([string]$sceneQuery) -FallbackProvider "repair_live_manifest_v03" | Out-Null
+
+    try {
+      if (-not ($scene.PSObject.Properties["meta"] -and $scene.meta)) {
+        $scene | Add-Member -Force -NotePropertyName meta -NotePropertyValue ([pscustomobject]@{})
+      }
+      if (-not ($scene.meta.PSObject.Properties["visual_enrich"] -and $scene.meta.visual_enrich)) {
+        $scene.meta | Add-Member -Force -NotePropertyName visual_enrich -NotePropertyValue ([pscustomobject]@{})
+      }
+      $scene.meta.visual_enrich | Add-Member -Force -NotePropertyName runtime_resolved_media_kind -NotePropertyValue "video"
+      $scene.meta.visual_enrich | Add-Member -Force -NotePropertyName runtime_resolved_source_kind -NotePropertyValue ([string]$finalVisualSourceKind)
+    }
+    catch { }
+
+    try {
+      if (-not ($scene.assets.PSObject.Properties["video_meta"] -and $scene.assets.video_meta)) {
+        $scene.assets | Add-Member -Force -NotePropertyName video_meta -NotePropertyValue ([pscustomobject]@{})
+      }
+      $scene.assets.video_meta | Add-Member -Force -NotePropertyName resolved_source_kind -NotePropertyValue ([string]$finalVisualSourceKind)
+    }
+    catch { }
   }
   else {
     $scene.assets.image = [string]$resolvedImage
     $scene.assets.video = ""
 
     $scene | Add-Member -Force -NotePropertyName visual_kind -NotePropertyValue "image"
-    $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue "stock_image"
-    $scene | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue "stock_image"
+    $scene | Add-Member -Force -NotePropertyName visual_source_kind -NotePropertyValue ([string]$finalVisualSourceKind)
+    $scene | Add-Member -Force -NotePropertyName visual_capability -NotePropertyValue ([string]$finalVisualCapability)
 
     Update-SceneVisualMetaShared -Scene $scene -Kind "image" -Query ([string]$sceneQuery) -FallbackProvider "repair_live_manifest_v03" | Out-Null
+
+    try {
+      if (-not ($scene.PSObject.Properties["meta"] -and $scene.meta)) {
+        $scene | Add-Member -Force -NotePropertyName meta -NotePropertyValue ([pscustomobject]@{})
+      }
+      if (-not ($scene.meta.PSObject.Properties["visual_enrich"] -and $scene.meta.visual_enrich)) {
+        $scene.meta | Add-Member -Force -NotePropertyName visual_enrich -NotePropertyValue ([pscustomobject]@{})
+      }
+      $scene.meta.visual_enrich | Add-Member -Force -NotePropertyName runtime_resolved_media_kind -NotePropertyValue "image"
+      $scene.meta.visual_enrich | Add-Member -Force -NotePropertyName runtime_resolved_source_kind -NotePropertyValue ([string]$finalVisualSourceKind)
+    }
+    catch { }
+
+    try {
+      if (-not ($scene.assets.PSObject.Properties["image_meta"] -and $scene.assets.image_meta)) {
+        $scene.assets | Add-Member -Force -NotePropertyName image_meta -NotePropertyValue ([pscustomobject]@{})
+      }
+      $scene.assets.image_meta | Add-Member -Force -NotePropertyName resolved_source_kind -NotePropertyValue ([string]$finalVisualSourceKind)
+    }
+    catch { }
   }
 
   $audioClips += [pscustomobject]@{

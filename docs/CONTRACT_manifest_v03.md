@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Definir el contrato operativo rígido y determinista para `manifest_v03.json`, su relación con `pack.json` y la validación estructural de escenas LIVE dentro del baseline v0.3, incluyendo preservación contractual de intención, visual efectivo, capacidad visual y origen visual a través de runtime, export y handoff final.
+Definir el contrato operativo rígido y determinista para `manifest_v03.json`, su relación con `pack.json` y la validación estructural de escenas LIVE dentro del baseline v0.3, incluyendo preservación contractual de intención, visual efectivo, capacidad visual y origen visual a través de runtime, scene builder, repair, export y handoff final.
 
 ---
 
@@ -13,7 +13,7 @@ Definir el contrato operativo rígido y determinista para `manifest_v03.json`, s
 - `manifest_v03.json` es la fuente estructural principal de escenas LIVE
 - `pack.json` debe quedar resincronizado contra el estado efectivo del manifest
 - los campos temporales y visuales deben ser coherentes entre manifest y pack
-- export y handoff final no deben degradar ni perder campos contractuales relevantes
+- scene builder, repair, export y handoff final no deben degradar ni perder campos contractuales relevantes
 
 ---
 
@@ -60,6 +60,13 @@ Campos visuales de assets:
 
 - `assets.image`
 - `assets.video`
+
+Campos de trazabilidad enriquecida cuando apliquen:
+
+- `meta.visual_enrich.runtime_resolved_media_kind`
+- `meta.visual_enrich.runtime_resolved_source_kind`
+- `assets.image_meta.resolved_source_kind`
+- `assets.video_meta.resolved_source_kind`
 
 ---
 
@@ -151,12 +158,15 @@ Cuando aplique, la escena debe preservar además:
 - `visual_source_kind` como descripción del origen efectivo del visual resuelto
 - `visual_capability` como descripción de la capacidad efectiva involucrada en la resolución
 - coherencia entre intención visual, visual efectivo y trazabilidad del fallback
+- trazabilidad enriquecida interna suficiente para rehidratar o reparar el estado efectivo sin colapsarlo prematuramente
 
 Esto aplica especialmente a rutas donde:
 
 - una solicitud `image` termina resolviendo a `video`
 - una solicitud `video` termina resolviendo a `image`
 - provider/runtime reescriben la resolución efectiva
+- scene builder recompone escenas desde estado upstream
+- repair recompone o normaliza manifest desde estado parcialmente degradado
 - export/handoff deben reflejar el mismo estado contractual efectivo
 
 ---
@@ -182,17 +192,31 @@ El smoke debe fallar si manifest y pack divergen en campos contractuales relevan
 
 ---
 
-## Contrato de preservación en export y handoff
+## Contrato de preservación en rutas upstream y downstream
 
-Los artefactos finales derivados del pack no deben degradar el contrato visual ya endurecido.
+Las rutas relevantes del baseline no deben degradar el contrato visual ya endurecido.
 
 Cuando aplique, deben preservarse de forma coherente:
 
+- `requested_media_type`
+- `visual_request_kind`
 - `visual_kind`
 - `visual_source_kind`
 - `visual_capability`
+- `meta.visual_enrich.runtime_resolved_media_kind`
+- `meta.visual_enrich.runtime_resolved_source_kind`
+- `assets.image_meta.resolved_source_kind`
+- `assets.video_meta.resolved_source_kind`
 
-La validación final de handoff/export debe fallar si esos campos divergen entre manifest, pack y artefactos contractuales finales en rutas donde el baseline exige su conservación.
+Esto aplica especialmente a:
+
+- runtime/provider resolution
+- `tools\apply_scene_builder_v03.ps1`
+- `tools\repair_live_manifest_v03.ps1`
+- `tools\export_v03_pack.py`
+- handoff final y validaciones asociadas
+
+La validación final debe fallar si esos campos divergen o se degradan en rutas donde el baseline exige su conservación.
 
 ---
 
@@ -207,7 +231,7 @@ El LIVE válido debe cumplir simultáneamente:
 - coherencia entre manifest y pack
 - coherencia entre duración de escena y audio dentro de tolerancias del smoke cuando aplique
 - coherencia de subtítulos respecto al timeline de escenas
-- preservación contractual en export y handoff final
+- preservación contractual en rutas upstream, export y handoff final
 
 ---
 
@@ -234,4 +258,4 @@ La autoridad final del comportamiento válido es el baseline validado por estas 
 
 ## Resumen contractual
 
-Un `manifest_v03.json` válido en STUDIO_MVP v0.3 debe conservar un timeline coherente, intención visual no conflictiva, visual efectivo consistente, trazabilidad visual cuando aplique, audio por escena alineado y sincronización real con `pack.json`, preservando además `visual_kind`, `visual_source_kind` y `visual_capability` en las rutas donde el baseline exige su conservación, todo bajo reglas deterministas y auditables.
+Un `manifest_v03.json` válido en STUDIO_MVP v0.3 debe conservar un timeline coherente, intención visual no conflictiva, visual efectivo consistente, trazabilidad visual cuando aplique, audio por escena alineado y sincronización real con `pack.json`, preservando además `visual_kind`, `visual_source_kind` y `visual_capability` en las rutas donde el baseline exige su conservación, junto con la trazabilidad enriquecida necesaria para que scene builder, repair, export y handoff no degraden el estado efectivo, todo bajo reglas deterministas y auditables.

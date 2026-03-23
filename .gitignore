@@ -5,6 +5,8 @@
 # --- workspace & runs ---
 STUDIO_WORKSPACE/
 **/STUDIO_WORKSPACE/
+workspace/exports/
+**/workspace/exports/
 runs/
 **/runs/
 

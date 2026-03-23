@@ -227,6 +227,8 @@ Reglas adicionales del baseline actual:
 - en la misma ruta legacy, la autoridad temporal explícita no debe tratarse como all-or-nothing: debe preservarse el prefijo válido de pares `start_ms` / `end_ms` monotónicos y reconstruirse solo el resto
 - para las escenas no cubiertas por ese prefijo válido, la prioridad temporal práctica del baseline es: `audio_duration_ms` → `explicit_duration_ms` → reparto ponderado
 - la reconstrucción temporal posterior debe arrancar desde el `end_ms` del último tramo explícito válido preservado
+- `tools\repair_live_manifest_v03.ps1` no debe reintroducir una recomposición temporal global que destruya ese prefijo explícito válido cuando repare o resincronice escenas
+- cuando repair recomponga timeline, debe preservar el prefijo explícito válido, calcular el resto contra el tiempo remanente y desplazar la reconstrucción restante desde `prefixEndMs`
 - la ruta portable Docker/Linux para finalize/export/handoff no relaja ni cambia este contrato; debe preservarlo igual que en host
 
 La validación final debe fallar si esos campos divergen o se degradan en rutas donde el baseline exige su conservación.

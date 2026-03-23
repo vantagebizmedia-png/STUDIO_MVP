@@ -2,12 +2,12 @@
 
 Pipeline determinista para generar videos verticales tipo reels/shorts a partir de un flujo LIVE reproducible, con conversión a `scenes_v03`, resincronización de `pack.json`, subtítulos, export pack y handoff final validados contractualmente.
 
-## Estado operativo del baseline `f601a4e`
+## Estado operativo del baseline `537b46c`
 
 ### Referencias oficiales del freeze
 - rama publicada: `main`
 - `origin/main` alineado con el baseline actual
-- baseline operativo/documental vigente: `f601a4e`
+- baseline operativo/documental vigente: `537b46c`
 
 ### Validación real cerrada
 - `run_validation_stack_v03.ps1` FULL: PASS
@@ -59,7 +59,9 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
   - `_build_from_legacy_scenes(...)`
 - preservación de prefijo temporal explícito válido en escenas legacy:
   - `_build_from_legacy_scenes(...)`
+  - `tools/repair_live_manifest_v03.ps1`
   - prioridad: pares `start_ms/end_ms` válidos del prefijo → `audio_duration_ms` → `explicit_duration_ms` → weighted fallback
+  - reconstrucción restante desplazada desde el último `end_ms` explícito válido
 - Docker mínimo reproducible para finalize/export/handoff validation
 - compatibilidad PowerShell UTF-8 homogénea vía `tools/ps_utf8_compat_v03.ps1`
 - `.gitignore` ignora `workspace/exports/` dentro del repo sin ocultar `workspace/` completo
@@ -80,6 +82,8 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 - `f67a07f` → README sincronizado al baseline `1a34b36`
 - `f601a4e` → preservación de prefijo temporal explícito válido en escenas legacy
 - `1048f9c` → contrato sincronizado tras el ajuste temporal conservador
+- `14043a3` → README sincronizado al baseline `f601a4e`
+- `537b46c` → repair alineado con autoridad temporal por prefijo válido
 
 ## Limpieza conservadora ya ejecutada
 - `__pycache__` y compilados `.pyc/.pyo` removidos del repo
@@ -123,6 +127,6 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 El MVP base no está roto. El baseline técnico y contractual actual está operativo, validado, reproducible y publicado en `main`. El frente abierto real ya no es hacer funcionar el baseline, sino conservar el freeze operativo/documental y endurecer solo bordes upstream concretos sin romper el contrato visual ya cerrado.
 
 ## Siguiente foco
-1. conservar freeze documental/operativo del baseline `f601a4e`
+1. conservar freeze documental/operativo del baseline `537b46c`
 2. auditar solo bordes reales que queden fuera del contrato visual ya endurecido
 3. mantener guardas de duración dinámica y arquitectura multi-provider sin romper baseline

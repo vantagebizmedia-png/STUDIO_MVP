@@ -224,6 +224,9 @@ Reglas adicionales del baseline actual:
 - `fallback_image` y `fallback_video` pueden existir como trazabilidad upstream o runtime, pero no deben sobrevivir como valor contractual final en `pack.json`, `manifest_v03.json` exportado ni handoff final
 - en `_build_from_legacy_scenes(...)` dentro de `studio\live_manifest_patch_v03.py`, la derivación legacy/mixed no debe aplastar prematuramente la autoridad visual previa cuando existan `requested_media_type`, `visual_request_kind`, `visual_kind` o `visual_capability`
 - cuando esa autoridad legacy exista, debe preservarse antes del fallback por assets y reflejarse en la escena derivada para que la reconciliación runtime posterior no parta de un estado ya degradado
+- en la misma ruta legacy, la autoridad temporal explícita no debe tratarse como all-or-nothing: debe preservarse el prefijo válido de pares `start_ms` / `end_ms` monotónicos y reconstruirse solo el resto
+- para las escenas no cubiertas por ese prefijo válido, la prioridad temporal práctica del baseline es: `audio_duration_ms` → `explicit_duration_ms` → reparto ponderado
+- la reconstrucción temporal posterior debe arrancar desde el `end_ms` del último tramo explícito válido preservado
 - la ruta portable Docker/Linux para finalize/export/handoff no relaja ni cambia este contrato; debe preservarlo igual que en host
 
 La validación final debe fallar si esos campos divergen o se degradan en rutas donde el baseline exige su conservación.

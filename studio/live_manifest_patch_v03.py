@@ -433,6 +433,10 @@ def _build_from_legacy_scenes(
                 "audio_rel": audio_rel,
                 "image_rel": image_rel,
                 "video_rel": video_rel,
+                "legacy_requested_media_type": _norm_text(sc.get("requested_media_type")),
+                "legacy_visual_request_kind": _norm_text(sc.get("visual_request_kind")),
+                "legacy_visual_kind": _norm_text(sc.get("visual_kind")),
+                "legacy_visual_capability": _norm_text(sc.get("visual_capability")),
                 "explicit_duration_ms": _safe_int(sc.get("duration_ms"), 0),
                 "audio_duration_ms": _read_audio_duration_ms(sc),
             }
@@ -514,7 +518,41 @@ def _build_from_legacy_scenes(
 
         video_rel = str(meta["video_rel"] or "")
         image_rel = str(meta["image_rel"] or "")
-        visual_kind = "video" if (video_rel and not image_rel) else "image"
+
+        requested_media_type = _norm_text(meta.get("legacy_requested_media_type")).lower()
+        visual_request_kind = _norm_text(meta.get("legacy_visual_request_kind")).lower()
+        legacy_visual_kind = _norm_text(meta.get("legacy_visual_kind")).lower()
+        legacy_visual_capability = _norm_text(meta.get("legacy_visual_capability")).lower()
+
+        if requested_media_type not in {"image", "video"}:
+            requested_media_type = ""
+        if visual_request_kind not in {"image", "video"}:
+            visual_request_kind = ""
+        if legacy_visual_kind not in {"image", "video"}:
+            legacy_visual_kind = ""
+
+        if requested_media_type and not visual_request_kind:
+            visual_request_kind = requested_media_type
+        elif visual_request_kind and not requested_media_type:
+            requested_media_type = visual_request_kind
+        elif requested_media_type and visual_request_kind and requested_media_type != visual_request_kind:
+            visual_request_kind = requested_media_type
+
+        if requested_media_type:
+            visual_kind = requested_media_type
+        elif visual_request_kind:
+            visual_kind = visual_request_kind
+        elif legacy_visual_kind:
+            visual_kind = legacy_visual_kind
+        elif legacy_visual_capability == "stock_video":
+            visual_kind = "video"
+        elif legacy_visual_capability == "stock_image":
+            visual_kind = "image"
+        elif video_rel and not image_rel:
+            visual_kind = "video"
+        else:
+            visual_kind = "image"
+
         visual_source_kind = "stock_video" if visual_kind == "video" else "stock_image"
         visual_capability = visual_source_kind
 
@@ -527,6 +565,8 @@ def _build_from_legacy_scenes(
                 "duration_ms": int(max(0, end_ms - start_ms)),
                 "script_text": str(meta["scene_text"]),
                 "image_query": image_query,
+                "requested_media_type": requested_media_type or None,
+                "visual_request_kind": visual_request_kind or None,
                 "visual_kind": visual_kind,
                 "visual_source_kind": visual_source_kind,
                 "visual_capability": visual_capability,

@@ -2,12 +2,12 @@
 
 Pipeline determinista para generar videos verticales tipo reels/shorts a partir de un flujo LIVE reproducible, con conversión a `scenes_v03`, resincronización de `pack.json`, subtítulos, export pack y handoff final validados contractualmente.
 
-## Estado operativo del baseline `537b46c`
+## Estado operativo del baseline `b699c88`
 
 ### Referencias oficiales del freeze
 - rama publicada: `main`
 - `origin/main` alineado con el baseline actual
-- baseline operativo/documental vigente: `537b46c`
+- baseline operativo/documental vigente: `b699c88`
 
 ### Validación real cerrada
 - `run_validation_stack_v03.ps1` FULL: PASS
@@ -65,6 +65,7 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 - Docker mínimo reproducible para finalize/export/handoff validation
 - compatibilidad PowerShell UTF-8 homogénea vía `tools/ps_utf8_compat_v03.ps1`
 - `.gitignore` ignora `workspace/exports/` dentro del repo sin ocultar `workspace/` completo
+- `requirements.txt` declara `huggingface_hub` para el provider moderno `hf_image`, con validación FULL PASS en Docker
 - validación final de:
   - `video.mp4`
   - `video_music_auto.mp4`
@@ -84,6 +85,8 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 - `1048f9c` → contrato sincronizado tras el ajuste temporal conservador
 - `14043a3` → README sincronizado al baseline `f601a4e`
 - `537b46c` → repair alineado con autoridad temporal por prefijo válido
+- `6001591` → freeze documental sincronizado tras la alineación temporal en repair
+- `b699c88` → `requirements.txt` declara `huggingface_hub` para `HFImageProvider`
 
 ## Limpieza conservadora ya ejecutada
 - `__pycache__` y compilados `.pyc/.pyo` removidos del repo
@@ -127,6 +130,6 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 El MVP base no está roto. El baseline técnico y contractual actual está operativo, validado, reproducible y publicado en `main`. El frente abierto real ya no es hacer funcionar el baseline, sino conservar el freeze operativo/documental y endurecer solo bordes upstream concretos sin romper el contrato visual ya cerrado.
 
 ## Siguiente foco
-1. conservar freeze documental/operativo del baseline `537b46c`
-2. auditar solo bordes reales que queden fuera del contrato visual ya endurecido
+1. conservar freeze documental/operativo del baseline `b699c88`
+2. auditar dependencias modernas restantes del path de texto (`openai`, `anthropic`) sin reabrir el contrato visual/temporal
 3. mantener guardas de duración dinámica y arquitectura multi-provider sin romper baseline

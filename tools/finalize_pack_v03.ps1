@@ -9,9 +9,33 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-chcp 65001 | Out-Null
 
-$pack = (Resolve-Path $PackDir).Path
+$psUtf8Compat = Join-Path $PSScriptRoot "ps_utf8_compat_v03.ps1"
+if (-not (Test-Path -LiteralPath $psUtf8Compat -PathType Leaf)) {
+  throw ("No existe helper utf8 compat: {0}" -f $psUtf8Compat)
+}
+. $psUtf8Compat
+
+$resolvePython = Join-Path $PSScriptRoot "resolve_python.ps1"
+if (-not (Test-Path -LiteralPath $resolvePython -PathType Leaf)) {
+  throw ("No existe helper resolve_python: {0}" -f $resolvePython)
+}
+. $resolvePython
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$pythonExe = Resolve-PythonExe -RepoRoot $repoRoot
+
+$renderPy = Join-Path (Join-Path $repoRoot "tools") "render_pack_v03.py"
+$subsPy   = Join-Path (Join-Path $repoRoot "tools") "make_subtitles_from_pack_v03.py"
+
+if (-not (Test-Path -LiteralPath $renderPy -PathType Leaf)) {
+  throw ("No existe render_pack_v03.py: {0}" -f $renderPy)
+}
+if (-not (Test-Path -LiteralPath $subsPy -PathType Leaf)) {
+  throw ("No existe make_subtitles_from_pack_v03.py: {0}" -f $subsPy)
+}
+
+$pack = (Resolve-Path -LiteralPath $PackDir).Path
 
 $video        = Join-Path $pack "video.mp4"
 $captionsV03  = Join-Path $pack "captions_v03.srt"
@@ -26,21 +50,31 @@ Write-Host "W/H          : $W x $H   FPS: $Fps   FIT: $Fit"
 Write-Host "VIDEO        : $video"
 Write-Host "CAPTIONS_V03 : $captionsV03"
 Write-Host "LEGACY_SRT   : $legacySrt"
+Write-Host "PYTHON       : $pythonExe"
+Write-Host "RENDER_PY    : $renderPy"
+Write-Host "SUBS_PY      : $subsPy"
 Write-Host ""
 
-if (!(Test-Path -LiteralPath $pack)) {
+if (-not (Test-Path -LiteralPath $pack -PathType Container)) {
   throw "PackDir no existe: $pack"
 }
 
-if (!(Test-Path -LiteralPath (Join-Path $pack "manifest_v03.json")) -and !(Test-Path -LiteralPath (Join-Path $pack "manifest.json"))) {
+if (
+  (-not (Test-Path -LiteralPath (Join-Path $pack "manifest_v03.json") -PathType Leaf)) -and
+  (-not (Test-Path -LiteralPath (Join-Path $pack "manifest.json") -PathType Leaf))
+) {
   Write-Host "WARN: no encontré manifest_v03.json/manifest.json en el pack (sigo igual)." -ForegroundColor Yellow
 }
 
 # 1) Render base limpio -> video.mp4
-python -u tools\render_pack_v03.py --pack-dir $pack --w $W --h $H --fps $Fps --fit $Fit 2>&1 |
-  Tee-Object $logRender
+& $pythonExe -u $renderPy --pack-dir $pack --w $W --h $H --fps $Fps --fit $Fit 2>&1 |
+  Tee-Object -FilePath $logRender
 
-if (!(Test-Path -LiteralPath $video)) {
+if ($LASTEXITCODE -ne 0) {
+  throw "render_pack_v03.py falló con exit code $LASTEXITCODE"
+}
+
+if (-not (Test-Path -LiteralPath $video -PathType Leaf)) {
   throw "No se generó video.mp4 en: $pack"
 }
 
@@ -52,10 +86,14 @@ if (Test-Path -LiteralPath $captionsV03) {
 }
 
 Write-Host "INFO: regenerando captions_v03.srt canónico desde pack/scenes..." -ForegroundColor Yellow
-python -u tools\make_subtitles_from_pack_v03.py --pack $pack --output $captionsV03 --field $SubsField 2>&1 |
-  Tee-Object $logSubs
+& $pythonExe -u $subsPy --pack $pack --output $captionsV03 --field $SubsField 2>&1 |
+  Tee-Object -FilePath $logSubs
 
-if (!(Test-Path -LiteralPath $captionsV03)) {
+if ($LASTEXITCODE -ne 0) {
+  throw "make_subtitles_from_pack_v03.py falló con exit code $LASTEXITCODE"
+}
+
+if (-not (Test-Path -LiteralPath $captionsV03 -PathType Leaf)) {
   throw "No se generó captions_v03.srt en: $pack"
 }
 

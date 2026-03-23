@@ -6,12 +6,26 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-chcp 65001 | Out-Null
+
+$psUtf8Compat = Join-Path $PSScriptRoot "ps_utf8_compat_v03.ps1"
+if (-not (Test-Path -LiteralPath $psUtf8Compat -PathType Leaf)) {
+  throw ("No existe helper utf8 compat: {0}" -f $psUtf8Compat)
+}
+
+. $psUtf8Compat
 
 function Fail {
   param([Parameter(Mandatory=$true)][string]$Message)
   throw "SMOKE FAIL: $Message"
 }
+
+$resolvePython = Join-Path $PSScriptRoot "resolve_python.ps1"
+if (-not (Test-Path -LiteralPath $resolvePython -PathType Leaf)) {
+  Fail "No existe helper resolve_python: $resolvePython"
+}
+
+. $resolvePython
+$pythonExe = Resolve-PythonExe -RepoRoot $RepoRoot
 
 function Write-Utf8Lf {
   param(
@@ -53,7 +67,7 @@ function Invoke-PythonLogged {
   }
 
   $proc = Start-Process `
-    -FilePath "python" `
+    -FilePath $pythonExe `
     -ArgumentList $Arguments `
     -WorkingDirectory $WorkingDirectory `
     -NoNewWindow `
@@ -135,19 +149,24 @@ try {
   Write-Host ""
   Write-Host "== PY COMPILE ==" -ForegroundColor Cyan
   $pyTargets = @(
-    ".\tools\release_pack_v03.py",
-    ".\tools\finalize_handoff_v03.py",
-    ".\tools\validate_pack.py",
-    ".\tools\validate_handoff.py"
+    (Join-Path $RepoRoot "tools\release_pack_v03.py"),
+    (Join-Path $RepoRoot "tools\finalize_handoff_v03.py"),
+    (Join-Path $RepoRoot "tools\validate_pack.py"),
+    (Join-Path $RepoRoot "tools\validate_handoff.py")
   )
 
   foreach ($t in $pyTargets) {
-    python -m py_compile $t
+    & $pythonExe -m py_compile $t
     if ($LASTEXITCODE -ne 0) {
       Fail "py_compile falló: $t"
     }
     Write-Host ("OK: {0}" -f $t) -ForegroundColor Green
   }
+
+  $releasePackPy = Join-Path $RepoRoot "tools\release_pack_v03.py"
+  $finalizeHandoffPy = Join-Path $RepoRoot "tools\finalize_handoff_v03.py"
+  $validatePackPy = Join-Path $RepoRoot "tools\validate_pack.py"
+  $validateHandoffPy = Join-Path $RepoRoot "tools\validate_handoff.py"
 
   Write-Host ""
   Write-Host "== RELEASE PACK ==" -ForegroundColor Cyan
@@ -155,7 +174,7 @@ try {
     -WorkingDirectory $RepoRoot `
     -Arguments @(
       "-u",
-      ".\tools\release_pack_v03.py",
+      $releasePackPy,
       "--v03-config",
       $configCopyPath,
       "--script",
@@ -182,7 +201,7 @@ try {
         -WorkingDirectory $RepoRoot `
         -Arguments @(
           "-u",
-          ".\tools\validate_pack.py",
+          $validatePackPy,
           "--pack-dir",
           $packDir
         ) `
@@ -212,7 +231,7 @@ try {
     -WorkingDirectory $RepoRoot `
     -Arguments @(
       "-u",
-      ".\tools\finalize_handoff_v03.py",
+      $finalizeHandoffPy,
       "--pack-dir",
       $packDir
     ) `
@@ -229,7 +248,7 @@ try {
     -WorkingDirectory $RepoRoot `
     -Arguments @(
       "-u",
-      ".\tools\validate_pack.py",
+      $validatePackPy,
       "--pack-dir",
       $packDir
     ) `
@@ -246,7 +265,7 @@ try {
     -WorkingDirectory $RepoRoot `
     -Arguments @(
       "-u",
-      ".\tools\validate_handoff.py",
+      $validateHandoffPy,
       "--pack-dir",
       $packDir
     ) `
@@ -366,7 +385,7 @@ try {
     -WorkingDirectory $RepoRoot `
     -Arguments @(
       "-u",
-      ".\tools\validate_handoff.py",
+      $validateHandoffPy,
       "--pack-dir",
       $brokenPack
     ) `

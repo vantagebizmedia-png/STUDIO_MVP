@@ -1,4 +1,4 @@
-﻿param(
+param(
   [Parameter(Mandatory=$false)][string]$RepoRoot = "C:\Users\vanta\Documents\STUDIO_MVP",
   [Parameter(Mandatory=$false)][string]$SourceLiveDir = "C:\Users\vanta\Documents\STUDIO_WORKSPACE\runs\smoke_live_latest",
   [Parameter(Mandatory=$false)][string]$OutputLiveDir = "C:\Users\vanta\Documents\STUDIO_WORKSPACE\runs\smoke_live_video_case"
@@ -6,7 +6,13 @@
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-chcp 65001 | Out-Null
+
+$psUtf8Compat = Join-Path $PSScriptRoot "ps_utf8_compat_v03.ps1"
+if (-not (Test-Path -LiteralPath $psUtf8Compat -PathType Leaf)) {
+  throw ("No existe helper utf8 compat: {0}" -f $psUtf8Compat)
+}
+
+. $psUtf8Compat
 
 if (-not (Test-Path -LiteralPath $RepoRoot -PathType Container)) {
   throw "No existe RepoRoot: $RepoRoot"
@@ -234,19 +240,44 @@ if ($hadPythonUnbuffered) {
   $prevPythonUnbuffered = $env:PYTHONUNBUFFERED
 }
 
+$resolvePython = Join-Path $PSScriptRoot "resolve_python.ps1"
+if (-not (Test-Path -LiteralPath $resolvePython -PathType Leaf)) {
+  throw ("No existe helper resolve_python: {0}" -f $resolvePython)
+}
+
+. $resolvePython
+
+$pythonRepoRoot = ""
+try { $pythonRepoRoot = [string]$RepoRoot } catch { $pythonRepoRoot = "" }
+if ([string]::IsNullOrWhiteSpace($pythonRepoRoot)) {
+  $pythonRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
+
+$pythonExe = Resolve-PythonExe -RepoRoot $pythonRepoRoot
+
+$pythonLeaf = ""
+try { $pythonLeaf = [IO.Path]::GetFileName([string]$pythonExe).ToLowerInvariant() } catch { $pythonLeaf = "" }
+
+$pythonArgs = @()
+if ($pythonLeaf -eq "py.exe") {
+  $pythonArgs += "-3"
+}
+
+$pythonArgs += @(
+  "-u",
+  $renderer,
+  "--pack-dir", $OutputLiveDir,
+  "--out", $renderOut,
+  "--keep-tmp"
+)
+
 $rendererExit = 0
 try {
   $env:PYTHONUNBUFFERED = "1"
 
   $proc = Start-Process `
-    -FilePath "py" `
-    -ArgumentList @(
-      "-u",
-      $renderer,
-      "--pack-dir", $OutputLiveDir,
-      "--out", $renderOut,
-      "--keep-tmp"
-    ) `
+    -FilePath $pythonExe `
+    -ArgumentList $pythonArgs `
     -NoNewWindow `
     -Wait `
     -PassThru `

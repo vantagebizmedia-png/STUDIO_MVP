@@ -7,12 +7,26 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-chcp 65001 | Out-Null
+
+$psUtf8Compat = Join-Path $PSScriptRoot "ps_utf8_compat_v03.ps1"
+if (-not (Test-Path -LiteralPath $psUtf8Compat -PathType Leaf)) {
+  throw ("No existe helper utf8 compat: {0}" -f $psUtf8Compat)
+}
+
+. $psUtf8Compat
 
 function Fail {
   param([Parameter(Mandatory=$true)][string]$Message)
   throw "SMOKE FAIL: $Message"
 }
+
+$resolvePython = Join-Path $PSScriptRoot "resolve_python.ps1"
+if (-not (Test-Path -LiteralPath $resolvePython -PathType Leaf)) {
+  Fail "No existe helper resolve_python: $resolvePython"
+}
+
+. $resolvePython
+$pythonExe = Resolve-PythonExe -RepoRoot $RepoRoot
 
 if (-not (Test-Path -LiteralPath $RepoRoot -PathType Container)) {
   Fail "No existe RepoRoot: $RepoRoot"
@@ -59,25 +73,29 @@ try {
   Write-Host ""
   Write-Host "== PY COMPILE ==" -ForegroundColor Cyan
   $pyTargets = @(
-    ".\tools\export_v03_pack.py",
-    ".\tools\validate_pack.py",
-    ".\tools\render_pack_v03.py",
-    ".\tools\make_subtitles_from_pack_v03.py",
-    ".\tools\release_pack_v03.py",
-    ".\tools\finalize_handoff_v03.py"
+    (Join-Path $RepoRoot "tools\export_v03_pack.py"),
+    (Join-Path $RepoRoot "tools\validate_pack.py"),
+    (Join-Path $RepoRoot "tools\render_pack_v03.py"),
+    (Join-Path $RepoRoot "tools\make_subtitles_from_pack_v03.py"),
+    (Join-Path $RepoRoot "tools\release_pack_v03.py"),
+    (Join-Path $RepoRoot "tools\finalize_handoff_v03.py")
   )
 
   foreach ($t in $pyTargets) {
-    python -m py_compile $t
+    & $pythonExe -m py_compile $t
     if ($LASTEXITCODE -ne 0) {
       Fail "py_compile falló: $t"
     }
     Write-Host ("OK: {0}" -f $t) -ForegroundColor Green
   }
 
+  $exportPy = Join-Path $RepoRoot "tools\export_v03_pack.py"
+  $validatePackPy = Join-Path $RepoRoot "tools\validate_pack.py"
+  $renderPackPy = Join-Path $RepoRoot "tools\render_pack_v03.py"
+
   Write-Host ""
   Write-Host "== EXPORT PACK ==" -ForegroundColor Cyan
-  $exportOut = & python -u .\tools\export_v03_pack.py `
+  $exportOut = & $pythonExe -u $exportPy `
     --manifest $manifestPath `
     --out-root $exportRoot `
     --overwrite 2>&1
@@ -138,14 +156,14 @@ try {
 
   Write-Host ""
   Write-Host "== VALIDATE (--fix) ==" -ForegroundColor Cyan
-  & python -u .\tools\validate_pack.py --pack-dir $packDir --fix 2>&1 | ForEach-Object { $_.ToString() }
+  & $pythonExe -u $validatePackPy --pack-dir $packDir --fix 2>&1 | ForEach-Object { $_.ToString() }
   if ($LASTEXITCODE -ne 0) {
     Fail "validate_pack.py --fix falló con exit code $LASTEXITCODE"
   }
 
   Write-Host ""
   Write-Host "== RENDER ==" -ForegroundColor Cyan
-  & python -u .\tools\render_pack_v03.py --pack-dir $packDir 2>&1 | ForEach-Object { $_.ToString() }
+  & $pythonExe -u $renderPackPy --pack-dir $packDir 2>&1 | ForEach-Object { $_.ToString() }
   if ($LASTEXITCODE -ne 0) {
     Fail "render_pack_v03.py falló con exit code $LASTEXITCODE"
   }
@@ -164,7 +182,7 @@ try {
 
   Write-Host ""
   Write-Host "== VALIDATE FINAL ==" -ForegroundColor Cyan
-  & python -u .\tools\validate_pack.py --pack-dir $packDir 2>&1 | ForEach-Object { $_.ToString() }
+  & $pythonExe -u $validatePackPy --pack-dir $packDir 2>&1 | ForEach-Object { $_.ToString() }
   if ($LASTEXITCODE -ne 0) {
     Fail "validate_pack.py final falló con exit code $LASTEXITCODE"
   }
@@ -254,7 +272,7 @@ try {
   $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
   [System.IO.File]::WriteAllText($brokenPackJsonPath, $brokenJson, $utf8NoBom)
 
-  $negativeOut = & python -u .\tools\validate_pack.py --pack-dir $brokenPack 2>&1
+  $negativeOut = & $pythonExe -u $validatePackPy --pack-dir $brokenPack 2>&1
   $negativeExit = $LASTEXITCODE
   $negativeOut | ForEach-Object { $_.ToString() }
 

@@ -450,8 +450,26 @@ def main() -> int:
 
         requested_media_type = str(row.get("requested_media_type") or row.get("visual_request_kind") or visual_kind).strip().lower()
         visual_request_kind = str(row.get("visual_request_kind") or row.get("requested_media_type") or requested_media_type or visual_kind).strip().lower()
-        visual_source_kind = str(row.get("visual_source_kind") or ("stock_video" if visual_kind == "video" else "stock_image")).strip().lower()
-        visual_capability = str(row.get("visual_capability") or ("stock_video" if visual_kind == "video" else "stock_image")).strip().lower()
+
+        visual_source_kind_raw = str(
+            row.get("visual_source_kind") or ("stock_video" if visual_kind == "video" else "stock_image")
+        ).strip().lower()
+        if visual_source_kind_raw in ("fallback_image", "stock_image"):
+            visual_source_kind = "stock_image"
+        elif visual_source_kind_raw in ("fallback_video", "stock_video"):
+            visual_source_kind = "stock_video"
+        else:
+            visual_source_kind = "stock_video" if visual_kind == "video" else "stock_image"
+
+        visual_capability_raw = str(
+            row.get("visual_capability") or ("stock_video" if visual_kind == "video" else "stock_image")
+        ).strip().lower()
+        if visual_capability_raw in ("fallback_image", "stock_image"):
+            visual_capability = "stock_image"
+        elif visual_capability_raw in ("fallback_video", "stock_video"):
+            visual_capability = "stock_video"
+        else:
+            visual_capability = "stock_video" if visual_kind == "video" else "stock_image"
 
         exported_scene = {
             "id": str(row.get("id") or f"scene_{idx:03d}"),

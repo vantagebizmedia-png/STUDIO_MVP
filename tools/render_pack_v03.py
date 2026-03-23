@@ -123,6 +123,31 @@ def _first_existing(candidates: List[Path]) -> Optional[Path]:
     return first
 
 
+def _ffprobe_duration_sec(ffprobe: str, media: Path) -> float:
+    cmd: List[str] = [
+        ffprobe,
+        "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(media),
+    ]
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+
+    if proc.returncode != 0:
+        raise SystemExit(f"ERROR: ffprobe falló para {media}: {(proc.stderr or '').strip()}")
+
+    raw = (proc.stdout or "").strip()
+    if not raw:
+        raise SystemExit(f"ERROR: ffprobe devolvió duración vacía para {media}")
+
+    try:
+        duration = float(raw)
+    except Exception as exc:
+        raise SystemExit(f"ERROR: no se pudo parsear duración ffprobe='{raw}' para {media}") from exc
+
+    return max(0.001, duration)
+
+
 def _candidate_image_paths(pack_dir: Path, idx1: int, explicit_rel: str) -> List[Path]:
     scene_dir = _scene_dir(pack_dir, idx1)
     out: List[Path] = []
@@ -331,12 +356,14 @@ def _make_image_segment(
     abitrate: str,
     loglevel: str,
     stats: bool,
+    ffprobe: str = "ffprobe",
 ) -> None:
     cmd: List[str] = [ffmpeg, "-hide_banner", "-loglevel", loglevel, "-y"]
     if stats:
         cmd.append("-stats")
 
     vf = _vf(w, h, fit)
+    aud_sec = _ffprobe_duration_sec(ffprobe, aud)
 
     cmd += [
         "-loop", "1", "-i", str(img),
@@ -345,6 +372,7 @@ def _make_image_segment(
         "-r", str(fps),
         "-map", "0:v:0",
         "-map", "1:a:0",
+        "-t", f"{aud_sec:.6f}",
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", preset, "-crf", str(crf),
         "-c:a", "aac", "-b:a", abitrate, "-ar", "44100", "-ac", "2",
         "-shortest", "-movflags", "+faststart",
@@ -369,12 +397,14 @@ def _make_video_segment(
     abitrate: str,
     loglevel: str,
     stats: bool,
+    ffprobe: str = "ffprobe",
 ) -> None:
     cmd: List[str] = [ffmpeg, "-hide_banner", "-loglevel", loglevel, "-y"]
     if stats:
         cmd.append("-stats")
 
     vf = _vf(w, h, fit)
+    aud_sec = _ffprobe_duration_sec(ffprobe, aud)
 
     cmd += [
         "-stream_loop", "-1", "-i", str(vid),
@@ -383,6 +413,7 @@ def _make_video_segment(
         "-r", str(fps),
         "-map", "0:v:0",
         "-map", "1:a:0",
+        "-t", f"{aud_sec:.6f}",
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", preset, "-crf", str(crf),
         "-c:a", "aac", "-b:a", abitrate, "-ar", "44100", "-ac", "2",
         "-shortest", "-movflags", "+faststart",
@@ -409,6 +440,7 @@ def _make_segment(
     abitrate: str,
     loglevel: str,
     stats: bool,
+    ffprobe: str = "ffprobe",
 ) -> None:
     has_image = img is not None and img.exists()
     has_video = vid is not None and vid.exists()
@@ -422,7 +454,7 @@ def _make_segment(
             raise SystemExit(f"ERROR: escena video sin archivo real: {vid}")
         _make_video_segment(
             ffmpeg, vid, aud, out_mp4,
-            w, h, fps, fit, crf, preset, abitrate, loglevel, stats
+            w, h, fps, fit, crf, preset, abitrate, loglevel, stats, ffprobe
         )
         return
 
@@ -430,7 +462,7 @@ def _make_segment(
         raise SystemExit(f"ERROR: escena image sin archivo real: {img}")
     _make_image_segment(
         ffmpeg, img, aud, out_mp4,
-        w, h, fps, fit, crf, preset, abitrate, loglevel, stats
+        w, h, fps, fit, crf, preset, abitrate, loglevel, stats, ffprobe
     )
 
 

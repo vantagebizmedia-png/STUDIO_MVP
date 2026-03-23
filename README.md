@@ -2,12 +2,12 @@
 
 Pipeline determinista para generar videos verticales tipo reels/shorts a partir de un flujo LIVE reproducible, con conversión a `scenes_v03`, resincronización de `pack.json`, subtítulos, export pack y handoff final validados contractualmente.
 
-## Estado operativo del baseline `bea8dd8`
+## Estado operativo del baseline `1a34b36`
 
 ### Referencias oficiales del freeze
 - rama publicada: `main`
 - `origin/main` alineado con el baseline actual
-- baseline operativo/documental vigente: `bea8dd8`
+- baseline operativo/documental vigente: `1a34b36`
 
 ### Validación real cerrada
 - `run_validation_stack_v03.ps1` FULL: PASS
@@ -54,6 +54,9 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 - preservación upstream explícita de `visual_source_kind` en:
   - `tools/apply_scene_builder_v03.ps1`
   - `tools/repair_live_manifest_v03.ps1`
+- preservación de autoridad visual legacy antes del mixed asset fallback en:
+  - `studio/live_manifest_patch_v03.py`
+  - `_build_from_legacy_scenes(...)`
 - Docker mínimo reproducible para finalize/export/handoff validation
 - compatibilidad PowerShell UTF-8 homogénea vía `tools/ps_utf8_compat_v03.ps1`
 - `.gitignore` ignora `workspace/exports/` dentro del repo sin ocultar `workspace/` completo
@@ -65,13 +68,12 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
   - ZIP final + SHA256
 
 ## Línea reciente del baseline
-- `02ec5c0` → freeze documental y sincronización del contrato manifest
-- `b0f5ea4` → preservación de autoridad runtime de `visual_source_kind` en scene builder
-- `c53381d` → preservación de trazabilidad visual en manifest repair
-- `f6e8758` → freeze documental sincronizado al baseline `c53381d`
 - `5f76c18` → Docker/portabilidad Linux para finalize/export handoff validation
 - `043f7f5` → aplicación mecánica restante del helper UTF-8 a scripts PowerShell
 - `bea8dd8` → `.gitignore` ignora `workspace/exports/` dentro del repo
+- `d1f1031` → freeze documental sincronizado al baseline `bea8dd8`
+- `1a34b36` → preservación de autoridad visual legacy antes del mixed asset fallback
+- `2b18896` → freeze documental parcial del contrato tras el ajuste legacy
 
 ## Limpieza conservadora ya ejecutada
 - `__pycache__` y compilados `.pyc/.pyo` removidos del repo
@@ -112,10 +114,9 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 - `.ps1` y `.py` del repo en UTF-8 sin BOM y LF
 
 ## Estado honesto
-El MVP base no está roto. El baseline técnico y contractual actual está operativo, validado, reproducible y publicado en `main`, tanto en host como en la ruta portable Docker/Linux ya cerrada para finalize/export/handoff. El frente abierto real ya no es hacer funcionar el baseline, sino conservar el freeze operativo/documental y endurecer solo bordes upstream concretos sin romper el contrato visual ya cerrado.
+El MVP base no está roto. El baseline técnico y contractual actual está operativo, validado, reproducible y publicado en `main`. El frente abierto real ya no es hacer funcionar el baseline, sino conservar el freeze operativo/documental y endurecer solo bordes upstream concretos sin romper el contrato visual ya cerrado.
 
 ## Siguiente foco
-1. conservar freeze documental/operativo del baseline `bea8dd8`
-2. mantener checklist explícito del freeze ya cumplido, incluyendo Docker/portabilidad, UTF-8 homogéneo e ignore de `workspace/exports/`
-3. auditar solo bordes reales que queden fuera del contrato visual ya endurecido
-4. mantener guardas de duración dinámica y arquitectura multi-provider sin romper baseline
+1. conservar freeze documental/operativo del baseline `1a34b36`
+2. auditar solo bordes reales que queden fuera del contrato visual ya endurecido
+3. mantener guardas de duración dinámica y arquitectura multi-provider sin romper baseline

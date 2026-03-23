@@ -7,7 +7,13 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-chcp 65001 | Out-Null
+
+$psUtf8Compat = Join-Path $PSScriptRoot "ps_utf8_compat_v03.ps1"
+if (-not (Test-Path -LiteralPath $psUtf8Compat -PathType Leaf)) {
+  throw ("No existe helper utf8 compat: {0}" -f $psUtf8Compat)
+}
+
+. $psUtf8Compat
 
 if (-not (Test-Path -LiteralPath $InVideo)) { throw "Falta InVideo: $InVideo" }
 if (-not (Test-Path -LiteralPath $MusicBed)) { throw "Falta MusicBed: $MusicBed" }

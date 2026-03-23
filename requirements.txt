@@ -1,11 +1,5 @@
-﻿# STUDIO v0.2
-# tkinter is included with Python on Windows.
-
-# Video render (slideshow + audio)
-moviepy==1.0.3
-imageio-ffmpeg==0.6.0
-
+moviepy
+imageio-ffmpeg
 edge-tts
-
-Pillow>=9.0.0
-
+Pillow
+huggingface_hub

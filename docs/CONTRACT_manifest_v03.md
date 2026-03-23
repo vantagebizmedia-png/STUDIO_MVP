@@ -211,6 +211,7 @@ Cuando aplique, deben preservarse de forma coherente:
 Esto aplica especialmente a:
 
 - runtime/provider resolution
+- `studio\live_manifest_patch_v03.py`
 - `tools\apply_scene_builder_v03.ps1`
 - `tools\repair_live_manifest_v03.ps1`
 - `tools\export_v03_pack.py`
@@ -221,6 +222,8 @@ Reglas adicionales del baseline actual:
 - export/handoff final no deben filtrar enums intermedios no contractuales en los artefactos finales
 - `visual_source_kind` y `visual_capability` deben quedar canonizados en export/handoff final a valores contractuales efectivos compatibles con los validadores finales
 - `fallback_image` y `fallback_video` pueden existir como trazabilidad upstream o runtime, pero no deben sobrevivir como valor contractual final en `pack.json`, `manifest_v03.json` exportado ni handoff final
+- en `_build_from_legacy_scenes(...)` dentro de `studio\live_manifest_patch_v03.py`, la derivación legacy/mixed no debe aplastar prematuramente la autoridad visual previa cuando existan `requested_media_type`, `visual_request_kind`, `visual_kind` o `visual_capability`
+- cuando esa autoridad legacy exista, debe preservarse antes del fallback por assets y reflejarse en la escena derivada para que la reconciliación runtime posterior no parta de un estado ya degradado
 - la ruta portable Docker/Linux para finalize/export/handoff no relaja ni cambia este contrato; debe preservarlo igual que en host
 
 La validación final debe fallar si esos campos divergen o se degradan en rutas donde el baseline exige su conservación.

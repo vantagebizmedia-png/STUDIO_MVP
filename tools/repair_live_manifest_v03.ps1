@@ -399,8 +399,45 @@ if (@($scenes).Count -lt 1) {
 
 $totalAudioMs = Get-ManifestTotalAudioMs -ManifestObj $manifest
 
-$rawDurations = @()
+$explicitPrefixPairs = @()
+$explicitPrefixCount = 0
+$lastExplicitEnd = -1
+
 foreach ($scene in $scenes) {
+  $st = Get-IntOrZero -Value $scene.start_ms
+  $en = Get-IntOrZero -Value $scene.end_ms
+
+  if ($st -lt 0 -or $en -le $st -or $st -lt $lastExplicitEnd -or $en -gt $totalAudioMs) {
+    break
+  }
+
+  $explicitPrefixPairs += [pscustomobject]@{
+    index       = [int]$explicitPrefixCount
+    start_ms    = [int]$st
+    end_ms      = [int]$en
+    duration_ms = [int]($en - $st)
+  }
+
+  $explicitPrefixCount += 1
+  $lastExplicitEnd = [int]$en
+}
+
+$prefixEndMs = $(if ($explicitPrefixCount -gt 0) { [int]$explicitPrefixPairs[$explicitPrefixCount - 1].end_ms } else { 0 })
+$remainingCount = [int]($scenes.Count - $explicitPrefixCount)
+$remainingTotalMs = [int]($totalAudioMs - $prefixEndMs)
+
+if ($explicitPrefixCount -gt 0) {
+  if ($remainingTotalMs -lt 0) {
+    throw ("Prefijo temporal explícito inválido en repair: prefix_end={0} total_audio_ms={1}" -f $prefixEndMs, $totalAudioMs)
+  }
+  if ($remainingCount -gt 0 -and $remainingTotalMs -lt $remainingCount) {
+    throw ("Prefijo temporal explícito deja tiempo insuficiente para reconstrucción restante: prefix_end={0} total_audio_ms={1} remaining_count={2}" -f $prefixEndMs, $totalAudioMs, $remainingCount)
+  }
+}
+
+$rawDurations = @()
+for ($i = $explicitPrefixCount; $i -lt $scenes.Count; $i++) {
+  $scene = $scenes[$i]
   $dur = Get-PositiveInt -Value $scene.duration_ms
   if ($dur -le 0) {
     $st = Get-IntOrZero -Value $scene.start_ms
@@ -445,8 +482,31 @@ if (-not (Test-Path -LiteralPath $visualSharedPath -PathType Leaf)) {
 
 . $visualSharedPath
 
-$durations = @(Normalize-DurationsToTotal -Durations $rawDurations -TotalMs $totalAudioMs)
-$timeline = @(Build-SceneTimelineShared -Durations $durations -TotalMs $totalAudioMs)
+$timeline = @()
+
+foreach ($slot in $explicitPrefixPairs) {
+  $timeline += [pscustomobject]@{
+    index       = [int]$slot.index
+    start_ms    = [int]$slot.start_ms
+    end_ms      = [int]$slot.end_ms
+    duration_ms = [int]$slot.duration_ms
+  }
+}
+
+if ($remainingCount -gt 0) {
+  $durations = @(Normalize-DurationsToTotal -Durations $rawDurations -TotalMs $remainingTotalMs)
+  $remainingTimeline = @(Build-SceneTimelineShared -Durations $durations -TotalMs $remainingTotalMs)
+
+  for ($j = 0; $j -lt $remainingTimeline.Count; $j++) {
+    $slot = $remainingTimeline[$j]
+    $timeline += [pscustomobject]@{
+      index       = [int]($explicitPrefixCount + $j)
+      start_ms    = [int]($prefixEndMs + $slot.start_ms)
+      end_ms      = [int]($prefixEndMs + $slot.end_ms)
+      duration_ms = [int]$slot.duration_ms
+    }
+  }
+}
 
 $warnings = New-Object System.Collections.Generic.List[string]
 $audioClips = @()

@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Definir el contrato operativo rígido y determinista para `manifest_v03.json`, su relación con `pack.json` y la validación estructural de escenas LIVE dentro del baseline v0.3, incluyendo preservación contractual de intención, visual efectivo, capacidad visual y origen visual a través de runtime, scene builder, repair, export y handoff final.
+Definir el contrato operativo rígido y determinista para `manifest_v03.json`, su relación con `pack.json` y la validación estructural de escenas LIVE dentro del baseline v0.3, incluyendo preservación contractual de intención, visual efectivo, capacidad visual y origen visual a través de runtime, scene builder, repair, export y handoff final, sin degradación entre host y rutas portables Docker/Linux cuando esas rutas forman parte del baseline validado.
 
 ---
 
@@ -216,6 +216,13 @@ Esto aplica especialmente a:
 - `tools\export_v03_pack.py`
 - handoff final y validaciones asociadas
 
+Reglas adicionales del baseline actual:
+
+- export/handoff final no deben filtrar enums intermedios no contractuales en los artefactos finales
+- `visual_source_kind` y `visual_capability` deben quedar canonizados en export/handoff final a valores contractuales efectivos compatibles con los validadores finales
+- `fallback_image` y `fallback_video` pueden existir como trazabilidad upstream o runtime, pero no deben sobrevivir como valor contractual final en `pack.json`, `manifest_v03.json` exportado ni handoff final
+- la ruta portable Docker/Linux para finalize/export/handoff no relaja ni cambia este contrato; debe preservarlo igual que en host
+
 La validación final debe fallar si esos campos divergen o se degradan en rutas donde el baseline exige su conservación.
 
 ---
@@ -237,7 +244,7 @@ El LIVE válido debe cumplir simultáneamente:
 
 ## Validaciones de referencia
 
-Los siguientes scripts forman parte de la validación práctica de este contrato:
+Los siguientes scripts y validadores forman parte de la validación práctica de este contrato:
 
 - `tools\smoke_manifest_contract_v03.ps1`
 - `tools\smoke_live_manifest_v03.ps1`
@@ -251,8 +258,10 @@ Los siguientes scripts forman parte de la validación práctica de este contrato
 - `tools\smoke_release_handoff_contract_v03.ps1`
 - `tools\negative_live_suite_v03.ps1`
 - `tools\run_validation_stack_v03.ps1`
+- `tools\validate_pack.py`
+- `tools\validate_handoff.py`
 
-La autoridad final del comportamiento válido es el baseline validado por estas pruebas, no definiciones teóricas que contradigan el comportamiento ya endurecido del sistema.
+La autoridad final del comportamiento válido es el baseline validado por estas pruebas, no definiciones teóricas que contradigan el comportamiento ya endurecido del sistema. Para finalize/export/handoff, esa autoridad práctica incluye también la ruta portable Docker/Linux ya cerrada dentro del baseline publicado.
 
 ---
 

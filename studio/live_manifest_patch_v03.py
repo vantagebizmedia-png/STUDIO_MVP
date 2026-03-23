@@ -443,7 +443,7 @@ def _build_from_legacy_scenes(
         )
 
     explicit_pairs: List[tuple[int, int]] = []
-    explicit_ok = True
+    explicit_prefix_count = 0
     last_end = -1
 
     for meta in row_meta:
@@ -452,58 +452,62 @@ def _build_from_legacy_scenes(
         en = _safe_int(sc.get("end_ms"), -1)
 
         if st < 0 or en <= st or st < last_end:
-            explicit_ok = False
             break
 
         explicit_pairs.append((int(st), int(en)))
+        explicit_prefix_count += 1
         last_end = int(en)
 
-    duration_values: List[int] = []
-    if not explicit_ok:
-        duration_values = [0 for _ in row_meta]
-        unresolved_indices: List[int] = []
-        known_total_ms = 0
+    duration_values: List[int] = [0 for _ in row_meta]
+    unresolved_indices: List[int] = []
+    known_total_ms = 0
 
-        for idx, meta in enumerate(row_meta):
-            candidate_ms = 0
+    for idx, meta in enumerate(row_meta):
+        if idx < explicit_prefix_count:
+            st, en = explicit_pairs[idx]
+            known_total_ms += max(0, int(en) - int(st))
+            continue
 
-            if int(meta["audio_duration_ms"]) > 0:
-                candidate_ms = int(meta["audio_duration_ms"])
-            elif int(meta["explicit_duration_ms"]) > 0:
-                candidate_ms = int(meta["explicit_duration_ms"])
+        candidate_ms = 0
 
-            if candidate_ms > 0:
-                duration_values[idx] = candidate_ms
-                known_total_ms += candidate_ms
-            else:
-                unresolved_indices.append(idx)
+        if int(meta["audio_duration_ms"]) > 0:
+            candidate_ms = int(meta["audio_duration_ms"])
+        elif int(meta["explicit_duration_ms"]) > 0:
+            candidate_ms = int(meta["explicit_duration_ms"])
 
-        if unresolved_indices:
-            hinted_total_ms = int(total_ms or 0)
-            fallback_total_ms = 0
-            if hinted_total_ms > known_total_ms:
-                fallback_total_ms = hinted_total_ms - known_total_ms
+        if candidate_ms > 0:
+            duration_values[idx] = candidate_ms
+            known_total_ms += candidate_ms
+        else:
+            unresolved_indices.append(idx)
 
-            fallback_weights = [
-                _word_weight(str(row_meta[idx]["scene_text"]))
-                for idx in unresolved_indices
-            ]
-            fallback_values = _allocate_weighted_durations(
-                fallback_total_ms,
-                fallback_weights,
-            )
+    if unresolved_indices:
+        hinted_total_ms = int(total_ms or 0)
+        fallback_total_ms = 0
+        if hinted_total_ms > known_total_ms:
+            fallback_total_ms = hinted_total_ms - known_total_ms
 
-            for pos, idx in enumerate(unresolved_indices):
-                duration_values[idx] = int(fallback_values[pos])
+        fallback_weights = [
+            _word_weight(str(row_meta[idx]["scene_text"]))
+            for idx in unresolved_indices
+        ]
+        fallback_values = _allocate_weighted_durations(
+            fallback_total_ms,
+            fallback_weights,
+        )
+
+        for pos, idx in enumerate(unresolved_indices):
+            duration_values[idx] = int(fallback_values[pos])
 
     out: List[Dict[str, Any]] = []
-    cur = 0
+    cur = int(explicit_pairs[explicit_prefix_count - 1][1]) if explicit_prefix_count > 0 else 0
 
     for i, meta in enumerate(row_meta):
         ordinal = int(meta["ordinal"])
 
-        if explicit_ok:
+        if i < explicit_prefix_count:
             start_ms, end_ms = explicit_pairs[i]
+            cur = int(end_ms)
         else:
             dur = max(1, int(duration_values[i] or 0))
             start_ms = int(cur)

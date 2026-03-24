@@ -39,19 +39,20 @@ $releaseHandoffContractRoot   = Join-Path $WorkspaceRoot "runs\smoke_release_han
 $intentImageFallbackLiveDir   = Join-Path $WorkspaceRoot "runs\smoke_live_intent_image_fallback"
 $intentVideoFallbackLiveDir   = Join-Path $WorkspaceRoot "runs\smoke_live_intent_video_fallback"
 
-$applyTool                           = Join-Path $RepoRoot "tools\apply_scene_builder_v03.ps1"
-$smokeTool                           = Join-Path $RepoRoot "tools\smoke_live_manifest_v03.ps1"
-$providerContractTool                = Join-Path $RepoRoot "tools\smoke_live_provider_contract_v03.ps1"
-$subtitlesSmokeTool                  = Join-Path $RepoRoot "tools\smoke_subtitles_live_v03.ps1"
-$voiceFallbackDurationTool           = Join-Path $RepoRoot "tools\smoke_pipeline_voice_fallback_duration_v03.ps1"
+$applyTool                            = Join-Path $RepoRoot "tools\apply_scene_builder_v03.ps1"
+$smokeTool                            = Join-Path $RepoRoot "tools\smoke_live_manifest_v03.ps1"
+$providerContractTool                 = Join-Path $RepoRoot "tools\smoke_live_provider_contract_v03.ps1"
+$subtitlesSmokeTool                   = Join-Path $RepoRoot "tools\smoke_subtitles_live_v03.ps1"
+$voiceFallbackDurationTool            = Join-Path $RepoRoot "tools\smoke_pipeline_voice_fallback_duration_v03.ps1"
 $singleSceneVoiceFallbackDurationTool = Join-Path $RepoRoot "tools\smoke_pipeline_single_scene_voice_fallback_duration_v03.ps1"
-$videoCaseTool                       = Join-Path $RepoRoot "tools\smoke_live_video_case_v03.ps1"
-$mixedVisualsTool                    = Join-Path $RepoRoot "tools\smoke_live_mixed_visuals_v03.ps1"
-$exportPackContractTool              = Join-Path $RepoRoot "tools\smoke_export_pack_contract_v03.ps1"
-$releaseHandoffContractTool          = Join-Path $RepoRoot "tools\smoke_release_handoff_contract_v03.ps1"
-$intentImageFallbackTool             = Join-Path $RepoRoot "tools\smoke_live_intent_image_fallback_v03.ps1"
-$intentVideoFallbackTool             = Join-Path $RepoRoot "tools\smoke_live_intent_video_fallback_v03.ps1"
-$negativeSuiteTool                   = Join-Path $RepoRoot "tools\negative_live_suite_v03.ps1"
+$videoCaseTool                        = Join-Path $RepoRoot "tools\smoke_live_video_case_v03.ps1"
+$mixedVisualsTool                     = Join-Path $RepoRoot "tools\smoke_live_mixed_visuals_v03.ps1"
+$exportPackContractTool               = Join-Path $RepoRoot "tools\smoke_export_pack_contract_v03.ps1"
+$releaseHandoffContractTool           = Join-Path $RepoRoot "tools\smoke_release_handoff_contract_v03.ps1"
+$releaseFinalDeliveryTool             = Join-Path $RepoRoot "tools\smoke_release_final_delivery_v03.ps1"
+$intentImageFallbackTool              = Join-Path $RepoRoot "tools\smoke_live_intent_image_fallback_v03.ps1"
+$intentVideoFallbackTool              = Join-Path $RepoRoot "tools\smoke_live_intent_video_fallback_v03.ps1"
+$negativeSuiteTool                    = Join-Path $RepoRoot "tools\negative_live_suite_v03.ps1"
 
 foreach ($p in @(
   $applyTool,
@@ -64,6 +65,7 @@ foreach ($p in @(
   $mixedVisualsTool,
   $exportPackContractTool,
   $releaseHandoffContractTool,
+  $releaseFinalDeliveryTool,
   $intentImageFallbackTool,
   $intentVideoFallbackTool,
   $negativeSuiteTool
@@ -193,15 +195,27 @@ if (-not $SkipReleaseHandoffContract) {
   if ($LASTEXITCODE -ne 0) {
     throw "smoke_release_handoff_contract_v03.ps1 devolvió exit code $LASTEXITCODE"
   }
+
+  Write-Host ""
+  Write-Host "== Paso 11: smoke_release_final_delivery_v03 ==" -ForegroundColor Cyan
+  & $releaseFinalDeliveryTool `
+    -RepoRoot $RepoRoot `
+    -WorkspaceRoot $WorkspaceRoot
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "smoke_release_final_delivery_v03.ps1 devolvió exit code $LASTEXITCODE"
+  }
 }
 else {
   Write-Host ""
   Write-Host "== Paso 10: release/handoff contract omitido por flag ==" -ForegroundColor Yellow
+  Write-Host ""
+  Write-Host "== Paso 11: release final delivery omitido por flag ==" -ForegroundColor Yellow
 }
 
 if (-not $SkipIntentImageFallback) {
   Write-Host ""
-  Write-Host "== Paso 11: smoke_live_intent_image_fallback_v03 ==" -ForegroundColor Cyan
+  Write-Host "== Paso 12: smoke_live_intent_image_fallback_v03 ==" -ForegroundColor Cyan
   & $intentImageFallbackTool `
     -RepoRoot $RepoRoot `
     -WorkspaceRoot $WorkspaceRoot `
@@ -214,12 +228,12 @@ if (-not $SkipIntentImageFallback) {
 }
 else {
   Write-Host ""
-  Write-Host "== Paso 11: intent->image fallback omitido por flag ==" -ForegroundColor Yellow
+  Write-Host "== Paso 12: intent->image fallback omitido por flag ==" -ForegroundColor Yellow
 }
 
 if (-not $SkipIntentVideoFallback) {
   Write-Host ""
-  Write-Host "== Paso 12: smoke_live_intent_video_fallback_v03 ==" -ForegroundColor Cyan
+  Write-Host "== Paso 13: smoke_live_intent_video_fallback_v03 ==" -ForegroundColor Cyan
   & $intentVideoFallbackTool `
     -RepoRoot $RepoRoot `
     -WorkspaceRoot $WorkspaceRoot `
@@ -232,12 +246,12 @@ if (-not $SkipIntentVideoFallback) {
 }
 else {
   Write-Host ""
-  Write-Host "== Paso 12: intent->video fallback omitido por flag ==" -ForegroundColor Yellow
+  Write-Host "== Paso 13: intent->video fallback omitido por flag ==" -ForegroundColor Yellow
 }
 
 if (-not $SkipNegativeSuite) {
   Write-Host ""
-  Write-Host "== Paso 13: negative_live_suite_v03 ==" -ForegroundColor Cyan
+  Write-Host "== Paso 14: negative_live_suite_v03 ==" -ForegroundColor Cyan
   & $negativeSuiteTool `
     -RepoRoot $RepoRoot `
     -WorkspaceRoot $WorkspaceRoot `
@@ -249,7 +263,7 @@ if (-not $SkipNegativeSuite) {
 }
 else {
   Write-Host ""
-  Write-Host "== Paso 13: negative suite omitida por flag ==" -ForegroundColor Yellow
+  Write-Host "== Paso 14: negative suite omitida por flag ==" -ForegroundColor Yellow
 }
 
 Write-Host ""

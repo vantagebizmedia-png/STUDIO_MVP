@@ -70,6 +70,7 @@ $statusVideoCase = "SKIPPED"
 $statusMixedVisuals = "SKIPPED"
 $statusExportPackContract = "SKIPPED"
 $statusReleaseHandoffContract = "SKIPPED"
+$statusReleaseFinalDelivery = "SKIPPED"
 $statusIntentImageFallback = "SKIPPED"
 $statusIntentVideoFallback = "SKIPPED"
 $statusNegative = "SKIPPED"
@@ -133,6 +134,7 @@ try {
 
   if (-not $effectiveSkipReleaseHandoffContract) {
     $statusReleaseHandoffContract = "PASS"
+    $statusReleaseFinalDelivery = "PASS"
   }
 
   if (-not $effectiveSkipIntentImageFallback) {
@@ -163,6 +165,7 @@ Write-Host ("VIDEO_CASE={0}" -f $statusVideoCase) -ForegroundColor DarkGray
 Write-Host ("MIXED_VISUALS={0}" -f $statusMixedVisuals) -ForegroundColor DarkGray
 Write-Host ("EXPORT_PACK_CONTRACT={0}" -f $statusExportPackContract) -ForegroundColor DarkGray
 Write-Host ("RELEASE_HANDOFF_CONTRACT={0}" -f $statusReleaseHandoffContract) -ForegroundColor DarkGray
+Write-Host ("RELEASE_FINAL_DELIVERY={0}" -f $statusReleaseFinalDelivery) -ForegroundColor DarkGray
 Write-Host ("INTENT_IMAGE_FALLBACK={0}" -f $statusIntentImageFallback) -ForegroundColor DarkGray
 Write-Host ("INTENT_VIDEO_FALLBACK={0}" -f $statusIntentVideoFallback) -ForegroundColor DarkGray
 Write-Host ("NEGATIVE_SUITE={0}" -f $statusNegative) -ForegroundColor DarkGray

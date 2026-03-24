@@ -2,16 +2,17 @@
 
 Pipeline determinista para generar videos verticales tipo reels/shorts a partir de un flujo LIVE reproducible, con conversión a `scenes_v03`, resincronización de `pack.json`, subtítulos, export pack y handoff final validados contractualmente.
 
-## Estado operativo del baseline `b699c88`
+## Estado operativo del baseline `bc3b11e`
 
 ### Referencias oficiales del freeze
 - rama publicada: `main`
 - `origin/main` alineado con el baseline actual
-- baseline operativo/documental vigente: `b699c88`
+- baseline operativo/documental vigente: `bc3b11e`
 
 ### Validación real cerrada
 - `run_validation_stack_v03.ps1` FULL: PASS
 - `run_validation_stack_v03.ps1` FULL en Docker: PASS
+- validación dirigida `tools/release_final_delivery_v03.py`: PASS
 - `validate_live_suite_v03.ps1`: PASS
 - `smoke_live_manifest_v03.ps1`: PASS
 - `smoke_live_provider_contract_v03.ps1`: PASS
@@ -66,7 +67,13 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 - compatibilidad PowerShell UTF-8 homogénea vía `tools/ps_utf8_compat_v03.ps1`
 - `.gitignore` ignora `workspace/exports/` dentro del repo sin ocultar `workspace/` completo
 - `requirements.txt` declara `huggingface_hub` para el provider moderno `hf_image`, con validación FULL PASS en Docker
-- validación final de:
+- cierre moderno pack-based hasta delivery final vía:
+  - `tools/release_final_delivery_v03.py`
+  - `tools/finalize_handoff_v03.py`
+- resolución estable de helpers auto-music vía `$PSScriptRoot` en:
+  - `tools/finalize_pack_auto_music.ps1`
+  - `tools/apply_auto_music_to_pack.ps1`
+- validación final moderna de:
   - `video.mp4`
   - `video_music_auto.mp4`
   - `video_final.mp4`
@@ -74,19 +81,21 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
   - ZIP final + SHA256
 
 ## Línea reciente del baseline
-- `5f76c18` → Docker/portabilidad Linux para finalize/export handoff validation
-- `043f7f5` → aplicación mecánica restante del helper UTF-8 a scripts PowerShell
-- `bea8dd8` → `.gitignore` ignora `workspace/exports/` dentro del repo
-- `d1f1031` → freeze documental sincronizado al baseline `bea8dd8`
-- `1a34b36` → preservación de autoridad visual legacy antes del mixed asset fallback
-- `2b18896` → freeze documental del contrato tras el ajuste legacy
-- `f67a07f` → README sincronizado al baseline `1a34b36`
-- `f601a4e` → preservación de prefijo temporal explícito válido en escenas legacy
-- `1048f9c` → contrato sincronizado tras el ajuste temporal conservador
-- `14043a3` → README sincronizado al baseline `f601a4e`
-- `537b46c` → repair alineado con autoridad temporal por prefijo válido
-- `6001591` → freeze documental sincronizado tras la alineación temporal en repair
+- `bc3b11e` → orquestador moderno `release_final_delivery_v03.py` + corrección de resolución de helpers auto-music por `$PSScriptRoot`
+- `e9bd174` → README sincronizado al baseline `b699c88`
 - `b699c88` → `requirements.txt` declara `huggingface_hub` para `HFImageProvider`
+- `6001591` → freeze documental sincronizado tras la alineación temporal en repair
+- `537b46c` → repair alineado con autoridad temporal por prefijo válido
+- `14043a3` → README sincronizado al baseline `f601a4e`
+- `1048f9c` → contrato sincronizado tras el ajuste temporal conservador
+- `f601a4e` → preservación de prefijo temporal explícito válido en escenas legacy
+- `f67a07f` → README sincronizado al baseline `1a34b36`
+- `2b18896` → freeze documental del contrato tras el ajuste legacy
+- `1a34b36` → preservación de autoridad visual legacy antes del mixed asset fallback
+- `d1f1031` → freeze documental sincronizado al baseline `bea8dd8`
+- `bea8dd8` → `.gitignore` ignora `workspace/exports/` dentro del repo
+- `043f7f5` → aplicación mecánica restante del helper UTF-8 a scripts PowerShell
+- `5f76c18` → Docker/portabilidad Linux para finalize/export handoff validation
 
 ## Limpieza conservadora ya ejecutada
 - `__pycache__` y compilados `.pyc/.pyo` removidos del repo
@@ -127,9 +136,9 @@ Pipeline determinista para generar videos verticales tipo reels/shorts a partir 
 - `.ps1` y `.py` del repo en UTF-8 sin BOM y LF
 
 ## Estado honesto
-El MVP base no está roto. El baseline técnico y contractual actual está operativo, validado, reproducible y publicado en `main`. El frente abierto real ya no es hacer funcionar el baseline, sino conservar el freeze operativo/documental y endurecer solo bordes upstream concretos sin romper el contrato visual ya cerrado.
+El MVP base no está roto. El baseline técnico y contractual actual está operativo, validado, reproducible y publicado en `main`. Con `bc3b11e`, el baseline incorpora además una ruta moderna pack-based hasta `final_delivery.zip` y `HANDOFF_READY.txt`, sin reabrir el legacy live-based ni degradar el contrato visual/temporal ya cerrado.
 
 ## Siguiente foco
-1. conservar freeze documental/operativo del baseline `b699c88`
-2. auditar dependencias modernas restantes del path de texto (`openai`, `anthropic`) sin reabrir el contrato visual/temporal
-3. mantener guardas de duración dinámica y arquitectura multi-provider sin romper baseline
+1. conservar freeze documental/operativo del baseline `bc3b11e`
+2. no reabrir delivery/orquestación moderna recién cerrados salvo borde real
+3. abrir solo un borde upstream concreto nuevo cuando exista evidencia de inspección real

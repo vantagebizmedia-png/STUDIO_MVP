@@ -215,6 +215,8 @@ Esto aplica especialmente a:
 - `tools\apply_scene_builder_v03.ps1`
 - `tools\repair_live_manifest_v03.ps1`
 - `tools\export_v03_pack.py`
+- `tools\finalize_handoff_v03.py`
+- `tools\release_final_delivery_v03.py`
 - handoff final y validaciones asociadas
 
 Reglas adicionales del baseline actual:
@@ -230,6 +232,10 @@ Reglas adicionales del baseline actual:
 - `tools\repair_live_manifest_v03.ps1` no debe reintroducir una recomposición temporal global que destruya ese prefijo explícito válido cuando repare o resincronice escenas
 - cuando repair recomponga timeline, debe preservar el prefijo explícito válido, calcular el resto contra el tiempo remanente y desplazar la reconstrucción restante desde `prefixEndMs`
 - la ruta portable Docker/Linux para finalize/export/handoff no relaja ni cambia este contrato; debe preservarlo igual que en host
+- la ruta moderna pack-based de cierre final debe consumir `pack_dir` exportado como autoridad downstream práctica, sin depender de `live_dir` legacy para construir el entregable final
+- `tools\finalize_handoff_v03.py` debe poder asegurar `video.mp4`, producir `video_music_auto.mp4` y `video_final.mp4`, y emitir `<pack>.final_delivery.zip`, su `.sha256.txt` y `HANDOFF_READY.txt` sobre el pack exportado o fallar explícitamente
+- `tools\release_final_delivery_v03.py` actúa como orquestador moderno de alto nivel para encadenar release/export/validate y cierre final sobre `pack_dir`, sin deformar el contrato pack-only de `tools\release_pack_v03.py`
+- `tools\finalize_pack_auto_music.ps1` y `tools\apply_auto_music_to_pack.ps1` deben resolver helpers hermanos mediante `$PSScriptRoot` o equivalente estable, no mediante `Get-Location`, para preservar determinismo e invocación correcta desde host, wrapper Python y rutas portables
 
 La validación final debe fallar si esos campos divergen o se degradan en rutas donde el baseline exige su conservación.
 

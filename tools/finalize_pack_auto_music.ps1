@@ -18,15 +18,20 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$PackDir = (Resolve-Path -LiteralPath $PackDir).Path
+$PackDir  = (Resolve-Path -LiteralPath $PackDir).Path
 $MusicDir = (Resolve-Path -LiteralPath $MusicDir).Path
 
-$applyScript = Join-Path (Get-Location) "tools\apply_auto_music_to_pack.ps1"
-if (-not (Test-Path -LiteralPath $applyScript)) {
+$scriptRoot = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($scriptRoot)) {
+    $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+
+$applyScript = Join-Path $scriptRoot "apply_auto_music_to_pack.ps1"
+if (-not (Test-Path -LiteralPath $applyScript -PathType Leaf)) {
     throw "No existe: $applyScript"
 }
 
-powershell -ExecutionPolicy Bypass -File $applyScript `
+& powershell -NoProfile -NoLogo -NonInteractive -ExecutionPolicy Bypass -File $applyScript `
   -PackDir $PackDir `
   -MusicDir $MusicDir `
   -VideoName $VideoName `
@@ -35,8 +40,12 @@ powershell -ExecutionPolicy Bypass -File $applyScript `
   -FadeInSec $FadeInSec `
   -FadeOutSec $FadeOutSec
 
+if ($LASTEXITCODE -ne 0) {
+    throw "apply_auto_music_to_pack.ps1 falló con exit code $LASTEXITCODE"
+}
+
 $outVideo = Join-Path $PackDir $OutputVideoName
-if (-not (Test-Path -LiteralPath $outVideo)) {
+if (-not (Test-Path -LiteralPath $outVideo -PathType Leaf)) {
     throw "No se generó el video con música: $outVideo"
 }
 
